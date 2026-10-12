@@ -23,6 +23,10 @@ type Config struct {
 	DayStart   time.Duration // offset from midnight when a new planning day begins (D19)
 	Priorities []PriorityLevel
 	Sizes      map[domain.Size]time.Duration
+	// UnsizedBlock is the default block length for unsized tasks such as PR reviews (D24).
+	UnsizedBlock time.Duration
+	// RolloverAlert is the rollover count at which planning flags a task (D10a).
+	RolloverAlert int
 }
 
 func Default() Config {
@@ -39,6 +43,8 @@ func Default() Config {
 			domain.SizeL:  8 * time.Hour,
 			domain.SizeXL: 40 * time.Hour,
 		},
+		UnsizedBlock:  30 * time.Minute,
+		RolloverAlert: 3,
 	}
 }
 
@@ -47,6 +53,10 @@ type file struct {
 	DayStart   *string           `toml:"day_start"`
 	Priorities []PriorityLevel   `toml:"priorities"`
 	Sizes      map[string]string `toml:"sizes"`
+	Planning   struct {
+		UnsizedBlock  *string `toml:"unsized_block"`
+		RolloverAlert *int    `toml:"rollover_alert"`
+	} `toml:"planning"`
 }
 
 // Load reads path. A missing file yields Default().
@@ -103,6 +113,19 @@ func Parse(data []byte) (Config, error) {
 			return Config{}, fmt.Errorf("sizes.%s: want a positive duration like \"4h\", got %q", key, val)
 		}
 		cfg.Sizes[size] = d
+	}
+	if p := f.Planning.UnsizedBlock; p != nil {
+		d, err := time.ParseDuration(*p)
+		if err != nil || d <= 0 {
+			return Config{}, fmt.Errorf("planning.unsized_block: want a positive duration like \"30m\", got %q", *p)
+		}
+		cfg.UnsizedBlock = d
+	}
+	if p := f.Planning.RolloverAlert; p != nil {
+		if *p < 1 {
+			return Config{}, fmt.Errorf("planning.rollover_alert: want 1 or more, got %d", *p)
+		}
+		cfg.RolloverAlert = *p
 	}
 	return cfg, nil
 }
