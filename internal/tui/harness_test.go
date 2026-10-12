@@ -82,6 +82,7 @@ var named = map[string]tea.KeyPressMsg{
 	"enter": {Code: tea.KeyEnter}, "tab": {Code: tea.KeyTab}, "esc": {Code: tea.KeyEscape},
 	"up": {Code: tea.KeyUp}, "down": {Code: tea.KeyDown}, "left": {Code: tea.KeyLeft}, "right": {Code: tea.KeyRight},
 	"ctrl+z": {Code: 'z', Mod: tea.ModCtrl}, "ctrl+c": {Code: 'c', Mod: tea.ModCtrl},
+	"backspace": {Code: tea.KeyBackspace},
 }
 
 // keys sends named keys ("enter", "ctrl+z") or single characters.

@@ -55,7 +55,12 @@ type overlay interface {
 }
 
 // paster is implemented by overlays that accept bracketed-paste text.
-type paster interface{ paste(tea.PasteMsg) tea.Cmd }
+type paster interface {
+	paste(m *Model, msg tea.PasteMsg) tea.Cmd
+}
+
+// resizer is implemented by overlays whose width follows the terminal's.
+type resizer interface{ resize(width int) }
 
 type Model struct {
 	svc  *app.Service
@@ -137,6 +142,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		if r, ok := m.overlay.(resizer); ok {
+			r.resize(msg.Width)
+		}
 	case loadedMsg:
 		if msg.err != nil {
 			m.setErr(msg.err)
@@ -212,7 +220,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return m.handleKey(msg)
 	case tea.PasteMsg:
 		if p, ok := m.overlay.(paster); ok {
-			return p.paste(msg)
+			return p.paste(m, msg)
 		}
 	}
 	return nil
@@ -339,12 +347,16 @@ func (m *Model) render() string {
 	if m.banner != nil {
 		parts = append(parts, m.bannerView())
 	}
+	fb, filtering := m.overlay.(*filterBar)
 	if m.screen == screenInbox {
 		parts = append(parts, m.inboxView())
 	} else {
+		if filtering {
+			parts = append(parts, fb.view(m)) // the filter line sits above the backlog
+		}
 		parts = append(parts, m.pickView())
 	}
-	if m.overlay != nil {
+	if m.overlay != nil && !filtering {
 		parts = append(parts, m.overlay.view(m))
 	}
 	parts = append(parts, m.statusView(), m.hintsView())

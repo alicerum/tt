@@ -133,7 +133,11 @@ func (m *Model) hintsView() string {
 		}
 		return styleDim.Render(fmt.Sprintf("1-%d priority · s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help", len(m.svc.Config().Priorities)))
 	}
-	return styleDim.Render("a add · p pin · u unpin · x done · d drop · tab pane · →/← expand · i inbox · ctrl+z undo · ? help · q quit")
+	hints := "a add · / filter · g group · p pin · u unpin · x done · d drop · tab pane · →/← expand · i inbox · ctrl+z undo · ? help · q quit"
+	if m.pick.filtered() {
+		hints = "esc clears filter · " + hints
+	}
+	return styleDim.Render(hints)
 }
 
 func dayLabel(d domain.Day) string {

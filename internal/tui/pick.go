@@ -294,6 +294,8 @@ func (m *Model) pickKey(key string) tea.Cmd {
 		m.screen = screenInbox
 		m.inbox.sync(m)
 		return nil
+	case "/":
+		return m.openFilter()
 	case "g":
 		p.group = p.group.Next()
 		m.refreshRows()

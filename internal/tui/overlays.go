@@ -14,12 +14,17 @@ import (
 	"tt/internal/dsl"
 )
 
+// fitInput sizes ti to a terminal width cells wide.
+func fitInput(ti *textinput.Model, width int) {
+	ti.SetWidth(max(width-ansi.StringWidth(ti.Prompt)-2, 10))
+}
+
 func newInput(prompt, placeholder string, width int) textinput.Model {
 	ti := textinput.New()
 	ti.Prompt = prompt
 	ti.Placeholder = placeholder
 	ti.CharLimit = 1000
-	ti.SetWidth(max(width-ansi.StringWidth(prompt)-2, 10))
+	fitInput(&ti, width)
 	st := ti.Styles()
 	st.Cursor.Blink = false // a static cursor: no blink timers
 	ti.SetStyles(st)
@@ -29,12 +34,12 @@ func newInput(prompt, placeholder string, width int) textinput.Model {
 
 // quickAdd is the one-line capture overlay (D25) with @/# autocomplete.
 type quickAdd struct {
-	input textinput.Model
-	err   error // why the last enter was refused; shown under the input
+	in  tokenInput
+	err error // why the last enter was refused; shown under the input
 }
 
 func (m *Model) openQuickAdd() tea.Cmd {
-	m.overlay = &quickAdd{input: newInput("add › ", "title @who #tag !1 ~s link -- note", m.width)}
+	m.overlay = &quickAdd{in: newTokenInput("add › ", "title @who #tag !1 ~s link -- note", m.width)}
 	return nil
 }
 
@@ -44,12 +49,12 @@ func (q *quickAdd) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 		m.overlay = nil
 		return nil
 	case "tab":
-		if s := q.suggestions(m); len(s) > 0 {
-			q.complete(s[0])
+		if s := q.in.suggestions(m); len(s) > 0 {
+			q.in.complete(s[0])
 		}
 		return nil
 	case "enter":
-		line := q.input.Value()
+		line := q.in.value()
 		if _, err := dsl.ParseAdd(line, len(m.svc.Config().Priorities)); err != nil {
 			q.err = err
 			return nil
@@ -66,69 +71,67 @@ func (q *quickAdd) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	q.err = nil
-	var cmd tea.Cmd
-	q.input, cmd = q.input.Update(k)
-	return cmd
+	return q.in.update(k)
 }
 
-// currentToken is the word being typed (the input's last word).
-func (q *quickAdd) currentToken() string {
-	v := q.input.Value()
-	if strings.HasSuffix(v, " ") {
-		return ""
-	}
-	fields := strings.Fields(v)
-	if len(fields) == 0 {
-		return ""
-	}
-	return fields[len(fields)-1]
+func (q *quickAdd) paste(_ *Model, msg tea.PasteMsg) tea.Cmd { return q.in.update(msg) }
+
+func (q *quickAdd) resize(width int) { q.in.resize(width) }
+
+func (q *quickAdd) view(m *Model) string { return q.in.view(m, q.err) }
+
+// filterBar edits the backlog filter and applies it as you type (D26e).
+type filterBar struct {
+	in   tokenInput
+	prev string // the filter before `/`; esc restores it
+	err  error  // the line doesn't parse; the last valid filter stays applied
 }
 
-// suggestions completes a trailing @requester or #tag from known values, most used first.
-func (q *quickAdd) suggestions(m *Model) []string {
-	tok := q.currentToken()
-	if len(tok) < 1 || (tok[0] != '@' && tok[0] != '#') {
+func (m *Model) openFilter() tea.Cmd {
+	in := newTokenInput("filter › ", "@who #tag !1 ~s <7d >30d is:done words", m.width)
+	if text := m.pick.filterText; text != "" {
+		in.input.SetValue(text + " ")
+		in.input.CursorEnd()
+	}
+	m.pick.focus = paneBacklog
+	m.overlay = &filterBar{in: in, prev: m.pick.filterText}
+	return nil
+}
+
+func (f *filterBar) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
+	switch k.String() {
+	case "esc":
+		m.overlay = nil
+		_ = m.applyFilter(f.prev) // it parsed when it was applied
+		return nil
+	case "enter":
+		if f.err == nil {
+			m.overlay = nil
+		}
+		return nil // refused: the text and the error stay
+	case "tab":
+		if s := f.in.suggestions(m); len(s) > 0 {
+			f.in.complete(s[0])
+			f.apply(m)
+		}
 		return nil
 	}
-	pool := m.idx.tags
-	if tok[0] == '@' {
-		pool = m.idx.requesters
-	}
-	prefix := strings.ToLower(tok[1:])
-	var out []string
-	for _, v := range pool {
-		if strings.HasPrefix(v, prefix) && v != prefix {
-			out = append(out, string(tok[0])+v)
-			if len(out) == 5 {
-				break
-			}
-		}
-	}
-	return out
-}
-
-func (q *quickAdd) complete(s string) {
-	v := q.input.Value()
-	q.input.SetValue(v[:len(v)-len(q.currentToken())] + s + " ")
-	q.input.CursorEnd()
-}
-
-func (q *quickAdd) paste(msg tea.PasteMsg) tea.Cmd {
-	var cmd tea.Cmd
-	q.input, cmd = q.input.Update(msg)
+	cmd := f.in.update(k)
+	f.apply(m)
 	return cmd
 }
 
-func (q *quickAdd) view(m *Model) string {
-	out := q.input.View()
-	if q.err != nil {
-		out += "\n" + styleError.Render("✗ "+q.err.Error())
-	}
-	if s := q.suggestions(m); len(s) > 0 {
-		out += "\n" + styleDim.Render("  tab → "+strings.Join(s, "  "))
-	}
-	return out
+func (f *filterBar) apply(m *Model) { f.err = m.applyFilter(f.in.value()) }
+
+func (f *filterBar) paste(m *Model, msg tea.PasteMsg) tea.Cmd {
+	cmd := f.in.update(msg)
+	f.apply(m)
+	return cmd
 }
+
+func (f *filterBar) resize(width int) { f.in.resize(width) }
+
+func (f *filterBar) view(m *Model) string { return f.in.view(m, f.err) }
 
 // prompt is a one-line text question, e.g. the optional drop reason (D23).
 type prompt struct {
@@ -150,11 +153,13 @@ func (p *prompt) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-func (p *prompt) paste(msg tea.PasteMsg) tea.Cmd {
+func (p *prompt) paste(_ *Model, msg tea.PasteMsg) tea.Cmd {
 	var cmd tea.Cmd
 	p.input, cmd = p.input.Update(msg)
 	return cmd
 }
+
+func (p *prompt) resize(width int) { fitInput(&p.input, width) }
 
 func (p *prompt) view(*Model) string { return p.input.View() }
 
@@ -231,6 +236,8 @@ func (helpOverlay) view(m *Model) string {
 			"p / u    pin to today / unpin",
 			"x        done (again: reopen)",
 			"d / D    drop with optional reason / delete",
+			"/        filter: @who #tag !1 ~s <7d >30d is:done|dropped|all words (live; esc on the list clears)",
+			"g        group by priority → size → created → requester (remembered)",
 			"i        inbox",
 		}
 	}
