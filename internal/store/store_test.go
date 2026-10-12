@@ -218,3 +218,14 @@ func TestConcurrentWritersWaitInsteadOfFailing(t *testing.T) {
 		t.Errorf("got %d tasks; want 2", n)
 	}
 }
+
+func TestFormatTimeSortsAsText(t *testing.T) {
+	tm := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	if a, b := formatTime(tm), formatTime(tm.Add(500*time.Millisecond)); !(a < b) {
+		t.Errorf("formatTime not text-sortable: %q !< %q", a, b)
+	}
+	got, err := parseTime(formatTime(tm))
+	if err != nil || !got.Equal(tm) {
+		t.Errorf("parseTime(formatTime(t)) = %v, %v; want %v", got, err, tm)
+	}
+}

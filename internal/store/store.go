@@ -121,6 +121,10 @@ func (s *Store) InTx(ctx context.Context, fn func(*Tx) error) error {
 	return tx.Commit()
 }
 
-func formatTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+// timeLayout is fixed-width (always 9 fractional digits, always Z) so stored
+// times sort correctly as text.
+const timeLayout = "2006-01-02T15:04:05.000000000Z07:00"
+
+func formatTime(t time.Time) string { return t.UTC().Format(timeLayout) }
 
 func parseTime(s string) (time.Time, error) { return time.Parse(time.RFC3339Nano, s) }
