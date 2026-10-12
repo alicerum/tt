@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"tt/internal/app"
+	"tt/internal/search"
 )
 
 // Options tunes the background loops.
@@ -78,7 +79,7 @@ type Model struct {
 }
 
 func New(ctx context.Context, svc *app.Service, opts Options) *Model {
-	return &Model{svc: svc, opts: opts, ctx: ctx, width: 100, height: 30}
+	return &Model{svc: svc, opts: opts, ctx: ctx, width: 100, height: 30, pick: pickState{group: search.ByPriority}}
 }
 
 // Messages.
@@ -106,10 +107,20 @@ type (
 		label string
 		err   error
 	}
+	uiStateMsg struct {
+		group string
+		err   error
+	}
+	uiSavedMsg struct{ err error }
 )
 
 func (m *Model) Init() tea.Cmd {
+	svc, ctx := m.svc, m.ctx
 	return tea.Batch(
+		func() tea.Msg {
+			g, err := svc.UIState(ctx, groupKey)
+			return uiStateMsg{group: g, err: err}
+		},
 		m.startDay(),
 		m.opts.Schedule(m.opts.WatchEvery, watchTickMsg{}),
 		m.opts.Schedule(m.opts.ClockEvery, clockTickMsg{}),
@@ -117,48 +128,54 @@ func (m *Model) Init() tea.Cmd {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := m.update(msg)
+	m.pick.follow(m)
+	return m, cmd
+}
+
+func (m *Model) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case loadedMsg:
 		if msg.err != nil {
 			m.setErr(msg.err)
-			return m, nil
+			return nil
 		}
 		m.state, m.loaded = msg.state, true
 		m.idx = buildIndex(msg.state)
-		m.pick.clamp(m)
+		m.refreshRows()
 		m.inbox.sync(m)
 	case watchTickMsg:
 		cmds := []tea.Cmd{m.checkVersion(), m.opts.Schedule(m.opts.WatchEvery, watchTickMsg{})}
 		if m.dayIsStale() {
 			cmds = append(cmds, m.startDay())
 		}
-		return m, tea.Batch(cmds...)
+		return tea.Batch(cmds...)
 	case versionMsg:
 		if msg.err != nil {
 			m.setErr(fmt.Errorf("can't read the database: %w", msg.err))
-			return m, nil
+			return nil
 		}
 		if msg.version != m.state.Version {
-			return m, m.load()
+			return m.load()
 		}
 	case clockTickMsg:
-		return m, tea.Batch(m.startDay(), m.opts.Schedule(m.opts.ClockEvery, clockTickMsg{}))
+		return tea.Batch(m.startDay(), m.opts.Schedule(m.opts.ClockEvery, clockTickMsg{}))
 	case dayStartedMsg:
 		if msg.err != nil {
 			m.setErr(msg.err)
-			return m, m.load()
+			return m.load()
 		}
 		if msg.res.New {
 			res := msg.res
 			m.banner = &res
 		}
-		return m, m.load()
+		return m.load()
 	case actionMsg:
 		if msg.err != nil {
 			m.setErr(msg.err)
-			return m, m.load()
+			return m.load()
 		}
 		if msg.undo != nil {
 			m.undo = append(m.undo, undoEntry{label: msg.label, fn: msg.undo})
@@ -167,7 +184,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.setStatus(msg.status)
-		return m, m.load()
+		return m.load()
 	case undoneMsg:
 		switch {
 		case errors.Is(msg.err, app.ErrConflict) || errors.Is(msg.err, app.ErrNotFound):
@@ -177,15 +194,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			m.setStatus("undid " + msg.label)
 		}
-		return m, m.load()
+		return m.load()
+	case uiStateMsg:
+		if msg.err != nil {
+			m.setErr(fmt.Errorf("can't read the remembered grouping: %w", msg.err))
+			return nil
+		}
+		m.pick.group = search.ParseGroupBy(msg.group)
+		if m.loaded {
+			m.refreshRows()
+		}
+	case uiSavedMsg:
+		if msg.err != nil {
+			m.setErr(fmt.Errorf("can't remember the grouping: %w", msg.err))
+		}
 	case tea.KeyPressMsg:
-		return m, m.handleKey(msg)
+		return m.handleKey(msg)
 	case tea.PasteMsg:
 		if p, ok := m.overlay.(paster); ok {
-			return m, p.paste(msg)
+			return p.paste(msg)
 		}
 	}
-	return m, nil
+	return nil
 }
 
 func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {

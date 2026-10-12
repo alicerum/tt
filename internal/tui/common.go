@@ -159,6 +159,14 @@ func ago(now, t time.Time) string {
 	}
 }
 
+// plural renders "1 match" / "3 matches".
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
 // shortDur renders 1h, 4h, 30m, 1h30m.
 func shortDur(d time.Duration) string {
 	s := d.String()
