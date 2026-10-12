@@ -192,14 +192,14 @@ func (m *Model) detailHead() []string {
 
 	lines = append(lines, "", styleTitle.Render("NOTE"))
 	if t.Note == "" {
-		lines = append(lines, styleDim.Render("  no note"))
+		lines = append(lines, styleDim.Render("  no note · E to write one"))
 	} else {
 		note := strings.Split(t.Note, "\n")
 		for _, l := range note[:min(len(note), notePreviewLines)] {
 			lines = append(lines, "  "+l)
 		}
 		if extra := len(note) - notePreviewLines; extra > 0 {
-			lines = append(lines, styleDim.Render(fmt.Sprintf("  … +%d lines", extra)))
+			lines = append(lines, styleDim.Render(fmt.Sprintf("  … +%d lines · E edit in $EDITOR", extra)))
 		}
 	}
 

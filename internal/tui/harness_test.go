@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +31,12 @@ type harness struct {
 	clock *fakeClock
 	path  string
 	quit  bool
+
+	// editor stands in for $EDITOR: it gets the note file's path and may
+	// rewrite it; its error is the editor's exit status.
+	editor  func(path string) error
+	opened  []string // links passed to Open
+	openErr error
 }
 
 func newHarness(t *testing.T, cfg config.Config) *harness {
@@ -42,9 +49,23 @@ func newHarness(t *testing.T, cfg config.Config) *harness {
 	t.Cleanup(func() { st.Close() })
 	clock := &fakeClock{now: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}
 	svc := app.New(st, clock, cfg)
+	h := &harness{t: t, svc: svc, clock: clock, path: path}
 	opts := Options{WatchEvery: time.Second, ClockEvery: 30 * time.Second,
-		Schedule: func(time.Duration, tea.Msg) tea.Cmd { return nil }}
-	h := &harness{t: t, m: New(context.Background(), svc, opts), svc: svc, clock: clock, path: path}
+		Schedule: func(time.Duration, tea.Msg) tea.Cmd { return nil },
+		Exec: func(c *exec.Cmd, done tea.ExecCallback) tea.Cmd {
+			return func() tea.Msg {
+				if h.editor == nil {
+					h.t.Fatal("the editor ran but the test set no h.editor")
+				}
+				return done(h.editor(c.Args[len(c.Args)-1]))
+			}
+		},
+		Open: func(_ context.Context, url string) error {
+			h.opened = append(h.opened, url)
+			return h.openErr
+		},
+	}
+	h.m = New(context.Background(), svc, opts)
 	h.run(h.m.Init())
 	h.send(tea.WindowSizeMsg{Width: 140, Height: 40})
 	if h.m.banner == nil {

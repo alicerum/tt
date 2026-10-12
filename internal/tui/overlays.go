@@ -226,6 +226,8 @@ func (helpOverlay) view(m *Model) string {
 		local = []string{
 			"j k      move between the task and its children",
 			"⏎        open the child under the cursor · esc back (child → parent → Pick)",
+			"e / E    edit the line (title @who #tag !1 ~s link) / the note in $EDITOR",
+			"o        open the link",
 			"p / u    pin to today / unpin",
 			"x        done (again: reopen)",
 			"d / D    drop with optional reason / delete",
@@ -241,6 +243,7 @@ func (helpOverlay) view(m *Model) string {
 	default:
 		local = []string{
 			"⏎        task detail",
+			"e / E    edit the line / the note in $EDITOR · o open the link",
 			"tab      switch backlog / today",
 			"j k      move · → ← expand / collapse a parent",
 			"p / u    pin to today / unpin",

@@ -1,0 +1,182 @@
+package tui
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"tt/internal/app"
+	"tt/internal/domain"
+)
+
+// editLine is the `e` overlay (P1): the task's token line, prefilled.
+type editLine struct {
+	in   tokenInput
+	task domain.Task
+	err  error // why the last enter was refused; shown under the input
+}
+
+func (m *Model) openEdit(t domain.Task) tea.Cmd {
+	in := newTokenInput(fmt.Sprintf("edit #%d › ", t.ID), "title @who #tag !1 ~s link -- note (replaces it)", m.width)
+	in.input.SetValue(app.EditLine(t))
+	in.input.CursorEnd()
+	m.overlay = &editLine{in: in, task: t}
+	return nil
+}
+
+func (e *editLine) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
+	switch k.String() {
+	case "esc":
+		m.overlay = nil
+		return nil
+	case "tab":
+		if s := e.in.suggestions(m); len(s) > 0 {
+			e.in.complete(s[0])
+		}
+		return nil
+	case "enter":
+		line := e.in.value()
+		if _, err := m.svc.ParseEdit(e.task, line); err != nil {
+			e.err = err
+			return nil
+		}
+		m.overlay = nil
+		svc, id, label := m.svc, e.task.ID, fmt.Sprintf("%q", e.task.Title)
+		return m.act("edit "+label, "edited "+label, func(ctx context.Context) (app.Undo, error) { return svc.Edit(ctx, id, line) })
+	}
+	e.err = nil
+	return e.in.update(k)
+}
+
+func (e *editLine) paste(_ *Model, msg tea.PasteMsg) tea.Cmd { return e.in.update(msg) }
+
+func (e *editLine) resize(width int) { e.in.resize(width) }
+
+func (e *editLine) view(m *Model) string { return e.in.view(m, e.err) }
+
+// editorCommand is $VISUAL, else $EDITOR, else vi, on path (D29). The
+// variable may carry arguments, e.g. "code --wait".
+func editorCommand(getenv func(string) string, path string) *exec.Cmd {
+	editor := getenv("VISUAL")
+	if strings.TrimSpace(editor) == "" {
+		editor = getenv("EDITOR")
+	}
+	if strings.TrimSpace(editor) == "" {
+		editor = "vi"
+	}
+	f := strings.Fields(editor)
+	return exec.Command(f[0], append(f[1:], path)...)
+}
+
+// noteEditedMsg reports that the editor exited.
+type noteEditedMsg struct {
+	task domain.Task
+	from string // the note the file started with
+	path string
+	err  error
+}
+
+// editNote opens t's note in the user's editor (D29): the TUI is suspended
+// until the editor exits.
+func (m *Model) editNote(t domain.Task) tea.Cmd {
+	f, err := os.CreateTemp("", fmt.Sprintf("tt-note-%d-*.md", t.ID))
+	if err != nil {
+		m.setErr(fmt.Errorf("can't create the note file: %w", err))
+		return nil
+	}
+	body := t.Note
+	if body != "" {
+		body += "\n"
+	}
+	_, werr := f.WriteString(body)
+	if err := errors.Join(werr, f.Close()); err != nil {
+		os.Remove(f.Name())
+		m.setErr(fmt.Errorf("can't write the note file: %w", err))
+		return nil
+	}
+	path, from := f.Name(), t.Note
+	return m.exec(editorCommand(os.Getenv, path), func(err error) tea.Msg {
+		return noteEditedMsg{task: t, from: from, path: path, err: err}
+	})
+}
+
+// noteEdited saves what the editor left: unchanged → no write; empty →
+// cleared; a failed editor → discarded. A note that changed elsewhere in the
+// meantime is not overwritten; the text stays in the file (D29a).
+func (m *Model) noteEdited(msg noteEditedMsg) tea.Cmd {
+	if msg.err != nil {
+		os.Remove(msg.path)
+		m.setErr(fmt.Errorf("editor failed (%v); note unchanged", msg.err))
+		return nil
+	}
+	data, err := os.ReadFile(msg.path)
+	if err != nil {
+		m.setErr(fmt.Errorf("can't read the note file %s: %w", msg.path, err))
+		return nil
+	}
+	note := strings.TrimRight(string(data), "\n")
+	if note == strings.TrimRight(msg.from, "\n") {
+		os.Remove(msg.path)
+		m.setStatus("note unchanged")
+		return nil
+	}
+	svc, ctx, t, path := m.svc, m.ctx, msg.task, msg.path
+	label, status := fmt.Sprintf("note of %q", t.Title), "note saved"
+	if note == "" {
+		status = "note cleared"
+	}
+	return func() tea.Msg {
+		undo, err := svc.SetNoteFrom(ctx, t.ID, msg.from, note)
+		if errors.Is(err, app.ErrConflict) {
+			err = errors.New("note changed since you opened it")
+		}
+		if err != nil {
+			return actionMsg{err: fmt.Errorf("%w — your text is in %s", err, path)}
+		}
+		os.Remove(path)
+		return actionMsg{label: label, status: status, undo: undo}
+	}
+}
+
+// openLink opens t's link in the browser (D21).
+func (m *Model) openLink(t domain.Task) tea.Cmd {
+	if t.Link == "" {
+		m.setStatus("no link")
+		return nil
+	}
+	open, ctx, link := m.opener(), m.ctx, t.Link
+	return func() tea.Msg {
+		if err := open(ctx, link); err != nil {
+			return actionMsg{err: fmt.Errorf("can't open %s: %w", link, err)}
+		}
+		return actionMsg{status: "opened " + link}
+	}
+}
+
+func (m *Model) exec(c *exec.Cmd, done tea.ExecCallback) tea.Cmd {
+	if m.opts.Exec != nil {
+		return m.opts.Exec(c, done)
+	}
+	return tea.ExecProcess(c, done)
+}
+
+func (m *Model) opener() func(context.Context, string) error {
+	if m.opts.Open != nil {
+		return m.opts.Open
+	}
+	return openWithSystem
+}
+
+// openWithSystem hands url to macOS `open`.
+func openWithSystem(ctx context.Context, url string) error {
+	out, err := exec.CommandContext(ctx, "open", url).CombinedOutput()
+	if err != nil && len(out) > 0 {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return err
+}

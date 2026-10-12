@@ -374,6 +374,12 @@ func (m *Model) taskKey(key string, t domain.Task) (cmd tea.Cmd, ok bool) {
 		return m.openDropPrompt(t), true
 	case "D":
 		return m.openDeleteConfirm(t), true
+	case "e":
+		return m.openEdit(t), true
+	case "E":
+		return m.editNote(t), true
+	case "o":
+		return m.openLink(t), true
 	}
 	return nil, false
 }

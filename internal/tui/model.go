@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -15,13 +16,18 @@ import (
 	"tt/internal/search"
 )
 
-// Options tunes the background loops.
+// Options tunes the background loops and the outside programs the TUI runs.
 type Options struct {
 	WatchEvery time.Duration // how often to check for writes from other processes (D13)
 	ClockEvery time.Duration // how often to check for a new planning day (D19)
 	// Schedule returns a command that delivers msg after d. Tests replace it
 	// so Update round-trips never wait on timers.
 	Schedule func(d time.Duration, msg tea.Msg) tea.Cmd
+	// Exec hands the terminal to c (the note editor, D29) and reports its
+	// exit through done. nil means tea.ExecProcess; tests edit in-process.
+	Exec func(c *exec.Cmd, done tea.ExecCallback) tea.Cmd
+	// Open opens a link (D21). nil means macOS `open`.
+	Open func(ctx context.Context, url string) error
 }
 
 func DefaultOptions() Options {
@@ -219,6 +225,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if msg.err != nil {
 			m.setErr(fmt.Errorf("can't remember the grouping: %w", msg.err))
 		}
+	case noteEditedMsg:
+		return m.noteEdited(msg)
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	case tea.PasteMsg:
