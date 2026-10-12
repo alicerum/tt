@@ -32,6 +32,7 @@ type todayState struct {
 	cursor int           // the row index of at
 	offset int           // first timeline line shown (the now line counts as one)
 	carry  *carry        // a block being placed or moved (D36); nil otherwise
+	lo, hi time.Duration // the window grown by j/k past its ends; 0 = not grown
 }
 
 // carry is a picked-up block: a candidate being placed, or a block being
@@ -49,7 +50,12 @@ func (td *todayState) refresh(m *Model) {
 	if m.svc.Today() == plan.Day {
 		now = plan.Day.Offset(m.svc.Now())
 	}
-	td.tl = buildTimeline(plan.Blocks, cfg.TimelineStart, cfg.TimelineEnd, now, cfg.DayStart)
+	from, to := cfg.TimelineStart, cfg.TimelineEnd
+	if td.lo != 0 {
+		from = min(from, td.lo)
+	}
+	to = max(to, td.hi)
+	td.tl = buildTimeline(plan.Blocks, from, to, now, cfg.DayStart)
 	rows := td.tl.rows
 	if !td.placed {
 		td.at, td.placed = rows[0].start, true
@@ -78,7 +84,11 @@ func (td *todayState) refreshCarry(m *Model) {
 	t, ok := m.state.Snapshot.Get(c.task.ID)
 	if !ok || t.Status != domain.StatusOpen && c.block.ID == 0 {
 		td.carry = nil
-		m.setStatus(fmt.Sprintf("stopped placing %q: it changed meanwhile", c.task.Title))
+		if c.block.ID != 0 {
+			m.setStatus(fmt.Sprintf("stopped moving %q: its task is gone", c.task.Title))
+		} else {
+			m.setStatus(fmt.Sprintf("stopped placing %q: it changed meanwhile", c.task.Title))
+		}
 		return
 	}
 	c.task = t
@@ -111,8 +121,8 @@ func (m *Model) ghost() domain.Block {
 	td := &m.today
 	c := td.carry
 	if c.block.ID != 0 {
-		b := c.block
-		b.Start = td.at
+		b := c.block // keeps its offset within the row, so 09:10 moves to 10:10
+		b.Start = td.at + (c.block.Start - c.block.Start.Truncate(rowLen))
 		return b
 	}
 	// gapFrom is 0 inside a block, and a gap of 0 means "no cap": the ghost
@@ -175,9 +185,9 @@ func (m *Model) carryKey(key string) tea.Cmd {
 	td := &m.today
 	switch key {
 	case "j", "down":
-		td.move(+1)
+		td.move(m, +1)
 	case "k", "up":
-		td.move(-1)
+		td.move(m, -1)
 	case "enter":
 		return m.drop()
 	case "esc":
@@ -260,9 +270,27 @@ func (m *Model) commitPlan() tea.Cmd {
 	}
 }
 
-func (td *todayState) move(delta int) {
-	td.cursor = max(0, min(td.cursor+delta, len(td.tl.rows)-1))
-	td.at = td.tl.rows[td.cursor].start
+// move steps the cursor. Past the last or first row the window grows by one
+// row, within the planning day.
+func (td *todayState) move(m *Model, delta int) {
+	next := td.cursor + delta
+	rows := td.tl.rows
+	switch {
+	case next >= len(rows):
+		if start := rows[len(rows)-1].start + rowLen; start+rowLen <= td.tl.dayEnd {
+			td.hi, td.at = start+rowLen, start
+			td.refresh(m)
+		}
+		return
+	case next < 0:
+		if start := rows[0].start - rowLen; start >= m.svc.Config().DayStart {
+			td.lo, td.at = start, start
+			td.refresh(m)
+		}
+		return
+	}
+	td.cursor = next
+	td.at = rows[next].start
 }
 
 // line is the timeline line row i is drawn on: the now line comes right
@@ -356,10 +384,10 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	}
 	switch key {
 	case "j", "down":
-		td.move(+1)
+		td.move(m, +1)
 		return nil
 	case "k", "up":
-		td.move(-1)
+		td.move(m, -1)
 		return nil
 	}
 	if !blockKeys[key] {
@@ -380,6 +408,8 @@ func (m *Model) todayKey(key string) tea.Cmd {
 		return nil
 	case "m":
 		td.carry = &carry{task: t, block: b}
+		td.cursor = td.tl.rowOf(b.Start) // the block's first row
+		td.at = td.tl.rows[td.cursor].start
 		return nil
 	case "+", "=":
 		nb := b
@@ -435,7 +465,7 @@ func (m *Model) timelineLines(width int) []string {
 	for i := range td.tl.rows {
 		all = append(all, m.timelineRow(i, width))
 		if i == td.tl.nowRow {
-			now := "━━ now " + m.svc.Now().Format("15:04") + " "
+			now := "━━ now " + clock(td.tl.now) + " "
 			all = append(all, styleAlert.Render(now+strings.Repeat("━", max(width-ansi.StringWidth(now), 0))))
 		}
 	}
@@ -544,7 +574,7 @@ var todayHelp = []string{
 	"j k      move",
 	"b        on a candidate: pick it up; j/k choose the row, ⏎ drops it, esc cancels",
 	"m        on a block: pick it up to move it (keeps its length)",
-	"+ / -    on a block: 30m longer / shorter",
+	"+ / -    on a block: 30m longer / shorter (= works for +)",
 	"f        on a block: fine-tune start and length (09:30 45m)",
 	"u        on a block: unblock (stays a candidate) · on a candidate: unpin",
 	"⏎        task detail (the block's task on the timeline)",

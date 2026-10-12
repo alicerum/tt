@@ -367,28 +367,34 @@ func (m *Model) taskKey(key string, t domain.Task) (cmd tea.Cmd, ok bool) {
 			m.setStatus("can't pin a closed task — x reopens it")
 			return nil, true
 		}
-		if pinned {
+		n := 0 // open children without a pin: new, or left by a parent pinned before D34
+		for _, k := range m.idx.children[t.ID] {
+			if _, ok := m.idx.cand[k.ID]; !ok && k.Status == domain.StatusOpen {
+				n++
+			}
+		}
+		if pinned && n == 0 {
 			m.setStatus("already pinned")
 			return nil, true
 		}
 		status := "pinned " + label
-		if kids := m.idx.children[t.ID]; len(kids) > 0 { // D34: no undo
-			n := 0
-			for _, k := range kids {
-				if _, ok := m.idx.cand[k.ID]; !ok && k.Status == domain.StatusOpen {
-					n++
-				}
-			}
+		if len(m.idx.children[t.ID]) > 0 { // D34: no undo
 			status += plusChildren(n) + " · no undo, u unpins"
 		}
 		return m.act("pin "+label, status, func(ctx context.Context) (app.Undo, error) { return svc.Pin(ctx, t.ID) }), true
 	case "u":
+		// Before the "not pinned" check: a child left unpinned under a pinned
+		// parent (pre-D34 data) is shown with the parent all the same.
+		if _, ok := m.idx.cand[t.ParentID]; t.ParentID != 0 && ok {
+			m.setStatus(fmt.Sprintf("pinned with its parent #%d · unpin the parent first", t.ParentID)) // D34
+			return nil, true
+		}
 		if !pinned {
 			m.setStatus("not pinned")
 			return nil, true
 		}
-		if _, ok := m.idx.cand[t.ParentID]; t.ParentID != 0 && ok {
-			m.setStatus(fmt.Sprintf("pinned with its parent #%d · unpin the parent first", t.ParentID)) // D34
+		if c := m.idx.cand[t.ID]; c.Blocked && len(m.idx.children[t.ID]) > 0 {
+			m.setStatus(fmt.Sprintf("%q is blocked today · unblock it on the timeline first", t.Title))
 			return nil, true
 		}
 		status := "unpinned " + label

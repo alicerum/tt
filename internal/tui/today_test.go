@@ -172,7 +172,7 @@ func TestScreensShareTheHeightBudget(t *testing.T) {
 	for range 30 {
 		h.keys("k")
 	}
-	h.mustSee(" 08:00 ")
+	h.mustSee(" 04:00 ") // k past the window's start grows it, down to the day start
 }
 
 func TestTimelineRowsAcrossADSTGap(t *testing.T) {

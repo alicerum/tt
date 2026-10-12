@@ -7,6 +7,7 @@ import (
 
 	"tt/internal/config"
 	"tt/internal/domain"
+	"tt/internal/store"
 )
 
 // pinned adds a task from line and pins it.
@@ -214,6 +215,107 @@ func TestCommitPlan(t *testing.T) {
 	h.block(a.ID, 10*time.Hour, 90*time.Minute)
 	h.keys("tab", "c")
 	h.mustSee("plan committed · 1 block · 1h30m · 1 candidate left")
+}
+
+func TestUnpinningABlockedParentIsRefusedInTheTUI(t *testing.T) {
+	h := newHarness(t, config.Default())
+	ctx := context.Background()
+	parent := h.pinned("Parent !1 ~xl")
+	if _, _, err := h.svc.AddChild(ctx, parent.ID, "Child ~s"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.Pin(ctx, parent.ID); err != nil { // pins the child too
+		t.Fatal(err)
+	}
+	h.block(parent.ID, 10*time.Hour, time.Hour)
+	h.keys("tab", "u") // on the parent, the first candidate
+	h.mustSee(`"Parent" is blocked today · unblock it on the timeline first`)
+	if len(h.blocks()) != 1 {
+		t.Error("the parent's block must stay")
+	}
+	if _, ok := h.m.idx.cand[parent.ID]; !ok {
+		t.Error("the parent stays pinned")
+	}
+}
+
+// unpinDirectly removes a pin behind the service's back: real data has
+// parents pinned before D34 whose children have no pin.
+func (h *harness) unpinDirectly(id int64) {
+	h.t.Helper()
+	ctx := context.Background()
+	st, err := store.Open(ctx, h.path)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.InTx(ctx, func(x *store.Tx) error { return x.DeletePin(ctx, id) }); err != nil {
+		h.t.Fatal(err)
+	}
+	h.keys("R")
+}
+
+func TestPinRepairsAParentPinnedBeforeD34(t *testing.T) {
+	h := newHarness(t, config.Default())
+	ctx := context.Background()
+	parent := h.pinned("Parent !1 ~xl")
+	kid, _, err := h.svc.AddChild(ctx, parent.ID, "Child ~s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.unpinDirectly(kid.ID)
+	if _, ok := h.m.idx.cand[kid.ID]; ok {
+		t.Fatal("setup: the child is still pinned")
+	}
+
+	h.keys("tab", "j", "u") // the legacy child, shown under its pinned parent
+	h.mustSee("pinned with its parent #1 · unpin the parent first")
+
+	h.keys("k", "L", "tab") // the Log's today pane, cursor on the parent
+	h.keys("p")
+	h.mustSee(`pinned "Parent" + 1 child · no undo, u unpins`)
+	if _, ok := h.m.idx.cand[kid.ID]; !ok {
+		t.Error("p on the parent pins its unpinned child")
+	}
+	h.keys("p")
+	h.mustSee("already pinned")
+}
+
+func TestTimelineGrowsPastItsWindow(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.pinned("Late !1 ~s")
+	h.clock.now = time.Date(2026, 10, 12, 21, 40, 0, 0, time.UTC)
+	h.keys("R", "tab", "b")
+	h.keys("j", "j", "j") // 21:30 -> 22:00, 22:30, 23:00
+	if h.m.today.at != 23*time.Hour {
+		t.Fatalf("the cursor is at %v; want 23:00", h.m.today.at)
+	}
+	h.mustSee(" 23:00 ░ Late 1h")
+	h.keys("enter")
+	h.mustSee(`blocked "Late" 23:00–00:00`)
+
+	// The planning day ends at day_start + 24h; no row beyond it.
+	for range 100 {
+		h.keys("j")
+	}
+	if rows := h.m.today.tl.rows; rows[len(rows)-1].start != 27*time.Hour+30*time.Minute || h.m.today.at != rows[len(rows)-1].start {
+		t.Errorf("last row %v, cursor %v; want 03:30", rows[len(rows)-1].start, h.m.today.at)
+	}
+	for range 100 {
+		h.keys("k")
+	}
+	if rows := h.m.today.tl.rows; rows[0].start != 4*time.Hour || h.m.today.at != 4*time.Hour {
+		t.Errorf("first row %v, cursor %v; want 04:00", rows[0].start, h.m.today.at)
+	}
+}
+
+func TestMovingAnOffGridBlockKeepsItsStart(t *testing.T) {
+	h := newHarness(t, config.Default())
+	a := h.pinned("Alpha !1 ~s")
+	h.block(a.ID, 10*time.Hour+10*time.Minute, 45*time.Minute)
+	h.keys("j", "j", "m", "enter") // m ⏎ leaves it where it was
+	h.mustSee(`moved "Alpha" to 10:10–10:55`)
+	h.keys("m", "j", "enter")
+	h.mustSee(`moved "Alpha" to 10:40–11:25`)
 }
 
 func TestParseSpan(t *testing.T) {
