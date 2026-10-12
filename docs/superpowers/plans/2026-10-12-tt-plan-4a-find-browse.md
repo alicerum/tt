@@ -8,6 +8,8 @@
 
 **Tech Stack:** Go 1.27; Bubble Tea v2 / bubbles v2 textinput / Lip Gloss v2 (already in go.mod); pure-Go SQLite; go-cmp.
 
+> **Superseded after execution:** D26c was reversed: the filter searches the backlog only, never the Inbox or pinned tasks (commit "filter searches the backlog only"). Where this plan says "searches all tasks", "Inbox and pinned included" or `pinMark`, the spec wins.
+
 **Spec:** `docs/superpowers/specs/2026-10-12-task-tracking-design.md` — D8a, D26, D26a–e, "Plan 4 split" (4a), carry-forward "from Plan 3 review" (Plan 4 items).
 
 ## Global Constraints
