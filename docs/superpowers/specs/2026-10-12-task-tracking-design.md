@@ -277,6 +277,8 @@ Startup: load config → open DB, migrate → `StartDay(now)` → initial snapsh
 
 Throwaway check before any real code: a Swift CLI launched from a tmux pane reads today's events from a Google account added to macOS Calendar (Internet Accounts). Confirms permission prompt, usage-description embedding, and sync latency.
 
+**Result (2026-10-12): passed.** A `swiftc` binary with `NSCalendarsFullAccessUsageDescription` embedded via `-Xlinker -sectcreate __TEXT __info_plist` triggered one prompt for the terminal app; `requestFullAccessToEvents` then granted access. The Google account appears as a synced (CalDAV) source, not a subscription. Today's events took 9ms to fetch. `availability` and the current user's `participantStatus` are available per event (D17a). Birthdays, holiday and iCloud calendars also appear, so calendar selection in config is needed.
+
 ---
 
 ## Deferred (add on friction)
