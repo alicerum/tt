@@ -38,7 +38,6 @@ type row struct {
 	cand     *domain.Candidate // set when the task is pinned
 	parent   bool              // has children
 	expanded bool              // a parent whose children are listed beneath it
-	pinMark  bool              // a pinned task listed in the backlog (filtered): show 📌
 	orphan   int64             // child listed top-level because this parent isn't shown in the backlog
 }
 
@@ -79,23 +78,25 @@ func (m *Model) applyFilter(text string) error {
 	return nil
 }
 
-// backlogRows is the one placement rule for the backlog pane. Unfiltered it
-// lists triaged, open, unpinned tasks; filtered, every task the filter matches,
-// Inbox and pinned ones included (D26c). A listed child sits under its listed
-// parent (unfiltered: while the parent is expanded; filtered: always). A child
-// whose parent isn't listed (closed, in the Inbox, missing, or not matching)
-// is listed top-level with ↳ #parent so it never vanishes; unfiltered, the
-// children of a pinned parent live under it in Today instead. Top-level tasks
-// are grouped (D26), oldest first within a group.
+// backlogRows is the one placement rule for the backlog pane: triaged,
+// unpinned tasks, never the Inbox's or Today's (D26c). Unfiltered it lists the
+// open ones; filtered, the ones the filter matches (open by default, closed
+// with is:). A listed child sits under its listed parent (unfiltered: while
+// the parent is expanded; filtered: always). A child whose parent isn't listed
+// (closed, in the Inbox, missing, or not matching) is listed top-level with
+// ↳ #parent so it never vanishes; the children of a pinned parent live under
+// it in Today instead. Top-level tasks are grouped (D26), oldest first within
+// a group.
 func (m *Model) backlogRows() []row {
 	snap := m.state.Snapshot
 	now := m.svc.Now()
 	filtered := m.pick.filtered()
 	listed := map[int64]bool{}
 	for _, t := range snap.Tasks() {
-		_, pinned := m.idx.cand[t.ID]
-		if filtered && search.Match(m.pick.filter, t, snap.ParentOf(t), now) ||
-			!filtered && t.Status == domain.StatusOpen && !m.idx.inInbox[t.ID] && !pinned {
+		if _, pinned := m.idx.cand[t.ID]; pinned || m.idx.inInbox[t.ID] {
+			continue // Today and the Inbox show these
+		}
+		if filtered && search.Match(m.pick.filter, t, snap.ParentOf(t), now) || !filtered && t.Status == domain.StatusOpen {
 			listed[t.ID] = true
 		}
 	}
@@ -114,7 +115,7 @@ func (m *Model) backlogRows() []row {
 			if listed[t.ParentID] {
 				continue // listed under its parent
 			}
-			if _, pinned := m.idx.cand[t.ParentID]; pinned && !filtered {
+			if _, pinned := m.idx.cand[t.ParentID]; pinned {
 				continue // listed under its parent in Today
 			}
 			orphanOf[t.ID] = t.ParentID
@@ -148,11 +149,7 @@ func (m *Model) backlogRows() []row {
 }
 
 func (m *Model) backlogRow(t domain.Task, child, expanded bool, orphan int64) row {
-	r := row{kind: rowTask, task: t, child: child, parent: len(m.idx.children[t.ID]) > 0, expanded: expanded, orphan: orphan}
-	if c, ok := m.idx.cand[t.ID]; ok {
-		r.cand, r.pinMark = &c, true
-	}
-	return r
+	return row{kind: rowTask, task: t, child: child, parent: len(m.idx.children[t.ID]) > 0, expanded: expanded, orphan: orphan}
 }
 
 // todayRows: today's candidates in plan order. A pinned parent lists its open
@@ -458,11 +455,8 @@ func (m *Model) rowLine(r row, width int, selected bool) string {
 	if t.RolloverCount > 0 {
 		fmt.Fprintf(&b, " ↻%d", t.RolloverCount)
 	}
-	if c := r.cand; c != nil && (r.pinMark || c.PinnedDays > 1) {
-		b.WriteString(" 📌")
-		if c.PinnedDays > 1 {
-			fmt.Fprintf(&b, "%d", c.PinnedDays)
-		}
+	if c := r.cand; c != nil && c.PinnedDays > 1 {
+		fmt.Fprintf(&b, " 📌%d", c.PinnedDays)
 	}
 	switch t.Status {
 	case domain.StatusDone:

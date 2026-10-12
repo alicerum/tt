@@ -70,17 +70,17 @@ func TestReloadWhileFilteringKeepsTheFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	if _, _, err := app.New(other, h.clock, config.Default()).Add(context.Background(), "Schema follow-up"); err != nil {
+	if _, _, err := app.New(other, h.clock, config.Default()).Add(context.Background(), "Schema follow-up !1 ~s"); err != nil {
 		t.Fatal(err)
 	}
 	h.send(watchTickMsg{})
-	h.mustSee("filter › schema", "2 matches · schema", "[— —] Schema follow-up")
+	h.mustSee("filter › schema", "2 matches · schema", "[P1 S] Schema follow-up")
 }
 
 func TestTokenInputCompletesAtTheCursor(t *testing.T) {
 	h := newHarness(t, config.Default())
-	h.add("one @ana #photos")
-	h.add("two @andrei")
+	h.add("one @ana #photos !1 ~s")
+	h.add("two @andrei !1 ~s")
 
 	h.keys("a")
 	h.typeText("x @an #ph")

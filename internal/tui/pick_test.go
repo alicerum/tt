@@ -63,6 +63,7 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	}
 	h.add("Schema idea")                   // Inbox
 	pinned := h.add("Schema review !2 ~s") // pinned below
+	h.add("Schema backlog !3 ~m")
 	done := h.add("Schema shipped !1 ~s")
 	if _, err := h.svc.Pin(ctx, pinned.ID); err != nil {
 		t.Fatal(err)
@@ -73,19 +74,19 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	h.keys("R")
 	h.mustNotSee("Schema idea") // unfiltered: Inbox and pinned tasks aren't backlog
 
-	// D26c: a filter searches everything open, Inbox and pinned included.
+	// D26c: a filter searches the backlog only, never the Inbox or Today's candidates.
 	if err := h.m.applyFilter("schema"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("BACKLOG · by priority · 2 matches · schema", "[— —] Schema idea", "[P2 S] Schema review 📌", "unset")
-	h.mustNotSee("Schema shipped")
-	h.keys("p") // the cursor is on Schema review (P2 sorts before unset)
-	h.mustSee("already pinned")
+	h.mustSee("BACKLOG · by priority · 1 match · schema", "[P3 M] Schema backlog")
+	h.mustNotSee("Schema idea", "Schema shipped", "unset")
 
+	// is: widens it to closed backlog tasks (D26b).
 	if err := h.m.applyFilter("schema is:all"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("3 matches", "Schema shipped ✓")
+	h.mustSee("2 matches", "Schema shipped ✓")
+	h.mustNotSee("Schema idea")
 
 	// A matching child whose parent doesn't match is listed top-level.
 	if err := h.m.applyFilter("rollback"); err != nil {
@@ -116,6 +117,16 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	h.keys("esc")
 	h.mustSee("filter cleared", "▸ [P1 XL] Auth migration 0/2")
 	h.mustNotSee("matches", "Schema idea")
+
+	// Children of a pinned parent live under it in Today, filtered or not.
+	if _, err := h.svc.Pin(ctx, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R")
+	if err := h.m.applyFilter("rollback"); err != nil {
+		t.Fatal(err)
+	}
+	h.mustSee("0 matches · rollback", "    [P1 S] Rollback plan")
 }
 
 func TestScrollWindowMovesOnlyWhenTheCursorLeavesIt(t *testing.T) {
