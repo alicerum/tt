@@ -51,21 +51,33 @@ func (s *Service) Add(ctx context.Context, line string) (domain.Task, Undo, erro
 
 // EditLine renders a task as a token line for prefilling the edit input.
 // The note is left out; Edit keeps it unless the new line has " -- ".
+// A child's priority is inherited (D6), so it is left out too (D32).
 func EditLine(t domain.Task) string {
-	return dsl.FormatAdd(dsl.Draft{
-		Title: t.Title, Requester: t.Requester, Tags: t.Tags, Priority: t.Priority, Size: t.Size, Link: t.Link,
-	})
+	d := dsl.Draft{Title: t.Title, Requester: t.Requester, Tags: t.Tags, Priority: t.Priority, Size: t.Size, Link: t.Link}
+	if t.ParentID != 0 {
+		d.Priority = 0
+	}
+	return dsl.FormatAdd(d)
+}
+
+// ParseEdit parses an edit line for t: !n is refused on a child (D32).
+// The TUI calls it to validate before submitting; Edit applies the same rule.
+func (s *Service) ParseEdit(t domain.Task, line string) (dsl.Draft, error) {
+	if t.ParentID != 0 {
+		return s.ParseChild(t.ParentID, line)
+	}
+	return dsl.ParseAdd(line, len(s.cfg.Priorities))
 }
 
 // Edit replaces title, requester, tags, priority, size and link from line;
 // a token missing from line clears that field. The note changes only if
 // line contains " -- ".
 func (s *Service) Edit(ctx context.Context, id int64, line string) (Undo, error) {
-	d, err := dsl.ParseAdd(line, len(s.cfg.Priorities))
-	if err != nil {
-		return nil, err
-	}
 	return s.modify(ctx, id, func(_ *store.Tx, t *domain.Task) error {
+		d, err := s.ParseEdit(*t, line)
+		if err != nil {
+			return err
+		}
 		t.Title, t.Requester, t.Tags, t.Priority, t.Size, t.Link = d.Title, d.Requester, d.Tags, d.Priority, d.Size, d.Link
 		if d.HasNote {
 			t.Note = d.Note
@@ -77,6 +89,18 @@ func (s *Service) Edit(ctx context.Context, id int64, line string) (Undo, error)
 // SetNote replaces the note (used after editing it in $EDITOR, D29).
 func (s *Service) SetNote(ctx context.Context, id int64, note string) (Undo, error) {
 	return s.modify(ctx, id, func(_ *store.Tx, t *domain.Task) error {
+		t.Note = strings.TrimRight(note, "\n")
+		return nil
+	})
+}
+
+// SetNoteFrom replaces the note, but only if it is still from: the note as
+// it was when the user started editing it. Otherwise ErrConflict (D29a).
+func (s *Service) SetNoteFrom(ctx context.Context, id int64, from, note string) (Undo, error) {
+	return s.modify(ctx, id, func(_ *store.Tx, t *domain.Task) error {
+		if t.Note != from {
+			return fmt.Errorf("note changed since you opened it: %w", ErrConflict)
+		}
 		t.Note = strings.TrimRight(note, "\n")
 		return nil
 	})

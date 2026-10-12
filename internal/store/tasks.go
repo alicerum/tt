@@ -91,6 +91,35 @@ func (x *Tx) HasChildren(ctx context.Context, id int64) (bool, error) {
 	return n > 0, err
 }
 
+// Children returns parentID's children in sibling order (position, then id).
+func (x *Tx) Children(ctx context.Context, parentID int64) ([]domain.Task, error) {
+	rows, err := x.tx.QueryContext(ctx, "SELECT id FROM tasks WHERE parent_id = ? ORDER BY position, id", parentID)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
+	kids := make([]domain.Task, 0, len(ids))
+	for _, id := range ids {
+		t, err := x.GetTask(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		kids = append(kids, t)
+	}
+	return kids, nil
+}
+
 // NextChildPosition returns the position after parentID's last child.
 func (x *Tx) NextChildPosition(ctx context.Context, parentID int64) (int, error) {
 	var n int
