@@ -46,7 +46,7 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D4 | PR reviews live in their own Reviews lane, outside triage | Similar size, urgency comes from who's waiting; triaging each one is busywork |
 | D5 | Slack capture v1 = manual quick-add (paste link + title) | A Slack bot is possible but deferred until manual capture proves too slow |
 | D6 | One level of nesting: parent → children | Big efforts need a home; deeper trees bring back grooming debt |
-| D7 | Size is an ordinal, non-linear scale with configurable durations (default S 1h · M ½d · L 1d · XL 1w) | Granular sizing doesn't work for staff work; rough buckets grow like story points |
+| D7 | Size is an ordinal, non-linear scale with configurable durations (default S 1h · M ½d = 4h · L 1d = 8h · XL 1w = 40h) | Granular sizing doesn't work for staff work; rough buckets grow like story points |
 | D7a | No hard size cap; anything can go in any time slot | Working 2h on an XL is legitimate |
 | D7b | PR reviews are unsized | Every review differs |
 | D8 | **Free-form tags**, any number per item, optional (don't keep an item in Inbox). Tag input autocompletes from existing tags | Purpose is finding and filtering (project, type of work), not classification. Autocomplete limits sprawl |
@@ -57,7 +57,7 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D10b | Rollover is computed per *planning day* (days the app was used), not per calendar day | Weekends or days without the app don't inflate counts |
 | D10c | No "working on this now" tracking; no per-block outcomes | Friction. Done-or-not at day end is enough signal |
 | D10d | **Pinned-days counter**: planning days an item has sat pinned as a candidate. Resets on unpin, and when time-blocked (rollover takes over) | Surfaces "wanted to do it for ages, never got to it" separately from "committed time and didn't finish" |
-| D11 | Untriaged items live in an **Inbox**: an item is in the Inbox while its effective priority or size is missing | Triage is a separate, fast step from capture; no extra "triaged" flag |
+| D11 | Untriaged items live in an **Inbox**: an item is in the Inbox while it is open, not source-linked, and its effective priority or size is missing | Triage is a separate, fast step from capture; no extra "triaged" flag |
 | D11a | Triage is available as planning step 0 (skippable) and as a standalone view any time (count badge elsewhere). Items can be skipped and stay in Inbox indefinitely | Morning triage is most valuable, mid-day is useful; rough ideas may legitimately sit |
 | D12 | Calendar is read-only and only feeds busy time into the timeline | Awareness, not calendar management |
 | D12a | Planning = time-blocking. Today has two tiers: **blocks** (task on a time range, the commitment) and **candidates** (pinned, unslotted, "if time/energy allows") | If a task can't get time, it won't happen; candidates fill leftover gaps |
@@ -80,7 +80,7 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D22 | Re-planning is free: Pick/Block can be re-entered any time; rollover is evaluated at day end on whatever is blocked then. "Commit plan" is a finish-line moment (summary) that exits planning mode | Mid-day reprioritization is normal; rollover is an indicator, not an audit |
 | D23 | Tasks end as **done** or **dropped**. Dropping asks for an optional one-line reason (Enter skips). Both stay searchable; only done counts as a win. Hard delete exists for mistakes | Reason captures "handed to @Marko" without a new state |
 | D24 | Placing a task in a free gap creates a block of `min(size duration, gap length)`; unsized items default to 30m. `+`/`-` resize (default 30m steps); a fine-tune dialog sets exact start and minutes | Gives size a concrete job; fast default, precise when needed |
-| D25 | Quick-add is one line with inline tokens: `@requester`, `#tag` (repeatable), `!<n>` priority, `~<size>`, a URL becomes the link; everything after ` -- ` becomes the note; the rest is the title. Priority + size present → skips Inbox. Autocomplete on `@`/`#` | Capture must be the fastest action in the system; context is easiest to record at the moment of the ask |
+| D25 | Quick-add is one line with inline tokens: `@requester`, `#tag` (repeatable), `!<n>` priority, `~<size>`, a URL becomes the link; everything after ` -- ` becomes the note; the rest is the title. Look-alikes stay in the title: `#482` (issue ref), `~/tmp`, `this!`. Priority + size present → skips Inbox. Autocomplete on `@`/`#` | Capture must be the fastest action in the system; context is easiest to record at the moment of the ask |
 | D25a | Two entry points sharing one parser: `a` in the TUI (any view) and `tt add "<line>"` from any shell. v1 CLI has only `add` | One syntax everywhere; the CLI is a scripting surface |
 | D26 | Backlog grouping switchable: priority (default), size, created date, requester (no-requester group last; groups alphabetical). Within a group: oldest first. Last choice remembered | Different questions need different slices |
 | D26a | Filter bar reuses the token DSL: `@ana #impl !1 ~l <7d schema`; remaining words fuzzy-match title/tags/requester | One DSL for capture and retrieval |
@@ -226,7 +226,7 @@ type Store interface {
 - **Day**: `StartDay(now) (DayResult, error)`: idempotent; returns recap.
 - **Integrations**: `SyncCalendar(ctx)`, `SyncSources(ctx)` (fetch + reconcile).
 - **Read**: `Snapshot()`, `Today()`, `IntegrationStatus()`.
-- Every command returns an **inverse command**, used by the TUI's undo stack.
+- Every command returns an **inverse command**, used by the TUI's undo stack. Exception: hard delete is not undoable; the TUI confirms it instead.
 
 ## Runtime
 
