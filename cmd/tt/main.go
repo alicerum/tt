@@ -9,13 +9,17 @@ import (
 	"path/filepath"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"tt/internal/app"
 	"tt/internal/config"
 	"tt/internal/domain"
 	"tt/internal/store"
+	"tt/internal/tui"
 )
 
 const usage = `usage:
+  tt               open the planner (TUI)
   tt add <line>    capture a task, e.g. tt add 'Reply to Ana @ana #photos !1 ~s -- before Friday'
                    quote the line with single quotes: ! and ~ are special in zsh/bash
 
@@ -25,12 +29,35 @@ environment:
 `
 
 func main() {
-	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, os.Getenv))
+	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, os.Getenv, runTUI))
+}
+
+// runTUI runs the full-screen planner until the user quits.
+func runTUI(ctx context.Context, svc *app.Service) error {
+	_, err := tea.NewProgram(tui.New(ctx, svc, tui.DefaultOptions()), tea.WithContext(ctx)).Run()
+	return err
 }
 
 // run is main without process globals, so tests can call it directly.
-func run(ctx context.Context, args []string, stdout, stderr io.Writer, getenv func(string) string) int {
-	if len(args) == 0 || args[0] != "add" {
+func run(ctx context.Context, args []string, stdout, stderr io.Writer, getenv func(string) string,
+	ui func(context.Context, *app.Service) error) int {
+	switch {
+	case len(args) == 0:
+		svc, closeFn, err := open(ctx, getenv)
+		if err != nil {
+			fmt.Fprintf(stderr, "tt: %v\n", err)
+			return 1
+		}
+		defer closeFn()
+		if err := ui(ctx, svc); err != nil {
+			fmt.Fprintf(stderr, "tt: %v\n", err)
+			return 1
+		}
+		return 0
+	case args[0] == "-h" || args[0] == "--help" || args[0] == "help":
+		fmt.Fprint(stdout, usage)
+		return 0
+	case args[0] != "add":
 		fmt.Fprint(stderr, usage)
 		return 2
 	}

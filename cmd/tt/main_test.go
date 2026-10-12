@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"tt/internal/app"
 	"tt/internal/store"
 )
 
@@ -19,7 +20,7 @@ type result struct {
 func runTT(t *testing.T, env map[string]string, args ...string) result {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	code := run(context.Background(), args, &out, &errOut, func(k string) string { return env[k] })
+	code := run(context.Background(), args, &out, &errOut, func(k string) string { return env[k] }, noUI)
 	return result{code, out.String(), errOut.String()}
 }
 
@@ -55,7 +56,7 @@ func TestAddReportsWhereTaskLanded(t *testing.T) {
 
 func TestUsageErrors(t *testing.T) {
 	env := testEnv(t)
-	for _, args := range [][]string{nil, {"bogus"}, {"add"}, {"add", "  "}} {
+	for _, args := range [][]string{{"bogus"}, {"add"}, {"add", "  "}} {
 		if r := runTT(t, env, args...); r.code != 2 || !strings.Contains(r.stderr, "usage:") {
 			t.Errorf("tt %v: %+v; want exit 2 with usage", args, r)
 		}
@@ -98,5 +99,28 @@ func TestDefaultPaths(t *testing.T) {
 	}
 	if _, _, err := paths(func(string) string { return "" }); err == nil {
 		t.Error("paths without HOME should fail")
+	}
+}
+
+// noUI fails the test if the TUI would start.
+func noUI(context.Context, *app.Service) error { panic("TUI started") }
+
+func TestNoArgsStartsTheTUI(t *testing.T) {
+	env := testEnv(t)
+	var got *app.Service
+	var out, errOut bytes.Buffer
+	code := run(context.Background(), nil, &out, &errOut, func(k string) string { return env[k] },
+		func(_ context.Context, svc *app.Service) error { got = svc; return nil })
+	if code != 0 || got == nil {
+		t.Errorf("tt with no args: exit %d, ui started: %v, stderr %q", code, got != nil, errOut.String())
+	}
+}
+
+func TestHelp(t *testing.T) {
+	env := testEnv(t)
+	for _, arg := range []string{"-h", "--help", "help"} {
+		if r := runTT(t, env, arg); r.code != 0 || !strings.Contains(r.stdout, "usage:") {
+			t.Errorf("tt %s: %+v; want exit 0 with usage on stdout", arg, r)
+		}
 	}
 }
