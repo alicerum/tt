@@ -23,6 +23,7 @@ func (SystemClock) Now() time.Time { return time.Now() }
 type Store interface {
 	InTx(ctx context.Context, fn func(*store.Tx) error) error
 	LoadSnapshot(ctx context.Context) (domain.Snapshot, error)
+	LoadPlan(ctx context.Context, day domain.Day) (domain.Snapshot, store.PlanState, error)
 	DataVersion(ctx context.Context) (int64, error)
 }
 
