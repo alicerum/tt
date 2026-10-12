@@ -4,6 +4,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -37,6 +38,9 @@ func main() {
 	if fi, err := os.Stdin.Stat(); err == nil {
 		in.terminal = fi.Mode()&os.ModeCharDevice != 0
 	}
+	if in.terminal {
+		in.pending = ttyPending(os.Stdin)
+	}
 	os.Exit(run(context.Background(), os.Args[1:], in, os.Stdout, os.Stderr, os.Getenv, runTUI))
 }
 
@@ -44,6 +48,10 @@ func main() {
 type input struct {
 	r        io.Reader
 	terminal bool // prompt for one line; otherwise read a pipe to the end
+	// pending returns the complete lines already waiting on the terminal
+	// after line 1 (a paste) and discards anything left, so no pasted line
+	// reaches the shell once tt exits. Nil: nothing is waiting.
+	pending func() (string, error)
 }
 
 // maxPiped bounds what `tt add` reads from a pipe.
@@ -54,15 +62,33 @@ const maxPiped = 1 << 20
 func (in input) readLine(stderr io.Writer) (string, error) {
 	if in.terminal {
 		fmt.Fprint(stderr, "add › ")
-		line, err := bufio.NewReader(in.r).ReadString('\n')
+		br := bufio.NewReader(in.r)
+		line, err := br.ReadString('\n')
 		if err != nil && err != io.EOF {
 			return "", err
 		}
-		return strings.TrimSpace(line), nil
+		// A paste behaves like a pipe: line 1 is the line, the rest the note.
+		buffered, _ := br.Peek(br.Buffered())
+		rest := string(buffered)
+		if in.pending != nil {
+			more, err := in.pending()
+			if err != nil {
+				return "", err
+			}
+			rest += more
+		}
+		first := strings.TrimSpace(line)
+		if first == "" {
+			return "", nil
+		}
+		return dsl.WithNoteLines(first, strings.Split(strings.ReplaceAll(rest, "\r\n", "\n"), "\n")), nil
 	}
-	data, err := io.ReadAll(io.LimitReader(in.r, maxPiped))
+	data, err := io.ReadAll(io.LimitReader(in.r, maxPiped+1))
 	if err != nil {
 		return "", err
+	}
+	if len(data) > maxPiped {
+		return "", errors.New("input is over 1 MiB")
 	}
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	first := strings.TrimSpace(lines[0])

@@ -170,13 +170,45 @@ func TestAddFromAPrompt(t *testing.T) {
 	if r.code != 0 || r.stdout != "added #1 to inbox\n" || r.stderr != "add › " {
 		t.Fatalf("prompted add: %+v", r)
 	}
-	if got := storedTask(t, env, 1); got.Title != "Reply to Ana!" || got.Requester != "ana" || got.Note != "" ||
+	// Lines already read past line 1 are the note, as for a pipe.
+	if got := storedTask(t, env, 1); got.Title != "Reply to Ana!" || got.Requester != "ana" || got.Note != "ignored second line" ||
 		len(got.Tags) != 1 || got.Tags[0] != "photos" {
 		t.Errorf("stored: %+v", got)
+	}
+	// What the terminal still holds after line 1 (a paste) is the note too.
+	pasted := input{r: strings.NewReader("Look at the schema ~m\n"), terminal: true,
+		pending: func() (string, error) { return "Ana: can you check\nthe migration?\n", nil }}
+	if r := runWithInput(t, env, pasted, "add"); r.code != 0 {
+		t.Fatalf("pasted add: %+v", r)
+	}
+	if got := storedTask(t, env, 2); got.Title != "Look at the schema" || got.Note != "Ana: can you check\nthe migration?" {
+		t.Errorf("pasted: %+v", got)
+	}
+	// Nothing pending: unchanged.
+	quiet := input{r: strings.NewReader("Just a line ~s\n"), terminal: true, pending: func() (string, error) { return "", nil }}
+	if r := runWithInput(t, env, quiet, "add"); r.code != 0 {
+		t.Fatalf("quiet add: %+v", r)
+	}
+	if got := storedTask(t, env, 3); got.Title != "Just a line" || got.Note != "" {
+		t.Errorf("quiet: %+v", got)
 	}
 	// Nothing typed (or ctrl+d): usage, nothing stored.
 	if r := runWithInput(t, env, input{r: strings.NewReader("   \n"), terminal: true}, "add"); r.code != 2 || !strings.Contains(r.stderr, "usage:") {
 		t.Errorf("empty prompt: %+v", r)
+	}
+}
+
+func TestAddFromAPipeOverTheLimit(t *testing.T) {
+	env := testEnv(t)
+	big := "Title\n" + strings.Repeat("x", maxPiped) // maxPiped+6 bytes
+	r := runWithInput(t, env, input{r: strings.NewReader(big)}, "add")
+	if r.code != 1 || r.stderr != "tt: input is over 1 MiB\n" || r.stdout != "" {
+		t.Errorf("over the limit: %+v", r)
+	}
+	// Exactly maxPiped bytes is accepted.
+	ok := "Title\n" + strings.Repeat("x", maxPiped-6)
+	if r := runWithInput(t, env, input{r: strings.NewReader(ok)}, "add"); r.code != 0 {
+		t.Errorf("at the limit: %+v", r)
 	}
 }
 
