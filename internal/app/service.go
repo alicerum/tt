@@ -25,6 +25,7 @@ type Store interface {
 	LoadSnapshot(ctx context.Context) (domain.Snapshot, error)
 	LoadPlan(ctx context.Context, day domain.Day) (domain.Snapshot, store.PlanState, error)
 	DataVersion(ctx context.Context) (int64, error)
+	UIState(ctx context.Context, key string) (string, bool, error)
 }
 
 // Undo reverts the command that returned it. The TUI keeps these on a
