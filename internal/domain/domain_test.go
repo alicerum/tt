@@ -1,6 +1,8 @@
 package domain
 
 import (
+	stdcmp "cmp"
+	"slices"
 	"testing"
 	"time"
 
@@ -87,5 +89,16 @@ func TestSnapshotInboxOrderAndParent(t *testing.T) {
 	child, _ := snap.Get(4)
 	if p := snap.ParentOf(child); p == nil || p.ID != 1 {
 		t.Errorf("ParentOf(4) = %v; want task 1", p)
+	}
+}
+
+func TestSnapshotTasksIsACopy(t *testing.T) {
+	snap := NewSnapshot([]Task{{ID: 1}, {ID: 2}, {ID: 3}})
+	got := snap.Tasks()
+	slices.SortFunc(got, func(a, b Task) int { return stdcmp.Compare(b.ID, a.ID) })
+	for _, id := range []int64{1, 2, 3} {
+		if task, ok := snap.Get(id); !ok || task.ID != id {
+			t.Errorf("Get(%d) = %+v, %v after sorting Tasks()", id, task, ok)
+		}
 	}
 }

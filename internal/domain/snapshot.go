@@ -19,7 +19,8 @@ func NewSnapshot(tasks []Task) Snapshot {
 	return s
 }
 
-func (s Snapshot) Tasks() []Task { return s.tasks }
+// Tasks returns a copy; callers may sort it freely.
+func (s Snapshot) Tasks() []Task { return slices.Clone(s.tasks) }
 
 func (s Snapshot) Get(id int64) (Task, bool) {
 	i, ok := s.byID[id]
