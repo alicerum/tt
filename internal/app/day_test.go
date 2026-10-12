@@ -244,3 +244,109 @@ func TestPlanOrderAndAlert(t *testing.T) {
 		t.Errorf("alerts (-want +got):\n%s", diff)
 	}
 }
+
+func TestUndoDoneAfterNewDayConflicts(t *testing.T) {
+	s, clock := startedService(t)
+	ctx := context.Background()
+	task := mustAdd(t, s, "Finish me !1 ~s")
+	mustBlock(t, s, task.ID, 10*h, h)
+	undo := mustUndo(t)(s.Done(ctx, task.ID))
+	clock.Advance(24 * h)
+	mustStartDay(t, s)
+	if err := undo(ctx); !errors.Is(err, ErrConflict) {
+		t.Errorf("undo Done after a new day: %v; want ErrConflict", err)
+	}
+	if got := mustGet(t, s, task.ID); got.Status != "done" {
+		t.Errorf("task must stay done: %+v", got)
+	}
+}
+
+func TestStartDayKeepsBlockPlacedBeforeItRan(t *testing.T) {
+	s, clock := startedService(t)
+	ctx := context.Background()
+	task := mustAdd(t, s, "Early bird !1 ~s")
+	mustBlock(t, s, task.ID, 10*h, h)
+	clock.now = time.Date(2026, 10, 13, 4, 10, 0, 0, time.UTC) // new planning day, StartDay not run
+	mustBlock(t, s, task.ID, 5*h, h)
+	if _, err := s.Done(ctx, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	mustStartDay(t, s)
+	plan := mustPlan(t, s)
+	if len(plan.Blocks) != 1 {
+		t.Errorf("blocks = %+v; want the 05:00 block kept", plan.Blocks)
+	}
+	if _, ok := candidate(t, plan, task.ID); !ok {
+		t.Error("task with a block today must stay a candidate")
+	}
+}
+
+func amsterdamService(t *testing.T, now func(*time.Location) time.Time) (*Service, *fakeClock) {
+	t.Helper()
+	loc, err := time.LoadLocation("Europe/Amsterdam")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, clock := newService(t)
+	clock.now = now(loc)
+	return s, clock
+}
+
+func TestDayOfUsesClockLocation(t *testing.T) {
+	s, _ := amsterdamService(t, func(l *time.Location) time.Time { return time.Date(2026, 10, 12, 9, 0, 0, 0, l) })
+	if got := s.DayOf(time.Date(2026, 10, 12, 3, 0, 0, 0, time.UTC)); got != "2026-10-12" {
+		t.Errorf("DayOf(05:00 local) = %q; want 2026-10-12", got)
+	}
+	if got := s.DayOf(time.Date(2026, 10, 12, 1, 30, 0, 0, time.UTC)); got != "2026-10-11" {
+		t.Errorf("DayOf(03:30 local) = %q; want 2026-10-11", got)
+	}
+}
+
+func TestStartDayAcrossDSTChange(t *testing.T) {
+	s, clock := amsterdamService(t, func(l *time.Location) time.Time { return time.Date(2026, 10, 24, 9, 0, 0, 0, l) })
+	ctx := context.Background()
+	mustStartDay(t, s)
+	blocked := mustAdd(t, s, "Blocked !1 ~s")
+	finished := mustAdd(t, s, "Finished !1 ~s")
+	mustBlock(t, s, blocked.ID, 10*h, h)
+	clock.now = time.Date(2026, 10, 24, 15, 0, 0, 0, clock.now.Location())
+	if _, err := s.Done(ctx, finished.ID); err != nil {
+		t.Fatal(err)
+	}
+	clock.now = time.Date(2026, 10, 25, 9, 0, 0, 0, clock.now.Location()) // fall-back day
+	res := mustStartDay(t, s)
+	want := &Recap{Since: "2026-10-24", Done: 1, RolledOver: 1, Carried: 1}
+	if !res.New || !cmp.Equal(res.Recap, want) {
+		t.Errorf("StartDay = %+v, recap %+v; want recap %+v", res, res.Recap, want)
+	}
+}
+
+func TestTwoBlocksRollOverOnce(t *testing.T) {
+	s, clock := startedService(t)
+	task := mustAdd(t, s, "Twice blocked !1 ~s")
+	mustBlock(t, s, task.ID, 10*h, h)
+	mustBlock(t, s, task.ID, 14*h, h)
+	clock.Advance(24 * h)
+	mustStartDay(t, s)
+	if got := mustGet(t, s, task.ID).RolloverCount; got != 1 {
+		t.Errorf("rollover with two blocks = %d; want 1", got)
+	}
+}
+
+func TestPlanAlertOnlyForOpenTasks(t *testing.T) {
+	s, clock := startedService(t)
+	s.cfg.RolloverAlert = 1
+	task := mustAdd(t, s, "Rolled then done !1 ~s")
+	mustBlock(t, s, task.ID, 10*h, h)
+	clock.Advance(24 * h)
+	mustStartDay(t, s)
+	if c, ok := candidate(t, mustPlan(t, s), task.ID); !ok || !c.Alert {
+		t.Fatalf("open rolled-over task should alert: %+v, %v", c, ok)
+	}
+	if _, err := s.Done(context.Background(), task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if c, ok := candidate(t, mustPlan(t, s), task.ID); !ok || c.Alert {
+		t.Errorf("done task must not alert: %+v, %v", c, ok)
+	}
+}

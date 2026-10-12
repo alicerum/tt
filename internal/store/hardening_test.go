@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -51,9 +52,29 @@ func TestNewerSchemaIsRefused(t *testing.T) {
 	if _, err := s.db.Exec("INSERT INTO schema_migrations (version, applied_at) VALUES (999, 'x')"); err != nil {
 		t.Fatal(err)
 	}
+	// Drop the newest real migration's row: a refused Open must not re-apply it.
+	if _, err := s.db.Exec("DELETE FROM schema_migrations WHERE version = 2"); err != nil {
+		t.Fatal(err)
+	}
 	s.Close()
+	count := func() int {
+		db, err := sql.Open("sqlite", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		var n int
+		if err := db.QueryRow("SELECT count(*) FROM schema_migrations").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := count()
 	if _, err := Open(context.Background(), path); !errors.Is(err, ErrNewerSchema) {
 		t.Errorf("Open error = %v; want ErrNewerSchema", err)
+	}
+	if after := count(); after != before {
+		t.Errorf("refused Open changed schema_migrations rows: %d -> %d", before, after)
 	}
 }
 

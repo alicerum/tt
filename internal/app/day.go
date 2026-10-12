@@ -71,7 +71,10 @@ func (s *Service) StartDay(ctx context.Context) (DayResult, error) {
 			}
 			res.Recap = &recap
 		}
-		if err := x.DeletePinsOfClosedTasks(ctx); err != nil {
+		if err := x.TouchClosedPinned(ctx, now); err != nil {
+			return err
+		}
+		if err := x.DeletePinsOfClosedTasks(ctx, today); err != nil {
 			return err
 		}
 		if res.Recap != nil {
@@ -97,11 +100,11 @@ type CommitSummary struct {
 // CommitPlan marks today's plan as committed and summarizes it. It starts the
 // day first if needed. Committing again just refreshes the time.
 func (s *Service) CommitPlan(ctx context.Context) (CommitSummary, error) {
-	if _, err := s.StartDay(ctx); err != nil {
+	res, err := s.StartDay(ctx)
+	if err != nil {
 		return CommitSummary{}, err
 	}
-	today := s.Today()
-	err := s.store.InTx(ctx, func(x *store.Tx) error { return x.CommitDay(ctx, today, s.clock.Now()) })
+	err = s.store.InTx(ctx, func(x *store.Tx) error { return x.CommitDay(ctx, res.Day, s.clock.Now()) })
 	if err != nil {
 		return CommitSummary{}, err
 	}
@@ -143,7 +146,7 @@ func (s *Service) Plan(ctx context.Context) (domain.Plan, error) {
 			Task:       t,
 			PinnedDays: p.PinnedDays,
 			Blocked:    blocked[t.ID],
-			Alert:      t.RolloverCount >= s.cfg.RolloverAlert,
+			Alert:      t.Status == domain.StatusOpen && t.RolloverCount >= s.cfg.RolloverAlert,
 		})
 	}
 	slices.SortFunc(plan.Candidates, func(a, b domain.Candidate) int {

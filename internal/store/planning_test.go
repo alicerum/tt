@@ -23,8 +23,8 @@ func TestPins(t *testing.T) {
 	s, _ := openTemp(t)
 	id := insert(t, s, sampleTask())
 	inTx(t, s, func(ctx context.Context, x *Tx) error {
-		if _, ok, _ := x.GetPin(ctx, id); ok {
-			t.Error("new task is pinned")
+		if _, ok, err := x.GetPin(ctx, id); err != nil || ok {
+			t.Errorf("new task: GetPin ok = %v, err = %v; want not pinned", ok, err)
 		}
 		if err := x.PutPin(ctx, domain.Pin{TaskID: id, PinnedOn: "2026-10-12"}); err != nil {
 			return err
@@ -39,8 +39,8 @@ func TestPins(t *testing.T) {
 		if err := x.DeletePin(ctx, id); err != nil {
 			return err
 		}
-		if _, ok, _ := x.GetPin(ctx, id); ok {
-			t.Error("pin survived DeletePin")
+		if _, ok, err := x.GetPin(ctx, id); err != nil || ok {
+			t.Errorf("after DeletePin: GetPin ok = %v, err = %v; want no pin", ok, err)
 		}
 		return x.DeletePin(ctx, id) // deleting a missing pin is fine
 	})
@@ -75,8 +75,8 @@ func TestBlocks(t *testing.T) {
 		if err := x.UpdateBlock(ctx, b); err != nil {
 			return err
 		}
-		if got, _ := x.GetBlock(ctx, b.ID); got != b {
-			t.Errorf("after update: %+v; want %+v", got, b)
+		if got, err := x.GetBlock(ctx, b.ID); err != nil || got != b {
+			t.Errorf("after update: %+v, %v; want %+v", got, err, b)
 		}
 
 		if err := x.DeleteBlock(ctx, b.ID); err != nil {
@@ -110,11 +110,11 @@ func TestDeletingTaskRemovesItsPlanning(t *testing.T) {
 		return x.DeleteTask(ctx, id)
 	})
 	inTx(t, s, func(ctx context.Context, x *Tx) error {
-		if _, ok, _ := x.GetPin(ctx, id); ok {
-			t.Error("pin survived task delete")
+		if _, ok, err := x.GetPin(ctx, id); err != nil || ok {
+			t.Errorf("after task delete: GetPin ok = %v, err = %v; want no pin", ok, err)
 		}
-		if blocks, _ := x.BlocksOn(ctx, "2026-10-12"); len(blocks) != 0 {
-			t.Errorf("blocks survived task delete: %v", blocks)
+		if blocks, err := x.BlocksOn(ctx, "2026-10-12"); err != nil || len(blocks) != 0 {
+			t.Errorf("after task delete: blocks = %v, err = %v; want none", blocks, err)
 		}
 		return nil
 	})
@@ -124,8 +124,8 @@ func TestDays(t *testing.T) {
 	s, _ := openTemp(t)
 	at := time.Date(2026, 10, 12, 4, 0, 0, 0, time.UTC)
 	inTx(t, s, func(ctx context.Context, x *Tx) error {
-		if _, ok, _ := x.LatestDayBefore(ctx, "2026-10-12"); ok {
-			t.Error("LatestDayBefore on empty days found something")
+		if _, ok, err := x.LatestDayBefore(ctx, "2026-10-12"); err != nil || ok {
+			t.Errorf("LatestDayBefore on empty days: ok = %v, err = %v; want nothing", ok, err)
 		}
 		for _, d := range []domain.Day{"2026-10-09", "2026-10-12"} {
 			if err := x.InsertDay(ctx, d, at); err != nil {
@@ -135,11 +135,11 @@ func TestDays(t *testing.T) {
 		if err := x.InsertDay(ctx, "2026-10-12", at); err == nil {
 			t.Error("InsertDay twice for one day succeeded; the PK must guard StartDay races")
 		}
-		if ok, _ := x.HasDay(ctx, "2026-10-12"); !ok {
-			t.Error("HasDay(2026-10-12) = false")
+		if ok, err := x.HasDay(ctx, "2026-10-12"); err != nil || !ok {
+			t.Errorf("HasDay(2026-10-12) = %v, %v; want true", ok, err)
 		}
-		if d, ok, _ := x.LatestDayBefore(ctx, "2026-10-12"); !ok || d != "2026-10-09" {
-			t.Errorf("LatestDayBefore = %q, %v; want 2026-10-09 (skips the weekend)", d, ok)
+		if d, ok, err := x.LatestDayBefore(ctx, "2026-10-12"); err != nil || !ok || d != "2026-10-09" {
+			t.Errorf("LatestDayBefore = %q, %v, %v; want 2026-10-09 (skips the weekend)", d, ok, err)
 		}
 		if err := x.CommitDay(ctx, "2026-10-12", at); err != nil {
 			return err
@@ -171,27 +171,27 @@ func TestDayQueries(t *testing.T) {
 				return err
 			}
 		}
-		if ids, _ := x.OpenTasksBlockedOn(ctx, "2026-10-12"); !cmp.Equal(ids, []int64{open}) {
-			t.Errorf("OpenTasksBlockedOn = %v; want [%d]", ids, open)
+		if ids, err := x.OpenTasksBlockedOn(ctx, "2026-10-12"); err != nil || !cmp.Equal(ids, []int64{open}) {
+			t.Errorf("OpenTasksBlockedOn = %v, %v; want [%d]", ids, err, open)
 		}
 		from, to := closedAt.Add(-time.Hour), closedAt.Add(time.Hour)
-		if n, _ := x.CountDone(ctx, from, to); n != 1 {
-			t.Errorf("CountDone in window = %d; want 1 (dropped doesn't count)", n)
+		if n, err := x.CountDone(ctx, from, to); err != nil || n != 1 {
+			t.Errorf("CountDone in window = %d, %v; want 1 (dropped doesn't count)", n, err)
 		}
-		if n, _ := x.CountDone(ctx, to, to.Add(time.Hour)); n != 0 {
-			t.Errorf("CountDone outside window = %d; want 0", n)
+		if n, err := x.CountDone(ctx, to, to.Add(time.Hour)); err != nil || n != 0 {
+			t.Errorf("CountDone outside window = %d, %v; want 0", n, err)
 		}
-		if n, _ := x.CountDone(ctx, closedAt, to); n != 1 {
-			t.Errorf("CountDone with from == closed_at = %d; want 1 (from is inclusive)", n)
+		if n, err := x.CountDone(ctx, closedAt, to); err != nil || n != 1 {
+			t.Errorf("CountDone with from == closed_at = %d, %v; want 1 (from is inclusive)", n, err)
 		}
-		if err := x.DeletePinsOfClosedTasks(ctx); err != nil {
+		if err := x.DeletePinsOfClosedTasks(ctx, "2026-10-13"); err != nil {
 			return err
 		}
-		if n, _ := x.CountOpenPins(ctx); n != 1 {
-			t.Errorf("CountOpenPins = %d; want 1", n)
+		if n, err := x.CountOpenPins(ctx); err != nil || n != 1 {
+			t.Errorf("CountOpenPins = %d, %v; want 1", n, err)
 		}
-		if _, ok, _ := x.GetPin(ctx, doneID); ok {
-			t.Error("done task still pinned")
+		if _, ok, err := x.GetPin(ctx, doneID); err != nil || ok {
+			t.Errorf("done task: GetPin ok = %v, err = %v; want unpinned", ok, err)
 		}
 		return nil
 	})
@@ -237,7 +237,11 @@ func TestLoadPlan(t *testing.T) {
 	if len(state.Blocks) != 1 || state.Blocks[0].TaskID != b || !state.Committed {
 		t.Errorf("state = %+v", state)
 	}
-	if _, state, _ := s.LoadPlan(context.Background(), "2026-10-13"); state.Committed || len(state.Blocks) != 0 {
+	_, state, err = s.LoadPlan(context.Background(), "2026-10-13")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Committed || len(state.Blocks) != 0 {
 		t.Errorf("unplanned day state = %+v", state)
 	}
 }

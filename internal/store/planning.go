@@ -50,8 +50,18 @@ func (x *Tx) DeletePin(ctx context.Context, taskID int64) error {
 
 // DeletePinsOfClosedTasks unpins done and dropped tasks (their "done today"
 // visibility ends when a new planning day starts).
-func (x *Tx) DeletePinsOfClosedTasks(ctx context.Context) error {
-	_, err := x.tx.ExecContext(ctx, "DELETE FROM pins WHERE task_id IN (SELECT id FROM tasks WHERE status != 'open')")
+// Tasks with a block on day (placed before StartDay ran) keep their pin.
+func (x *Tx) DeletePinsOfClosedTasks(ctx context.Context, day domain.Day) error {
+	_, err := x.tx.ExecContext(ctx, `DELETE FROM pins WHERE task_id IN (SELECT id FROM tasks WHERE status != 'open')
+		AND task_id NOT IN (SELECT task_id FROM blocks WHERE day = ?)`, string(day))
+	return err
+}
+
+// TouchClosedPinned sets updated_at on pinned closed tasks, so undos of their
+// close (made before the pin is dropped) see the row changed.
+func (x *Tx) TouchClosedPinned(ctx context.Context, now time.Time) error {
+	_, err := x.tx.ExecContext(ctx, `UPDATE tasks SET updated_at = ? WHERE status != 'open'
+		AND id IN (SELECT task_id FROM pins)`, formatTime(now))
 	return err
 }
 

@@ -72,14 +72,13 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	}
 	slices.Sort(names)
 	latest := 0
-	for _, name := range names {
+	versions := make([]int, len(names))
+	for i, name := range names {
 		version, err := migrationVersion(name)
 		if err != nil {
 			return err
 		}
-		if err := applyMigration(ctx, db, name, version); err != nil {
-			return fmt.Errorf("migration %s: %w", name, err)
-		}
+		versions[i] = version
 		latest = max(latest, version)
 	}
 	var applied int
@@ -88,6 +87,11 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	}
 	if applied > latest {
 		return fmt.Errorf("schema version %d, this tt knows up to %d: %w", applied, latest, ErrNewerSchema)
+	}
+	for i, name := range names {
+		if err := applyMigration(ctx, db, name, versions[i]); err != nil {
+			return fmt.Errorf("migration %s: %w", name, err)
+		}
 	}
 	return nil
 }

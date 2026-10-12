@@ -55,3 +55,44 @@ func TestUndoAddRefusesWhenTaskChangedSince(t *testing.T) {
 		t.Errorf("task must survive a refused undo: %+v", got)
 	}
 }
+
+func TestUndoDoneAfterDeleteConflicts(t *testing.T) {
+	s, _ := newService(t)
+	ctx := context.Background()
+	task := mustAdd(t, s, "Doomed")
+	undo := mustUndo(t)(s.Done(ctx, task.ID))
+	if err := s.Delete(ctx, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := undo(ctx); !errors.Is(err, ErrConflict) {
+		t.Errorf("undo Done after Delete: %v; want ErrConflict", err)
+	}
+}
+
+func TestUndoUnblockAfterTaskDeleteConflicts(t *testing.T) {
+	s, _ := startedService(t)
+	ctx := context.Background()
+	task := mustAdd(t, s, "Doomed ~s")
+	b, _ := mustBlock(t, s, task.ID, 10*h, h)
+	undo := mustUndo(t)(s.Unblock(ctx, b.ID))
+	if err := s.Delete(ctx, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := undo(ctx); !errors.Is(err, ErrConflict) {
+		t.Errorf("undo Unblock after task Delete: %v; want ErrConflict", err)
+	}
+}
+
+func TestUndoMoveAfterUnblockConflicts(t *testing.T) {
+	s, _ := startedService(t)
+	ctx := context.Background()
+	task := mustAdd(t, s, "Moved ~s")
+	b, _ := mustBlock(t, s, task.ID, 10*h, h)
+	undo := mustUndo(t)(s.MoveBlock(ctx, b.ID, 12*h))
+	if _, err := s.Unblock(ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := undo(ctx); !errors.Is(err, ErrConflict) {
+		t.Errorf("undo Move after Unblock: %v; want ErrConflict", err)
+	}
+}

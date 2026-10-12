@@ -94,6 +94,7 @@ func TestDefaultBlockLength(t *testing.T) {
 		{SizeS, 3 * time.Hour, time.Hour},
 		{SizeXL, 2 * time.Hour, 2 * time.Hour},
 		{SizeM, 0, 4 * time.Hour},
+		{SizeXL, 0, 24 * time.Hour},
 		{SizeNone, 3 * time.Hour, 30 * time.Minute},
 		{SizeNone, 20 * time.Minute, 20 * time.Minute},
 	}

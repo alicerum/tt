@@ -89,6 +89,9 @@ func (s *Service) modify(ctx context.Context, id int64, fn func(x *store.Tx, t *
 // UpdatedAt that want carries.
 func unchangedSince(ctx context.Context, x *store.Tx, want domain.Task) error {
 	cur, err := x.GetTask(ctx, want.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("task #%d is gone: %w", want.ID, ErrConflict)
+	}
 	if err != nil {
 		return err
 	}

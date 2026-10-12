@@ -71,9 +71,9 @@ func DefaultBlockLength(size Size, gap time.Duration, sizes map[Size]time.Durati
 		length = unsized
 	}
 	if gap > 0 && gap < length {
-		return gap
+		length = gap
 	}
-	return length
+	return min(length, 24*time.Hour)
 }
 
 // Candidate is a pinned task as shown in Today (D12a).

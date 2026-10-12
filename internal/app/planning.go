@@ -17,6 +17,12 @@ func (s *Service) Today() domain.Day {
 	return domain.PlanningDay(s.clock.Now(), s.cfg.DayStart)
 }
 
+// DayOf is the planning day containing t, in the clock's time zone (stored
+// times come back as UTC).
+func (s *Service) DayOf(t time.Time) domain.Day {
+	return domain.PlanningDay(t.In(s.clock.Now().Location()), s.cfg.DayStart)
+}
+
 // DefaultBlockLength is the block length for placing t into a gap (D24);
 // gap 0 means no cap.
 func (s *Service) DefaultBlockLength(t domain.Task, gap time.Duration) time.Duration {
@@ -95,6 +101,9 @@ func (s *Service) Unpin(ctx context.Context, id int64) (Undo, error) {
 			return err
 		}
 		return s.store.InTx(ctx, func(x *store.Tx) error {
+			if err := taskStillExists(ctx, x, pin.TaskID); err != nil {
+				return err
+			}
 			if err := x.PutPin(ctx, pin); err != nil {
 				return err
 			}
@@ -153,6 +162,9 @@ func (s *Service) Block(ctx context.Context, id int64, start, dur time.Duration)
 				return err
 			}
 			if had {
+				if err := taskStillExists(ctx, x, id); err != nil {
+					return err
+				}
 				return x.PutPin(ctx, pin)
 			}
 			left, err := x.TaskBlocksOn(ctx, id, b.Day)
@@ -196,6 +208,9 @@ func (s *Service) Unblock(ctx context.Context, blockID int64) (Undo, error) {
 			return err
 		}
 		return s.store.InTx(ctx, func(x *store.Tx) error {
+			if err := taskStillExists(ctx, x, old.TaskID); err != nil {
+				return err
+			}
 			if err := checkFreeInsert(ctx, x, old); err != nil {
 				return err
 			}
@@ -234,9 +249,22 @@ func (s *Service) reshape(ctx context.Context, blockID int64, fn func(*domain.Bl
 			if err := checkFreeForUndo(ctx, x, old); err != nil {
 				return err
 			}
-			return x.UpdateBlock(ctx, old)
+			if err := x.UpdateBlock(ctx, old); errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("block #%d is gone: %w", old.ID, ErrConflict)
+			} else {
+				return err
+			}
 		})
 	}, nil
+}
+
+// taskStillExists fails with ErrConflict if the task was deleted since.
+func taskStillExists(ctx context.Context, x *store.Tx, id int64) error {
+	if _, err := x.GetTask(ctx, id); errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("task #%d is gone: %w", id, ErrConflict)
+	} else {
+		return err
+	}
 }
 
 // checkDay refuses an undo once the planning day has moved on (ErrConflict):
