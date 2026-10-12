@@ -33,6 +33,13 @@ func TestParseAdd(t *testing.T) {
 		{"mail bob@x.com about #2", Draft{Title: "mail bob@x.com about #2"}},
 		{"two https://a.io links https://b.io", Draft{Title: "two links https://b.io", Link: "https://a.io"}},
 		{"🚀 launch #Ünïcode", Draft{Title: "🚀 launch", Tags: []string{"ünïcode"}}},
+		// Trailing punctuation on sigil tokens.
+		{"Fix #482.", Draft{Title: "Fix #482."}},
+		{"Review #482, then merge", Draft{Title: "Review #482, then merge"}},
+		{"Ping @ana, about schema", Draft{Title: "Ping about schema", Requester: "ana"}},
+		{"Ask @ana.", Draft{Title: "Ask", Requester: "ana"}},
+		{"Tag it #photos.", Draft{Title: "Tag it", Tags: []string{"photos"}}},
+		{"x !1.", Draft{Title: "x", Priority: 1}},
 		// Notes.
 		{"Call Ivan -- he needs it before Friday's sync", Draft{Title: "Call Ivan", Note: "he needs it before Friday's sync", HasNote: true}},
 		{"Ping #infra -- see https://x.io #not-a-tag !1 -- twice", Draft{Title: "Ping", Tags: []string{"infra"}, Note: "see https://x.io #not-a-tag !1 -- twice", HasNote: true}},
@@ -75,6 +82,7 @@ func TestFormatAddRoundTrip(t *testing.T) {
 		{Title: "Review PR #482", Requester: "ana", Tags: []string{"impl", "photos"}, Priority: 2, Size: domain.SizeXL, Link: "https://x.io/a?b=c#d"},
 		{Title: "With note", Note: "multi -- separators", HasNote: true},
 		{Title: "Empty note", HasNote: true},
+		{Title: "two links https://b.io", Link: "https://a.io"},
 	}
 	for _, d := range drafts {
 		line := FormatAdd(d)

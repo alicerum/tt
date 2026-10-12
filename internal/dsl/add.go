@@ -4,6 +4,7 @@ package dsl
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -26,6 +27,9 @@ type Draft struct {
 
 const noteSep = " -- "
 
+// trailingPunct is stripped from the end of sigil tokens ("@ana," is @ana).
+const trailingPunct = ".,;:!?)]}'\""
+
 // ParseAdd parses a quick-add line. levels is the number of configured
 // priority levels; !n outside 1..levels is an error.
 //
@@ -46,6 +50,18 @@ func ParseAdd(line string, levels int) (Draft, error) {
 
 	var title, tags []string
 	for _, tok := range strings.Fields(head) {
+		orig := tok
+		if strings.ContainsRune("@#!~", rune(tok[0])) {
+			stripped := strings.TrimRight(tok, trailingPunct)
+			// "#482." stays whole (issue ref); "@." has nothing left to classify.
+			if len(stripped) > 1 {
+				if stripped[0] == '#' && isDigits(stripped[1:]) {
+					title = append(title, orig)
+					continue
+				}
+				tok = stripped
+			}
+		}
 		switch sigil, rest := tok[0], tok[1:]; {
 		case sigil == '@' && rest != "":
 			d.Requester = strings.ToLower(rest)
@@ -62,7 +78,7 @@ func ParseAdd(line string, levels int) (Draft, error) {
 		case d.Link == "" && isURL(tok):
 			d.Link = tok
 		default:
-			title = append(title, tok)
+			title = append(title, orig)
 		}
 	}
 	d.Title = strings.Join(title, " ")
@@ -77,6 +93,12 @@ func ParseAdd(line string, levels int) (Draft, error) {
 // The note is included only when d.HasNote is set.
 func FormatAdd(d Draft) string {
 	parts := []string{d.Title}
+	// A URL-looking word in the title would be re-parsed as the link, so put
+	// the real link first.
+	linkFirst := d.Link != "" && slices.ContainsFunc(strings.Fields(d.Title), isURL)
+	if linkFirst {
+		parts = []string{d.Link, d.Title}
+	}
 	if d.Requester != "" {
 		parts = append(parts, "@"+d.Requester)
 	}
@@ -89,7 +111,7 @@ func FormatAdd(d Draft) string {
 	if d.Size != domain.SizeNone {
 		parts = append(parts, "~"+string(d.Size))
 	}
-	if d.Link != "" {
+	if d.Link != "" && !linkFirst {
 		parts = append(parts, d.Link)
 	}
 	s := strings.Join(parts, " ")
