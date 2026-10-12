@@ -323,6 +323,13 @@ Plan 3 status: Block undo residual, day freshness (watch tick + stale-key guard)
 - **Plan 5: one real `tea.Program` test** once calendar/GitHub loops add true concurrency (the harness runs commands synchronously).
 - Accepted, not planned: keys pressed before a reload lands act on the state shown (double `x` → two actions); the stale-day guard swallows one navigation key while the new day loads.
 
+## UI tweaks backlog (from use; not yet scheduled)
+
+Collected while using the TUI. The user wants these later, batched with other tweaks; don't schedule them unasked.
+
+- **Tab skips an empty pane.** In Pick, `tab` doesn't move focus into a pane with no rows; it stays put and the status says why ("nothing pinned yet · p pins a task" / "backlog is empty"). If the focused pane becomes empty after a reload (e.g. unpinning the last candidate), focus moves back to the non-empty pane. Both empty: focus stays.
+- **Visual polish.** Rounded Lip Gloss frames around each pane with the pane title in the top border; the focused pane's frame in an accent color, the other dim; a header bar and footer for date, inbox count and key hints; terminal ANSI colors (not hex) so it follows the user's theme. Frames cost 2 columns + 2 rows per pane, so pair this with the shared height budget (Plan 3 carry-forward).
+
 ## Deferred (add on friction)
 
 - Slack bot / emoji-reaction capture
