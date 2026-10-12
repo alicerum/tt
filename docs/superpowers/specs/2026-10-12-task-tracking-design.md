@@ -95,7 +95,7 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D31 | `⏎` on any task opens Task detail; Pick → Block gets its own key, `B` (Plan 5) | Opening a task is the common action while browsing; Block is a once-a-day step |
 | D32 | Children never take `!n`: the edit line of a child leaves priority out, and `!n` in a child's edit or add-child line is refused ("children inherit priority from #parent") | A stored-but-unused value is confusing (D6) |
 | D33 | `tt add` with no line: from a terminal it prompts `add › ` on stderr and reads one line (no shell quoting); a multi-line paste there behaves like a pipe: line 1 is the token line, lines 2+ already pending become the note, and nothing is left on the terminal for the shell (`TIOCFLUSH`); from a pipe it reads all of stdin (over 1 MiB fails), line 1 = token line, lines 2+ = note (appended after the line's own ` -- ` note). The same rule maps a multi-line paste in quick-add / add-child | Capture without quoting `!` `~` `#`; pasting a Slack message keeps its body |
-| D34 | **A pinned parent pins its children.** Pinning a parent pins all its open children; a child added to or reopened under a pinned parent is pinned too. Unpinning the parent unpins all its children. A child can be pinned on its own; once its parent is pinned, unpinning the child is refused ("unpin the parent first"). Pinning or unpinning a task that has children is **not undoable** (the status says so; `u`/`p` reverses it by hand); pin/unpin of a childless task keeps its undo. Unpinning a parent leaves children that have blocks today pinned on their own (`unpinned "X" + 2 children · 1 blocked child kept · no undo`), so no block is lost without undo | One easy rule: what's under a pinned parent is pinned. Today "pin parent, then unpin a child" says the child isn't pinned, which is confusing |
+| D34 | **A pinned parent pins its children.** Pinning a parent pins all its open children; a child added to or reopened under a pinned parent is pinned too. Unpinning the parent unpins all its children. A child can be pinned on its own; once its parent is pinned, unpinning the child is refused ("unpin the parent first"). Pinning or unpinning a task that has children is **not undoable** (the status says so; `u`/`p` reverses it by hand); pin/unpin of a childless task keeps its undo. Unpinning a parent leaves children that have blocks today pinned on their own (`unpinned "X" + 2 children · 1 blocked child kept · no undo`), so no block is lost without undo; unpinning a parent that has blocks of its own today is refused ("unblock it on the timeline first"). A parent pinned before D34 whose open children aren't pinned is repaired by `p` on it | One easy rule: what's under a pinned parent is pinned. Today "pin parent, then unpin a child" says the child isn't pinned, which is confusing |
 | D35 | **Today is the home screen** (`tt · Today`): timeline left, candidates right, `tab` switches. The Pick screen is renamed **Log** (`tt · Log`; the planning step is still called Pick): `L` from Today opens it, `esc` returns; `B` in Log goes to Today (end of Pick). `i` opens Inbox, `esc` returns to the screen it came from. The new-day banner's `⏎` starts planning: Inbox (if anything is waiting) → Log → `B` → Today. No separate planning mode: block keys always work on Today (D22) and `c` always commits (committing again refreshes the time); the summary shows in the status line | Opening the app should show today's plan; the backlog is for planning or a deliberate look |
 | D36 | **Placement by pick-up and drop**: `b` on a candidate picks it up and moves the cursor to the first free timeline row from now; `j/k` move a ghost block of D24 length (min(size, free time from the cursor to the next block or the planning day's end)); `⏎` drops it, `esc` cancels. `m` on a block picks it up keeping its length. Outside a pick-up, `⏎` opens Task detail (D31). Dropping onto another block is refused ("overlaps …"); placing in the past is allowed. On a block: `+/-` resize by 30m, `f` one-line fine-tune prefilled `09:00 1h` (`HH:MM` + duration such as `45m`, `1h30m`; one undoable step), `u` unblocks (task stays a candidate), `x d e E o ⏎` act on its task. On a candidate `u` unpins | See where a block lands before committing to it; `⏎` keeps one meaning |
 | D37 | **Planning nudges**: placing an L or XL task says "big task · consider splitting"; picking up a parent (`b`) asks "parent task; blocking its children is recommended · ⏎ block anyway · esc" (before positioning, so esc wastes nothing) | Small leaves are the motivation engine; nudge, never block |
@@ -410,6 +410,30 @@ Plan 4a's carry-forwards are done in Plan 4b, except "before migration 004" and 
   - an editor that can't start
   - `E`/`o` from Task detail
   - the grouping-save error path, and the startup read applying when no `g` was pressed
+
+## Carry-forward from Plan 5a review
+
+Plan 5a decisions made during execution (in the code): keys on a timeline row act on the block the row names (the earliest block starting in it, else the one carrying on from above); `j/k` past either end grow the timeline a row at a time within the planning day (reset on a new day); `m` keeps a block's minutes within its row.
+
+- **Plan 5b (touches the timeline anyway):**
+  - With `day_start = 00:00` the grown-window sentinel (`lo == 0` means "not grown") makes the 00:00 row unreachable by `k`; use a separate flag.
+  - Dropping or fine-tuning with unchanged values still calls the service and pushes a no-op undo; short-circuit with "unchanged".
+  - The pick-up is cleared before the service call, so a service-side refusal (stale timeline) loses it; keep it until the action succeeds.
+  - The fine-tune prompt captures the block when it opens; a reload meanwhile ends in a service error (no damage). Re-read the block on enter.
+  - The timeline's scroll offset shifts when the window grows at the top after a reload (the cursor stays visible).
+- **With the UI tweaks (footer/hints/styles):** Today's timeline hints leave out `a add · q quit`; a closed block's struck-through label inside the selected or dimmed row may end the highlight early (nested styles); at a height of 4 or less the screen is taller than the terminal (`bodyHeight` floor 2 + 3 fixed lines; pre-existing).
+- **Small:**
+  - Unpinning a parent also unpins closed (done-today) children; pinning is open-only. Harmless (the parent's rows are gone anyway).
+  - `Block` on an unpinned parent pins its children; its undo leaves them pinned (not reachable from the TUI: `b` acts on candidates).
+  - A parent whose children are all closed and that has a block today can't be unpinned either (conservative, consistent with D34's refusal).
+  - `day_start` or `timeline.start` of 23:59 with no `timeline.end` fails "end must be after start" for a key never set.
+  - Stale names: `TestDetailFromTodayAndChildScrolling` starts in the Log; tui_test's "straight to Pick" comment.
+- Tests to add when touched:
+  - `Unpin` of a parent with a closed child; `Pin` on an already-pinned parent with children (nil undo)
+  - `Day.Offset` for fall-back and month/year boundaries; a block ending at `day_start + 24h`; `gapFrom` at the day end; an off-half-hour `day_start`
+  - the height-budget test with Task detail, an open overlay and the banner; detail opened from Today when its task is deleted; Today at narrow widths
+  - undo of `+`/`-`; a resize past the day end; fine-tune after midnight through the UI; `ctrl+z` while a block is picked up; the new-day reset of a pick-up; the "stopped moving … its task is gone" status
+  - `TestPlanningNudges` reaches the closed candidate with five `j` presses; select it by id instead
 
 ## UI tweaks backlog (from use; not yet scheduled)
 

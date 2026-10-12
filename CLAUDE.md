@@ -17,8 +17,8 @@ A staff engineer's personal planner: capture asks fast (`tt add` / quick-add), t
 | 3 TUI foundation (Pick, Inbox, quick-add, undo, live reload, new-day banner) | merged |
 | 4a Find & browse: filter DSL + fuzzy search, switchable grouping, placement rule, row cache (spec "Plan 4 split") | merged |
 | 4b Edit & detail: Task detail (children add/reorder), `e` edit line, `$EDITOR` notes, open link, `tt add` from stdin, plus the "Carry-forward from Plan 4a review" items | merged |
-| 5a Today & blocking: D34 (amended), D35 Today home + Log rename, D36 pick-up/drop placement, D37 nudges, D38 timeline, `SetBlockSpan`, shared height budget (spec "Plan 5 split") | **next** — designed, spec approved pending review |
-| 5b Calendar: `tt-cal` Swift EventKit helper (spike passed), `CalendarSource`, poll loop + cache, meetings on the timeline, ⚠ conflicts, freshness indicator, real `tea.Program` test | after 5a |
+| 5a Today & blocking: D34 (amended), D35 Today home + Log rename, D36 pick-up/drop placement, D37 nudges, D38 timeline, `SetBlockSpan`, shared height budget (spec "Plan 5 split") | merged |
+| 5b Calendar: `tt-cal` Swift EventKit helper (spike passed), `CalendarSource`, poll loop + cache, meetings on the timeline, ⚠ conflicts, freshness indicator, real `tea.Program` test, plus the "Carry-forward from Plan 5a review" items marked Plan 5b | **next** — scoped in spec "Plan 5 split", not planned yet |
 | 6 GitHub reviews lane (direct requests only, `requested_at`, auto-close) | later |
 
 The UI tweaks backlog in the spec (tab skips empty pane, framed/polished panes) is wanted **later, batched** — don't schedule it unasked.
