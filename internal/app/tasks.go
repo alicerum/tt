@@ -131,10 +131,18 @@ func (s *Service) SetParent(ctx context.Context, id, parentID int64) (Undo, erro
 	})
 }
 
+// closedAt keeps the original close time when t is already closed.
+func (s *Service) closedAt(t domain.Task) time.Time {
+	if !t.ClosedAt.IsZero() {
+		return t.ClosedAt
+	}
+	return s.clock.Now()
+}
+
 // Done marks a task done.
 func (s *Service) Done(ctx context.Context, id int64) (Undo, error) {
 	return s.modify(ctx, id, func(_ *store.Tx, t *domain.Task) error {
-		t.Status, t.ClosedAt, t.ClosedBy, t.DropReason = domain.StatusDone, s.clock.Now(), domain.ClosedByUser, ""
+		t.Status, t.ClosedAt, t.ClosedBy, t.DropReason = domain.StatusDone, s.closedAt(*t), domain.ClosedByUser, ""
 		return nil
 	})
 }
@@ -142,7 +150,7 @@ func (s *Service) Done(ctx context.Context, id int64) (Undo, error) {
 // Drop marks a task dropped with an optional reason (D23).
 func (s *Service) Drop(ctx context.Context, id int64, reason string) (Undo, error) {
 	return s.modify(ctx, id, func(_ *store.Tx, t *domain.Task) error {
-		t.Status, t.ClosedAt, t.ClosedBy, t.DropReason = domain.StatusDropped, s.clock.Now(), domain.ClosedByUser, strings.TrimSpace(reason)
+		t.Status, t.ClosedAt, t.ClosedBy, t.DropReason = domain.StatusDropped, s.closedAt(*t), domain.ClosedByUser, strings.TrimSpace(reason)
 		return nil
 	})
 }

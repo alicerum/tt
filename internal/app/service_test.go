@@ -268,3 +268,25 @@ func TestLifecycle(t *testing.T) {
 		t.Errorf("second Delete error = %v; want ErrNotFound", err)
 	}
 }
+
+func TestCloseKeepsExistingClosedAt(t *testing.T) {
+	must := mustUndo(t)
+	s, clock := newService(t)
+	ctx := context.Background()
+	task := mustAdd(t, s, "Close twice")
+
+	must(s.Done(ctx, task.ID))
+	first := mustGet(t, s, task.ID).ClosedAt
+	clock.Advance(time.Hour)
+	must(s.Done(ctx, task.ID))
+	if got := mustGet(t, s, task.ID); !got.ClosedAt.Equal(first) {
+		t.Errorf("Done twice: ClosedAt = %v; want %v", got.ClosedAt, first)
+	}
+
+	clock.Advance(time.Hour)
+	must(s.Drop(ctx, task.ID, "nope"))
+	got := mustGet(t, s, task.ID)
+	if got.Status != domain.StatusDropped || !got.ClosedAt.Equal(first) {
+		t.Errorf("Done then Drop: %+v; want dropped with ClosedAt %v", got, first)
+	}
+}
