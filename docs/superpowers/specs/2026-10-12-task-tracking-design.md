@@ -311,6 +311,18 @@ Undo rule established in Plan 2: an undo returns `ErrConflict` when the planning
 - **Plan 5: auto-close must set `UpdatedAt = now`**, or compare-and-set undo won't notice it.
 - Smaller tests to add when touched: block ending exactly at `day_start + 24h`; Unpin of a closed task; length guards before indexing slices in app planning tests.
 
+Plan 3 status: Block undo residual, day freshness (watch tick + stale-key guard), "done today" via `DayOf`, and one read for Pick (`Service.Load`) are done.
+
+## Carry-forward from Plan 3 review
+
+- **Plan 4: overlays that parse tokens** (edit line, add-child, filter bar) validate synchronously and keep the text on error, like quick-add now does.
+- **Plan 4: one placement rule for Pick.** When D26 grouping replaces the priority loop, keep "where a task shows" in one function (grouping + child placement, including orphaned children listed top-level with `↳ #parent`).
+- **Plan 4: compute rows once per load** (and on expand/filter change) instead of on every render; the fuzzy filter would make per-render recomputation costly.
+- **Plan 4: small leftovers.** All-dropped parent shows `0/0` (hide when total is 0); tab-complete ignores cursor position and completes inside a ` -- ` note; scroll window keeps the cursor on the bottom row when moving up; input width ignores resizes; multi-line paste could map lines 2+ to the note; capture `svc` in pickKey closures like `load()` does; `tt` open/ui error paths untested.
+- **Plan 5: shared height budget** for Inbox, Pick and the timeline (Inbox has none; Pick's floor of 3 rows can overflow tiny terminals).
+- **Plan 5: one real `tea.Program` test** once calendar/GitHub loops add true concurrency (the harness runs commands synchronously).
+- Accepted, not planned: keys pressed before a reload lands act on the state shown (double `x` → two actions); the stale-day guard swallows one navigation key while the new day loads.
+
 ## Deferred (add on friction)
 
 - Slack bot / emoji-reaction capture
