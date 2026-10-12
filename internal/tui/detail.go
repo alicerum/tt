@@ -45,7 +45,9 @@ func (d *detailState) refresh(m *Model) {
 		if _, ok := snap.Get(d.top()); ok {
 			break
 		}
-		m.setStatus(fmt.Sprintf("#%d is gone", d.top()))
+		if m.screen == screenDetail {
+			m.setStatus(fmt.Sprintf("#%d is gone", d.top()))
+		}
 		d.selected = d.top()
 		d.stack = d.stack[:len(d.stack)-1]
 	}
@@ -118,6 +120,7 @@ func (m *Model) detailKey(key string) tea.Cmd {
 		from := d.top()
 		d.stack = d.stack[:len(d.stack)-1]
 		if len(d.stack) == 0 {
+			m.detail = detailState{}
 			m.screen = screenPick
 			return nil
 		}

@@ -247,6 +247,7 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 		switch key {
 		case "enter":
 			m.banner = nil
+			m.detail = detailState{} // a detail left open overnight must not survive the banner
 			m.screen = screenPick
 			if len(m.state.Snapshot.Inbox()) > 0 {
 				m.screen = screenInbox // planning starts with triage (D12d)

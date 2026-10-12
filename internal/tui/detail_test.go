@@ -164,3 +164,23 @@ func TestDetailOfAClosedTaskAndHelp(t *testing.T) {
 	h.keys("?")
 	h.mustSee("open the child under the cursor")
 }
+
+func TestNewDayBannerLeavesDetailBehind(t *testing.T) {
+	h := newHarness(t, config.Default())
+	a := h.add("Gone !1 ~s")
+	h.keys("enter") // detail is open when the day rolls over
+	h.mustSee("#1 Gone")
+
+	h.clock.now = h.clock.now.Add(24 * time.Hour)
+	h.send(clockTickMsg{})
+	h.mustSee("tt · Detail")
+	h.keys("enter") // ⏎ on the new-day banner goes to planning
+	h.mustSee("tt · Pick")
+	if len(h.m.detail.stack) != 0 {
+		t.Fatalf("detail stack survived the banner: %v", h.m.detail.stack)
+	}
+
+	h.keys("D", "y")
+	h.mustSee(fmt.Sprintf("deleted #%d", a.ID))
+	h.mustNotSee("is gone")
+}
