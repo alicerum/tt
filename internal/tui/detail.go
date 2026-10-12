@@ -132,6 +132,17 @@ func (m *Model) detailKey(key string) tea.Cmd {
 		return nil
 	}
 	t := d.rows[d.cursor]
+	if key == "J" || key == "K" {
+		if d.cursor == 0 {
+			m.setStatus("J/K move a child · j selects one")
+			return nil
+		}
+		delta := +1
+		if key == "K" {
+			delta = -1
+		}
+		return m.moveChild(t, delta)
+	}
 	if key == "enter" {
 		if d.cursor == 0 {
 			return nil
@@ -242,7 +253,7 @@ func (m *Model) detailView() string {
 	if d.rows[0].ParentID == 0 {
 		kids := d.rows[1:]
 		if len(kids) == 0 {
-			lines = append(lines, styleDim.Render("  no children"))
+			lines = append(lines, styleDim.Render("  no children · a adds one"))
 		}
 		visible := m.childRows()
 		for i := d.offset; i < len(kids) && i < d.offset+visible; i++ {

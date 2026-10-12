@@ -54,7 +54,7 @@ func (q *quickAdd) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	case "enter":
-		line := q.in.value()
+		line := q.in.line()
 		if _, err := dsl.ParseAdd(line, len(m.svc.Config().Priorities)); err != nil {
 			q.err = err
 			return nil
@@ -74,7 +74,7 @@ func (q *quickAdd) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 	return q.in.update(k)
 }
 
-func (q *quickAdd) paste(_ *Model, msg tea.PasteMsg) tea.Cmd { return q.in.update(msg) }
+func (q *quickAdd) paste(_ *Model, msg tea.PasteMsg) tea.Cmd { return q.in.pasteLines(msg) }
 
 func (q *quickAdd) resize(width int) { q.in.resize(width) }
 
@@ -228,6 +228,8 @@ func (helpOverlay) view(m *Model) string {
 			"⏎        open the child under the cursor · esc back (child → parent → Pick)",
 			"e / E    edit the line (title @who #tag !1 ~s link) / the note in $EDITOR",
 			"o        open the link",
+			"a        add children, one per line (title ~s #tag -- note; priority is the parent's)",
+			"J / K    move the selected child down / up",
 			"p / u    pin to today / unpin",
 			"x        done (again: reopen)",
 			"d / D    drop with optional reason / delete",

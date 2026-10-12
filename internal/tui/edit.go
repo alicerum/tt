@@ -59,6 +59,73 @@ func (e *editLine) resize(width int) { e.in.resize(width) }
 
 func (e *editLine) view(m *Model) string { return e.in.view(m, e.err) }
 
+// addChild is the repeating add-child input of Task detail (view 5): each
+// enter adds a child and the input stays open for the next one.
+type addChild struct {
+	in     tokenInput
+	parent domain.Task
+	err    error
+}
+
+func (m *Model) openAddChild() tea.Cmd {
+	t := m.detail.rows[0]
+	if t.ParentID != 0 {
+		m.setStatus("one level only — esc to the parent")
+		return nil
+	}
+	m.overlay = &addChild{in: newTokenInput(fmt.Sprintf("child of #%d › ", t.ID), "title ~s #tag @who -- note", m.width), parent: t}
+	return nil
+}
+
+func (a *addChild) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
+	switch k.String() {
+	case "esc":
+		m.overlay = nil
+		return nil
+	case "tab":
+		if s := a.in.suggestions(m); len(s) > 0 {
+			a.in.complete(s[0])
+		}
+		return nil
+	case "enter":
+		line := a.in.line()
+		if _, err := m.svc.ParseChild(a.parent.ID, line); err != nil {
+			a.err = err
+			return nil
+		}
+		a.in.reset() // ready for the next child
+		svc, ctx, parentID := m.svc, m.ctx, a.parent.ID
+		return func() tea.Msg {
+			c, undo, err := svc.AddChild(ctx, parentID, line)
+			return actionMsg{label: fmt.Sprintf("add %q", c.Title), status: fmt.Sprintf("added #%d under #%d", c.ID, parentID), undo: undo, err: err}
+		}
+	}
+	a.err = nil
+	return a.in.update(k)
+}
+
+func (a *addChild) paste(_ *Model, msg tea.PasteMsg) tea.Cmd { return a.in.pasteLines(msg) }
+
+func (a *addChild) resize(width int) { a.in.resize(width) }
+
+func (a *addChild) view(m *Model) string { return a.in.view(m, a.err) }
+
+// moveChild moves the selected child one place among its siblings.
+func (m *Model) moveChild(t domain.Task, delta int) tea.Cmd {
+	svc, ctx, label := m.svc, m.ctx, fmt.Sprintf("%q", t.Title)
+	return func() tea.Msg {
+		undo, err := svc.Reorder(ctx, t.ID, delta)
+		if errors.Is(err, app.ErrNoMove) {
+			edge := "already last"
+			if delta < 0 {
+				edge = "already first"
+			}
+			return actionMsg{status: edge}
+		}
+		return actionMsg{label: "move " + label, status: "moved " + label, undo: undo, err: err}
+	}
+}
+
 // editorCommand is $VISUAL, else $EDITOR, else vi, on path (D29). The
 // variable may carry arguments, e.g. "code --wait".
 func editorCommand(getenv func(string) string, path string) *exec.Cmd {

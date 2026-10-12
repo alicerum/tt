@@ -1,16 +1,22 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+
+	"tt/internal/dsl"
 )
 
 // tokenInput is a one-line input in token syntax (D25, D26a) that completes
-// the @requester or #tag at the cursor from known values. Quick-add and the
-// filter bar share it.
-type tokenInput struct{ input textinput.Model }
+// the @requester or #tag at the cursor from known values. Quick-add, add-child,
+// the edit line and the filter bar share it.
+type tokenInput struct {
+	input textinput.Model
+	extra []string // lines 2+ of a multi-line paste: the note (D33)
+}
 
 func newTokenInput(prompt, placeholder string, width int) tokenInput {
 	return tokenInput{input: newInput(prompt, placeholder, width)}
@@ -25,6 +31,33 @@ func (ti *tokenInput) update(msg tea.Msg) tea.Cmd {
 }
 
 func (ti *tokenInput) resize(width int) { fitInput(&ti.input, width) }
+
+// pasteLines pastes the first line into the input and keeps lines 2+ as
+// the note (D33); line() adds them on submit.
+func (ti *tokenInput) pasteLines(msg tea.PasteMsg) tea.Cmd {
+	lines := strings.Split(strings.ReplaceAll(msg.Content, "\r\n", "\n"), "\n")
+	cmd := ti.update(tea.PasteMsg{Content: lines[0]})
+	ti.extra = append(ti.extra, lines[1:]...)
+	return cmd
+}
+
+// line is what to submit: the typed line plus any pasted note lines.
+func (ti *tokenInput) line() string { return dsl.WithNoteLines(ti.value(), ti.extra) }
+
+// reset empties the input for the next entry.
+func (ti *tokenInput) reset() {
+	ti.input.SetValue("")
+	ti.extra = nil
+}
+
+// noteLines counts the pasted note lines, ignoring trailing blank ones.
+func (ti *tokenInput) noteLines() int {
+	n := len(ti.extra)
+	for n > 0 && strings.TrimSpace(ti.extra[n-1]) == "" {
+		n--
+	}
+	return n
+}
 
 // word returns the value as runes and the bounds [start, end) of the word
 // the cursor is in (or right after).
@@ -81,6 +114,9 @@ func (ti *tokenInput) complete(s string) {
 // suggestions, when there are any.
 func (ti *tokenInput) view(m *Model, err error) string {
 	out := ti.input.View()
+	if n := ti.noteLines(); n > 0 {
+		out += "\n" + styleDim.Render(fmt.Sprintf("  + %s → note", plural(n, "line", "lines")))
+	}
 	if err != nil {
 		out += "\n" + styleError.Render("✗ "+err.Error())
 	}

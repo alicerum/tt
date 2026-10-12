@@ -274,6 +274,9 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 		m.overlay = helpOverlay{}
 		return nil
 	case "a":
+		if m.screen == screenDetail && len(m.detail.rows) > 0 {
+			return m.openAddChild() // in Task detail, a adds a child (view 5)
+		}
 		return m.openQuickAdd()
 	case "ctrl+z":
 		return m.undoLast()
