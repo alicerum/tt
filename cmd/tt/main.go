@@ -16,7 +16,8 @@ import (
 )
 
 const usage = `usage:
-  tt add <line>    capture a task, e.g. tt add "Reply to Ana @ana #photos !1 ~s -- before Friday"
+  tt add <line>    capture a task, e.g. tt add 'Reply to Ana @ana #photos !1 ~s -- before Friday'
+                   quote the line with single quotes: ! and ~ are special in zsh/bash
 
 environment:
   TT_CONFIG   config file (default ~/.config/tt/config.toml)
