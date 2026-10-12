@@ -285,11 +285,11 @@ Throwaway check before any real code: a Swift CLI launched from a tmux pane read
 
 Must be handled in the named plan:
 
-- **Plan 2: undo vs system writes.** Undo currently restores the whole previous row. Once `StartDay` (rollover) and GitHub auto-close write to tasks, undoing an earlier user edit would revert those system writes (e.g. drop a rollover count). Restore only the fields a command changed, or compare-and-set on `updated_at` and return a conflict.
-- **Plan 2: consistent snapshot.** `LoadSnapshot` must read in one read-only transaction (modernc issues plain `BEGIN` for `ReadOnly`), before it also reads pins/blocks/days.
-- **Plan 2: newer-DB guard.** Refuse to open a database whose highest `schema_migrations` version is newer than the binary's embedded migrations.
-- **Plan 2: migrations with foreign keys.** Allow a migration to run with `foreign_keys=OFF` + `foreign_key_check`, so table rebuilds don't cascade-delete tags or null parents.
-- **Plan 2: local time.** Stored times come back as UTC; planning-day mapping and "done today" must convert with `.In(time.Local)`.
+- *(Plan 2 Task 2)* **Plan 2: undo vs system writes.** Undo currently restores the whole previous row. Once `StartDay` (rollover) and GitHub auto-close write to tasks, undoing an earlier user edit would revert those system writes (e.g. drop a rollover count). Restore only the fields a command changed, or compare-and-set on `updated_at` and return a conflict.
+- *(Plan 2 Task 1)* **Plan 2: consistent snapshot.** `LoadSnapshot` must read in one read-only transaction (modernc issues plain `BEGIN` for `ReadOnly`), before it also reads pins/blocks/days.
+- *(Plan 2 Task 1)* **Plan 2: newer-DB guard.** Refuse to open a database whose highest `schema_migrations` version is newer than the binary's embedded migrations.
+- **Deferred to the first table-rebuild migration: migrations with foreign keys.** Allow a migration to run with `foreign_keys=OFF` + `foreign_key_check`, so table rebuilds don't cascade-delete tags or null parents. Plan 2's migration only creates tables, so it isn't needed yet.
+- *(Plan 2 Task 3: wall-clock day mapping)* **Plan 2: local time.** Stored times come back as UTC; planning-day mapping and "done today" must convert with `.In(time.Local)`.
 - **Plan 3: children's priority.** Setting priority on a child has no effect (inherited, D6); the Inbox card for a child of an untriaged parent must say so or set the parent.
 - **Plan 3: shrinking priority levels.** Tasks with a level above the configured count produce an edit prefill that `Edit` rejects; clamp or show as unset.
 - **Plan 3: parser edge.** `@.` / `#.` (sigil + only punctuation) still parse as requester/tag `.`; they should stay in the title.
