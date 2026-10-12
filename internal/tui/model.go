@@ -53,6 +53,9 @@ type overlay interface {
 	view(m *Model) string
 }
 
+// paster is implemented by overlays that accept bracketed-paste text.
+type paster interface{ paste(tea.PasteMsg) tea.Cmd }
+
 type Model struct {
 	svc  *app.Service
 	opts Options
@@ -169,6 +172,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.load()
 	case tea.KeyPressMsg:
 		return m, m.handleKey(msg)
+	case tea.PasteMsg:
+		if p, ok := m.overlay.(paster); ok {
+			return m, p.paste(msg)
+		}
 	}
 	return m, nil
 }
@@ -180,6 +187,9 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.overlay != nil {
 		return m.overlay.update(m, k)
+	}
+	if key == "q" && !m.loaded {
+		return tea.Quit // quit works even when the first load failed
 	}
 	if !m.loaded {
 		return nil
@@ -274,7 +284,7 @@ func (m *Model) View() tea.View {
 
 func (m *Model) render() string {
 	if !m.loaded {
-		return "loading…"
+		return fitWidth("loading…\n"+m.statusView(), m.width)
 	}
 	var parts []string
 	parts = append(parts, m.headerView())

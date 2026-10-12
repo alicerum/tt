@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"tt/internal/app"
 	"tt/internal/domain"
@@ -17,7 +18,7 @@ func newInput(prompt, placeholder string, width int) textinput.Model {
 	ti.Prompt = prompt
 	ti.Placeholder = placeholder
 	ti.CharLimit = 1000
-	ti.SetWidth(max(width-len(prompt)-2, 10))
+	ti.SetWidth(max(width-ansi.StringWidth(prompt)-2, 10))
 	st := ti.Styles()
 	st.Cursor.Blink = false // a static cursor: no blink timers
 	ti.SetStyles(st)
@@ -46,9 +47,9 @@ func (q *quickAdd) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		line := q.input.Value()
 		m.overlay = nil
-		svc := m.svc
+		svc, ctx := m.svc, m.ctx
 		return func() tea.Msg {
-			t, undo, err := svc.Add(m.ctx, line)
+			t, undo, err := svc.Add(ctx, line)
 			where := "backlog"
 			if domain.InInbox(t, nil) {
 				where = "inbox"
@@ -103,6 +104,12 @@ func (q *quickAdd) complete(s string) {
 	q.input.CursorEnd()
 }
 
+func (q *quickAdd) paste(msg tea.PasteMsg) tea.Cmd {
+	var cmd tea.Cmd
+	q.input, cmd = q.input.Update(msg)
+	return cmd
+}
+
 func (q *quickAdd) view(m *Model) string {
 	out := q.input.View()
 	if s := q.suggestions(m); len(s) > 0 {
@@ -131,12 +138,19 @@ func (p *prompt) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
+func (p *prompt) paste(msg tea.PasteMsg) tea.Cmd {
+	var cmd tea.Cmd
+	p.input, cmd = p.input.Update(msg)
+	return cmd
+}
+
 func (p *prompt) view(*Model) string { return p.input.View() }
 
 func (m *Model) openDropPrompt(t domain.Task) tea.Cmd {
 	label := fmt.Sprintf("%q", t.Title)
+	shown := fmt.Sprintf("%q", ansi.Truncate(t.Title, 30, "…"))
 	m.overlay = &prompt{
-		input: newInput("drop "+label+" · reason (enter to skip) › ", "", m.width),
+		input: newInput("drop "+shown+" · reason (enter to skip) › ", "", m.width),
 		onEnter: func(reason string) tea.Cmd {
 			return m.act("drop "+label, "dropped "+label, func(ctx context.Context) (app.Undo, error) { return m.svc.Drop(ctx, t.ID, reason) })
 		},

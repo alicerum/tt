@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -257,4 +259,93 @@ func TestNarrowTerminalTruncatesInsteadOfWrapping(t *testing.T) {
 		}
 	}
 	h.mustSee("…")
+}
+
+func TestPasteIntoQuickAdd(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.keys("a")
+	h.send(tea.PasteMsg{Content: "Pasted title https://x.io/a"})
+	h.keys("enter")
+	if got := h.task(1); got.Title != "Pasted title" || got.Link != "https://x.io/a" {
+		t.Errorf("pasted task: title %q link %q", got.Title, got.Link)
+	}
+}
+
+func TestCursorFollowsTaskAcrossReload(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.add("Low !2 ~s")
+	if _, _, err := h.svc.Add(context.Background(), "High !1 ~s"); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R") // High now sorts above Low; the cursor must stay on Low
+	h.keys("p")
+	h.mustSee(`pinned "Low"`)
+}
+
+func TestCollapseFromChildSelectsParent(t *testing.T) {
+	h := newHarness(t, config.Default())
+	ctx := context.Background()
+	parent := h.add("Auth migration !1 ~xl")
+	kid1 := h.add("Rollback plan ~s")
+	kid2 := h.add("Token spike ~m")
+	h.add("Later !1 ~s")
+	for _, k := range []int64{kid1.ID, kid2.ID} {
+		if _, err := h.svc.SetParent(ctx, k, parent.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.keys("R", "right", "down", "left", "p")
+	h.mustSee(`pinned "Auth migration"`)
+}
+
+func TestHelpFitsWithFullBacklog(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.send(tea.WindowSizeMsg{Width: 120, Height: 20})
+	for n := 1; n <= 30; n++ {
+		h.add(fmt.Sprintf("T%d !1 ~s", n))
+	}
+	h.keys("?")
+	if lines := strings.Count(h.m.render(), "\n") + 1; lines > 20 {
+		t.Errorf("help overlay renders %d lines in a 20-line terminal", lines)
+	}
+	h.mustSee("any key closes")
+}
+
+func TestErrorBeforeFirstLoadIsShown(t *testing.T) {
+	h := newHarness(t, config.Default())
+	opts := Options{Schedule: func(time.Duration, tea.Msg) tea.Cmd { return nil }}
+	m := New(context.Background(), h.svc, opts)
+	m.Update(dayStartedMsg{err: errors.New("boom")})
+	if s := ansi.Strip(m.render()); !strings.Contains(s, "✗ boom") {
+		t.Errorf("error before the first load is hidden:\n%s", s)
+	}
+	cmd := m.handleKey(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("q before the first load does nothing")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Errorf("q before the first load: got %T, want tea.QuitMsg", cmd())
+	}
+}
+
+func TestChildProgressExcludesDropped(t *testing.T) {
+	h := newHarness(t, config.Default())
+	ctx := context.Background()
+	parent := h.add("Parent !1 ~xl")
+	done := h.add("Finished ~s")
+	dropped := h.add("Abandoned ~s")
+	open := h.add("Pending ~s")
+	for _, k := range []int64{done.ID, dropped.ID, open.ID} {
+		if _, err := h.svc.SetParent(ctx, k, parent.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := h.svc.Done(ctx, done.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.Drop(ctx, dropped.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R")
+	h.mustSee("▸ [P1 XL] Parent 1/2")
 }

@@ -40,6 +40,7 @@ type row struct {
 type pickState struct {
 	focus    pane
 	cursor   [2]int
+	selected [2]int64 // task id under each pane's cursor (0 = none); survives reloads
 	expanded map[int64]bool
 }
 
@@ -128,21 +129,34 @@ func (m *Model) rows(p pane) []row {
 	return m.backlogRows()
 }
 
-// clamp keeps each pane's cursor on a selectable row.
+// clamp keeps each pane's cursor on a selectable row. It prefers the task the
+// cursor was on (so a reload that reorders rows keeps the highlight on that
+// task) and falls back to the old index when that task is gone.
 func (p *pickState) clamp(m *Model) {
 	if p.expanded == nil {
 		p.expanded = map[int64]bool{}
 	}
 	for _, pn := range []pane{paneBacklog, paneToday} {
 		rows := m.rows(pn)
-		c := min(p.cursor[pn], len(rows)-1)
-		for c >= 0 && rows[c].kind != rowTask {
-			c--
+		c := -1
+		if id := p.selected[pn]; id != 0 {
+			c = slices.IndexFunc(rows, func(r row) bool { return r.kind == rowTask && r.task.ID == id })
 		}
 		if c < 0 {
-			c = slices.IndexFunc(rows, func(r row) bool { return r.kind == rowTask })
+			c = min(p.cursor[pn], len(rows)-1)
+			for c >= 0 && rows[c].kind != rowTask {
+				c--
+			}
+			if c < 0 {
+				c = slices.IndexFunc(rows, func(r row) bool { return r.kind == rowTask })
+			}
+			c = max(c, 0)
 		}
-		p.cursor[pn] = max(c, 0)
+		p.cursor[pn] = c
+		p.selected[pn] = 0
+		if c < len(rows) && rows[c].kind == rowTask {
+			p.selected[pn] = rows[c].task.ID
+		}
 	}
 }
 
@@ -151,9 +165,23 @@ func (p *pickState) move(m *Model, delta int) {
 	for c := p.cursor[p.focus] + delta; c >= 0 && c < len(rows); c += delta {
 		if rows[c].kind == rowTask {
 			p.cursor[p.focus] = c
+			p.selected[p.focus] = rows[c].task.ID
 			return
 		}
 	}
+}
+
+// visibleRows is how many task rows fit beside the header, pane titles,
+// status and hints, plus the banner and an open overlay.
+func (m *Model) visibleRows() int {
+	reserved := 4
+	if m.banner != nil {
+		reserved++
+	}
+	if m.overlay != nil {
+		reserved += strings.Count(m.overlay.view(m), "\n") + 1
+	}
+	return max(m.height-reserved, 3)
 }
 
 func (m *Model) selectedRow() (row, bool) {
@@ -197,6 +225,7 @@ func (m *Model) pickKey(key string) tea.Cmd {
 	case "left", "h":
 		if p.focus == paneBacklog && r.child {
 			p.expanded[t.ParentID] = false
+			p.selected[paneBacklog] = t.ParentID // the parent takes the cursor
 			p.clamp(m)
 		} else if p.focus == paneBacklog {
 			p.expanded[t.ID] = false
@@ -255,7 +284,7 @@ func (m *Model) paneLines(pn pane, title, empty string, width int) []string {
 	if len(rows) == 0 {
 		return append(lines, styleDim.Render("  "+empty))
 	}
-	visible := max(m.height-6, 3)
+	visible := m.visibleRows()
 	cursor := m.pick.cursor[pn]
 	start := max(0, cursor-visible+1)
 	for i := start; i < len(rows) && i < start+visible; i++ {
@@ -288,13 +317,17 @@ func (m *Model) rowLine(r row, width int, selected bool) string {
 		b.WriteString(" @" + t.Requester)
 	}
 	if kids := m.idx.children[t.ID]; len(kids) > 0 {
-		done := 0
+		done, total := 0, 0
 		for _, k := range kids {
+			if k.Status == domain.StatusDropped {
+				continue // dropped work isn't part of the remaining total
+			}
+			total++
 			if k.Status == domain.StatusDone {
 				done++
 			}
 		}
-		fmt.Fprintf(&b, " %d/%d", done, len(kids))
+		fmt.Fprintf(&b, " %d/%d", done, total)
 	}
 	if c := r.cand; c != nil {
 		if c.Blocked {
