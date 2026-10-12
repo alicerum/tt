@@ -47,7 +47,9 @@ func buildTimeline(blocks []domain.Block, from, to, now time.Duration) timeline 
 	for s := from.Truncate(rowLen); s < to; s += rowLen {
 		r := tlRow{start: s}
 		for _, b := range blocks {
-			if b.Start < s+rowLen && s < b.End() {
+			// Only the hours count: an edge row of hours off the half-hour
+			// grid mustn't also list a block that has an outside row.
+			if b.Start < min(s+rowLen, to) && max(s, from) < b.End() {
 				r.blocks = append(r.blocks, b)
 			}
 		}

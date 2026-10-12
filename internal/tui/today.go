@@ -96,12 +96,12 @@ func (td *todayState) refreshCarry(m *Model) {
 }
 
 // pickUp starts placing candidate t (D36): the cursor goes to the first free
-// row from now.
+// row from now (outside the hours: from where the cursor rests, D39).
 func (m *Model) pickUp(t domain.Task) {
 	td := &m.today
 	td.carry = &carry{task: t}
 	td.focus = focusTimeline
-	td.cursor = td.tl.firstFree(max(td.tl.nowRow, 0))
+	td.cursor = td.tl.firstFree(td.tl.homeRow())
 	td.at = td.tl.rows[td.cursor].start
 }
 

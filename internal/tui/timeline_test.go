@@ -58,6 +58,15 @@ func TestTimelineWindow(t *testing.T) {
 		t.Errorf("after hours: outsideNow %v, homeRow %d; want true, 21", tl.outsideNow(), tl.homeRow())
 	}
 
+	// Hours off the half-hour grid: an edge row doesn't also list a block
+	// that has an outside row.
+	edge := domain.Block{ID: 3, TaskID: 3, Start: 7*hr + 30*mn, Duration: 15 * mn} // 07:30–07:45
+	tl = buildTimeline([]domain.Block{edge}, 7*hr+45*mn, 19*hr, -1)
+	if !tl.rows[0].outside || tl.rows[1].start != 7*hr+30*mn || len(tl.rows[1].blocks) != 0 {
+		t.Errorf("hours from 07:45: rows[0] outside %v, rows[1] %v with %d blocks; want the block only in its outside row",
+			tl.rows[0].outside, tl.rows[1].start, len(tl.rows[1].blocks))
+	}
+
 	// No now (a stale day).
 	tl = buildTimeline(nil, 8*hr, 19*hr, -1)
 	if len(tl.rows) != 22 || tl.nowRow != -1 || tl.outsideNow() {

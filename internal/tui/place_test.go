@@ -292,7 +292,10 @@ func TestBlockingOutsideWorkingHours(t *testing.T) {
 		t.Errorf("after hours the cursor rests on the last working row, got %v", h.m.today.at)
 	}
 
-	h.keys("tab", "b") // placing in the past is allowed (D36): from the first free row
+	h.keys("tab", "b") // after the hours a pick-up starts where the cursor rests
+	if h.m.today.at != 18*time.Hour+30*time.Minute {
+		t.Errorf("b after the hours starts on the last working row, got %v", h.m.today.at)
+	}
 	for range 30 {
 		h.keys("j")
 	}
