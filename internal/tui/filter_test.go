@@ -23,11 +23,11 @@ func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
 		t.Errorf("the filter line sits above the backlog:\n%s", s)
 	}
 	h.typeText("sch")
-	h.mustSee("BACKLOG · by priority · sch · 1 match", "Schema review")
+	h.mustSee("BACKLOG · by priority · 1 match · sch", "Schema review")
 	h.mustNotSee("Deploy fix")
 
 	h.typeText(" !9")
-	h.mustSee("✗ priority !9 out of range", "1 match", "Schema review") // the last valid filter ("sch !") stays
+	h.mustSee("✗ priority !9 out of range", "BACKLOG · by priority · 1 match · sch !", "Schema review") // the last valid filter ("sch !") stays
 	h.keys("enter")
 	if _, ok := h.m.overlay.(*filterBar); !ok {
 		t.Fatal("enter on a bad filter must keep the line open")
@@ -39,15 +39,15 @@ func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
 	if h.m.overlay != nil {
 		t.Fatal("enter closes the filter line")
 	}
-	h.mustSee("sch · 1 match", "esc clears filter")
+	h.mustSee("1 match · sch", "esc clears filter")
 
 	// esc in the line restores the filter from before `/`.
 	h.keys("/")
 	h.mustSee("filter › sch")
 	h.typeText("zzz")
-	h.mustSee("sch zzz · 0 matches", "no matches · esc clears")
+	h.mustSee("0 matches · sch zzz", "no matches · esc clears")
 	h.keys("esc")
-	h.mustSee("sch · 1 match")
+	h.mustSee("1 match · sch")
 
 	// esc on the list clears it; filters are never remembered.
 	h.keys("esc")
@@ -57,7 +57,7 @@ func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
 	// Pasting into the line filters too.
 	h.keys("/")
 	h.send(tea.PasteMsg{Content: "@ana"})
-	h.mustSee("@ana · 1 match", "Schema review")
+	h.mustSee("1 match · @ana", "Schema review")
 }
 
 func TestReloadWhileFilteringKeepsTheFilter(t *testing.T) {
@@ -74,7 +74,7 @@ func TestReloadWhileFilteringKeepsTheFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.send(watchTickMsg{})
-	h.mustSee("filter › schema", "schema · 2 matches", "[— —] Schema follow-up")
+	h.mustSee("filter › schema", "2 matches · schema", "[— —] Schema follow-up")
 }
 
 func TestTokenInputCompletesAtTheCursor(t *testing.T) {
@@ -99,7 +99,7 @@ func TestTokenInputCompletesAtTheCursor(t *testing.T) {
 	h.typeText("@and")
 	h.mustSee("tab → @andrei")
 	h.keys("tab")
-	h.mustSee("filter › @andrei", "@andrei · 1 match", "two")
+	h.mustSee("filter › @andrei", "1 match · @andrei", "two")
 }
 
 func TestOverlayInputFollowsResize(t *testing.T) {
@@ -114,4 +114,45 @@ func TestOverlayInputFollowsResize(t *testing.T) {
 	if w, want := h.m.overlay.(*filterBar).in.input.Width(), 80-ansi.StringWidth("filter › ")-2; w != want {
 		t.Errorf("filter input width after resize = %d; want %d", w, want)
 	}
+}
+
+func TestDropKeyKeepsTheReasonOfADroppedTask(t *testing.T) {
+	h := newHarness(t, config.Default())
+	a := h.add("Alpha !1 ~s")
+	h.keys("d")
+	h.typeText("handed to @marko")
+	h.keys("enter")
+	h.keys("/")
+	h.typeText("is:dropped")
+	h.keys("enter")
+	h.mustSee("Alpha")
+	h.keys("d")
+	h.mustSee("already dropped — x reopens it")
+	if h.m.overlay != nil {
+		t.Fatal("d on a dropped task must not open the drop prompt")
+	}
+	if got := h.task(a.ID); got.DropReason != "handed to @marko" {
+		t.Errorf("drop reason = %q; want it kept", got.DropReason)
+	}
+}
+
+func TestMatchCountSurvivesNarrowLeftPane(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.send(tea.WindowSizeMsg{Width: 100, Height: 30})
+	h.add("Schema migration !1 ~s @ana #impl")
+	h.add("Deploy fix !2 ~m")
+	h.keys("/")
+	h.typeText("@ana #impl schema migration")
+	h.mustSee("1 match")
+}
+
+func TestEscHintHiddenWhileFilterLineOpen(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.add("Schema review !1 ~s")
+	h.keys("/")
+	h.typeText("sch")
+	h.keys("enter")
+	h.mustSee("esc clears filter")
+	h.keys("/")
+	h.mustNotSee("esc clears filter")
 }

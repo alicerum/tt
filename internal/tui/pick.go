@@ -352,6 +352,10 @@ func (m *Model) pickKey(key string) tea.Cmd {
 		}
 		return m.act("done "+label, "✓ "+label, func(ctx context.Context) (app.Undo, error) { return svc.Done(ctx, t.ID) })
 	case "d":
+		if t.Status == domain.StatusDropped {
+			m.setStatus("already dropped — x reopens it") // Drop would overwrite the reason
+			return nil
+		}
 		return m.openDropPrompt(t)
 	case "D":
 		return m.openDeleteConfirm(t)
@@ -371,7 +375,7 @@ func (m *Model) pickView() string {
 				n++
 			}
 		}
-		title += " · " + m.pick.filterText + " · " + plural(n, "match", "matches")
+		title += " · " + plural(n, "match", "matches") + " · " + m.pick.filterText // the count first: truncation eats the filter text
 		empty = "no matches · esc clears"
 	}
 	left := m.paneLines(paneBacklog, title, empty, lw)

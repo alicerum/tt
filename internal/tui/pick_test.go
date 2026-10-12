@@ -77,7 +77,7 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	if err := h.m.applyFilter("schema"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("BACKLOG · by priority · schema · 2 matches", "[— —] Schema idea", "[P2 S] Schema review 📌", "unset")
+	h.mustSee("BACKLOG · by priority · 2 matches · schema", "[— —] Schema idea", "[P2 S] Schema review 📌", "unset")
 	h.mustNotSee("Schema shipped")
 	h.keys("p") // the cursor is on Schema review (P2 sorts before unset)
 	h.mustSee("already pinned")
@@ -107,12 +107,12 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	if err := h.m.applyFilter("!9"); err == nil {
 		t.Fatal("!9 must be refused")
 	}
-	h.mustSee("#auth spike · 1 match")
+	h.mustSee("1 match · #auth spike")
 
 	if err := h.m.applyFilter("zzz"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("zzz · 0 matches", "no matches · esc clears")
+	h.mustSee("0 matches · zzz", "no matches · esc clears")
 	h.keys("esc")
 	h.mustSee("filter cleared", "▸ [P1 XL] Auth migration 0/2")
 	h.mustNotSee("matches", "Schema idea")
