@@ -15,8 +15,8 @@ A staff engineer's personal planner: capture asks fast (`tt add` / quick-add), t
 | 1 Core & capture (`tt add`) | merged |
 | 2 Planning engine (pins, blocks, StartDay rollover, undo CAS) | merged |
 | 3 TUI foundation (Pick, Inbox, quick-add, undo, live reload, new-day banner) | merged |
-| 4a Find & browse: filter DSL + fuzzy search, switchable grouping, placement rule, row cache (spec "Plan 4 split") | **in progress** |
-| 4b Edit & detail: Task detail (children add/reorder), `e` edit line, `$EDITOR` notes, open link, `tt add` from stdin | next |
+| 4a Find & browse: filter DSL + fuzzy search, switchable grouping, placement rule, row cache (spec "Plan 4 split") | merged |
+| 4b Edit & detail: Task detail (children add/reorder), `e` edit line, `$EDITOR` notes, open link, `tt add` from stdin, plus the "Carry-forward from Plan 4a review" items | **next** — not written yet |
 | 5 Calendar & Today/Block: `tt-cal` Swift EventKit helper (spike passed, see spec), `CalendarSource`, timeline, Block phase, commit plan, conflicts | later |
 | 6 GitHub reviews lane (direct requests only, `requested_at`, auto-close) | later |
 

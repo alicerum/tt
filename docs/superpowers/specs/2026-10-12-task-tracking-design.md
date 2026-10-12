@@ -340,6 +340,17 @@ Plan 4 ships in two slices, each merged on its own.
 
 **Plan 4b — edit & detail**: Task detail (view 5) with children add (`a`, repeating) and `J/K` reorder (`Service.Reorder`), `e` edit line (P1), `E` note in `$EDITOR` (D29), open link (D21), `tt add` with no line reads stdin, multi-line paste maps lines 2+ to the note, `tt` open/ui error-path tests.
 
+## Carry-forward from Plan 4a review
+
+- **Plan 4b: cursor after a filter round-trip.** `/`, a typo, `esc` restores the filter but not the task the cursor was on (live narrowing replaced `selected`). Remember the selected ids with `prev` and restore them on esc.
+- **Plan 4b: grouping saves race.** Each `g` saves in its own background command, so a fast `g g` can store the earlier value last; the startup read of the remembered grouping can also land after an early `g`. Save the latest value only (or ignore stale results).
+- **Plan 4b: filtered expand/collapse.** `l`/`h` while filtered still write the unfiltered expansion state; a matching parent with no matching children shows `▸` but can't expand.
+- **Plan 4b: completion after `--` in the filter bar.** The shared token input suppresses `@`/`#` completion after ` -- ` everywhere; in the filter bar `--` is just a word.
+- **Before migration 004:** `TestNewerSchemaIsRefused` hardcodes the newest migration version (3); compute it from the embedded migrations.
+- **With the UI tweaks (footer):** Pick hints are ~128 cells, so at 100–120 columns `? help` is cut.
+- Accepted, revisit on friction: `@an` matches requesters exactly, so live results show 0 until the name is complete; a partial `is:` shows an error line while typing (results stay).
+- Tests to add when touched: `search.Oldest`; token-input completion with multi-byte text and a cursor right after a space; `prompt.resize`; a pinned parent with matching children while filtered; the scroll offset after a filter shrinks a scrolled list.
+
 ## UI tweaks backlog (from use; not yet scheduled)
 
 Collected while using the TUI. The user wants these later, batched with other tweaks; don't schedule them unasked.
