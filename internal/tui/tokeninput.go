@@ -16,6 +16,7 @@ import (
 type tokenInput struct {
 	input textinput.Model
 	extra []string // lines 2+ of a multi-line paste: the note (D33)
+	plain bool     // the line has no " -- " note (the filter bar)
 }
 
 func newTokenInput(prompt, placeholder string, width int) tokenInput {
@@ -79,7 +80,7 @@ func (ti *tokenInput) word() (r []rune, start, end int) {
 func (ti *tokenInput) suggestions(m *Model) []string {
 	r, start, _ := ti.word()
 	tok := string(r[start:min(ti.input.Position(), len(r))])
-	if tok == "" || (tok[0] != '@' && tok[0] != '#') || strings.Contains(" "+string(r[:start]), " -- ") {
+	if tok == "" || (tok[0] != '@' && tok[0] != '#') || !ti.plain && strings.Contains(" "+string(r[:start]), " -- ") {
 		return nil
 	}
 	pool := m.idx.tags

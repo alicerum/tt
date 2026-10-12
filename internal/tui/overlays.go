@@ -82,19 +82,21 @@ func (q *quickAdd) view(m *Model) string { return q.in.view(m, q.err) }
 
 // filterBar edits the backlog filter and applies it as you type (D26e).
 type filterBar struct {
-	in   tokenInput
-	prev string // the filter before `/`; esc restores it
-	err  error  // the line doesn't parse; the last valid filter stays applied
+	in      tokenInput
+	prev    string   // the filter before `/`; esc restores it
+	prevSel [2]int64 // and the tasks the cursors were on
+	err     error    // the line doesn't parse; the last valid filter stays applied
 }
 
 func (m *Model) openFilter() tea.Cmd {
 	in := newTokenInput("filter › ", "@who #tag !1 ~s <7d >30d is:done words", m.width)
+	in.plain = true // no " -- " note in a filter: complete everywhere
 	if text := m.pick.filterText; text != "" {
 		in.input.SetValue(text + " ")
 		in.input.CursorEnd()
 	}
 	m.pick.focus = paneBacklog
-	m.overlay = &filterBar{in: in, prev: m.pick.filterText}
+	m.overlay = &filterBar{in: in, prev: m.pick.filterText, prevSel: m.pick.selected}
 	return nil
 }
 
@@ -102,7 +104,8 @@ func (f *filterBar) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
 	case "esc":
 		m.overlay = nil
-		_ = m.applyFilter(f.prev) // it parsed when it was applied
+		m.pick.selected = f.prevSel // live narrowing moved the cursors
+		_ = m.applyFilter(f.prev)   // it parsed when it was applied
 		return nil
 	case "enter":
 		if f.err == nil {

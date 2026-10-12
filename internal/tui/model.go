@@ -217,13 +217,21 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.setErr(fmt.Errorf("can't read the remembered grouping: %w", msg.err))
 			return nil
 		}
+		if m.pick.groupChosen {
+			return nil // a g pressed before the read landed wins
+		}
 		m.pick.group = search.ParseGroupBy(msg.group)
 		if m.loaded {
 			m.refreshRows()
 		}
 	case uiSavedMsg:
+		m.pick.saving = false
 		if msg.err != nil {
 			m.setErr(fmt.Errorf("can't remember the grouping: %w", msg.err))
+		}
+		if m.pick.saveAgain {
+			m.pick.saveAgain = false
+			return m.saveGroup()
 		}
 	case noteEditedMsg:
 		return m.noteEdited(msg)

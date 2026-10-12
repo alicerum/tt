@@ -45,15 +45,18 @@ type row struct {
 const groupKey = "pick.group"
 
 type pickState struct {
-	focus      pane
-	cursor     [2]int
-	offset     [2]int   // first row shown in each pane (scroll window)
-	selected   [2]int64 // task id under each pane's cursor (0 = none); survives reloads
-	expanded   map[int64]bool
-	rows       [2][]row // built by refreshRows, read by keys and render
-	group      search.GroupBy
-	filterText string     // the filter as typed (trimmed); "" = none
-	filter     dsl.Filter // parsed filterText
+	focus       pane
+	cursor      [2]int
+	offset      [2]int   // first row shown in each pane (scroll window)
+	selected    [2]int64 // task id under each pane's cursor (0 = none); survives reloads
+	expanded    map[int64]bool
+	rows        [2][]row // built by refreshRows, read by keys and render
+	group       search.GroupBy
+	groupChosen bool       // g was pressed: the remembered grouping read at startup no longer applies
+	saving      bool       // a grouping save is in flight
+	saveAgain   bool       // g was pressed again meanwhile: save the latest when it lands
+	filterText  string     // the filter as typed (trimmed); "" = none
+	filter      dsl.Filter // parsed filterText
 }
 
 func (p *pickState) filtered() bool { return !p.filter.Empty() }
@@ -138,21 +141,18 @@ func (m *Model) backlogRows() []row {
 					kids = append(kids, c)
 				}
 			}
+			// parent: only listed children count, so ▸ always has something to show.
 			open := len(kids) > 0 && (filtered || m.pick.expanded[t.ID])
-			rows = append(rows, m.backlogRow(t, false, open, orphanOf[t.ID]))
+			rows = append(rows, row{kind: rowTask, task: t, parent: len(kids) > 0, expanded: open, orphan: orphanOf[t.ID]})
 			if !open {
 				continue
 			}
 			for _, c := range kids {
-				rows = append(rows, m.backlogRow(c, true, false, 0))
+				rows = append(rows, row{kind: rowTask, task: c, child: true})
 			}
 		}
 	}
 	return rows
-}
-
-func (m *Model) backlogRow(t domain.Task, child, expanded bool, orphan int64) row {
-	return row{kind: rowTask, task: t, child: child, parent: len(m.idx.children[t.ID]) > 0, expanded: expanded, orphan: orphan}
 }
 
 // todayRows: today's candidates in plan order. A pinned parent lists its open
@@ -235,6 +235,19 @@ func (p *pickState) move(delta int) {
 	}
 }
 
+// saveGroup remembers the grouping (D26). One save runs at a time; a g
+// pressed meanwhile is saved when it lands, so the last choice wins.
+func (m *Model) saveGroup() tea.Cmd {
+	p := &m.pick
+	if p.saving {
+		p.saveAgain = true
+		return nil
+	}
+	p.saving = true
+	svc, ctx, g := m.svc, m.ctx, p.group
+	return func() tea.Msg { return uiSavedMsg{err: svc.SetUIState(ctx, groupKey, string(g))} }
+}
+
 // follow keeps each pane's cursor inside its scroll window, moving the window
 // only when the cursor leaves it; a group heading right above the cursor
 // comes along. Called after every update.
@@ -278,7 +291,6 @@ func (m *Model) selectedRow() (row, bool) {
 
 func (m *Model) pickKey(key string) tea.Cmd {
 	p := &m.pick
-	svc := m.svc
 	switch key {
 	case "tab":
 		p.focus = 1 - p.focus
@@ -297,11 +309,10 @@ func (m *Model) pickKey(key string) tea.Cmd {
 	case "/":
 		return m.openFilter()
 	case "g":
-		p.group = p.group.Next()
+		p.group, p.groupChosen = p.group.Next(), true
 		m.refreshRows()
 		m.setStatus("grouped by " + string(p.group))
-		ctx, g := m.ctx, p.group
-		return func() tea.Msg { return uiSavedMsg{err: svc.SetUIState(ctx, groupKey, string(g))} }
+		return m.saveGroup()
 	case "esc":
 		if p.filtered() {
 			_ = m.applyFilter("") // an empty line always parses
@@ -318,16 +329,20 @@ func (m *Model) pickKey(key string) tea.Cmd {
 	case "enter":
 		m.openDetail(t.ID) // D31
 	case "right", "l":
-		if p.focus == paneBacklog && r.parent {
+		if p.focus == paneBacklog && r.parent && !p.filtered() { // filtered parents are always expanded
 			p.expanded[t.ID] = true
 			m.refreshRows()
 		}
 	case "left", "h":
-		if p.focus == paneBacklog && r.child {
-			p.expanded[t.ParentID] = false
+		switch {
+		case p.focus != paneBacklog:
+		case r.child:
+			if !p.filtered() { // the filter mustn't change the unfiltered expansion
+				p.expanded[t.ParentID] = false
+			}
 			p.selected[paneBacklog] = t.ParentID // the parent takes the cursor
 			m.refreshRows()
-		} else if p.focus == paneBacklog {
+		case !p.filtered():
 			p.expanded[t.ID] = false
 			m.refreshRows()
 		}
