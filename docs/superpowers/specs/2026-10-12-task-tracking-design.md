@@ -298,6 +298,19 @@ Must be handled in the named plan:
 - **Plan 3: `tt add` without shell quoting.** Consider `tt add` with no line reading one line from stdin or a prompt, so `!`, `~`, `#`, `?` need no quoting.
 - Smaller: duplicate priority names aren't rejected; `tt --help` exits 2; undo-path tests for Drop/Reopen/SetNote/SetPriority/detach to add when the undo stack is wired.
 
+## Carry-forward from Plan 2 review
+
+Undo rule established in Plan 2: an undo returns `ErrConflict` when the planning day changed, the row changed since, or the row is gone. The TUI's undo stack treats `ErrConflict` as "can't undo" and drops the entry.
+
+- **Plan 3: Block undo residual.** `Block`'s own undo still returns a raw `ErrNotFound` when the block (or its task) is already gone; map it to `ErrConflict` (or have the TUI treat both as "can't undo").
+- **Plan 3: day freshness before commands.** `Pin`/`Block` work before `StartDay` has run for a new day. The TUI's clock tick must call `StartDay` at the boundary, and planning commands should check `Today()` against the day the view shows.
+- **Plan 3: "done today".** Use `Service.DayOf(task.ClosedAt)` (converts stored UTC to the clock's zone) for wins and struck-through children.
+- **Plan 3: one read for Pick.** `Plan()` discards the snapshot it loads; Pick also needs the backlog. Consider returning both from one read.
+- **Plan 3: commit summary wording.** `CommitSummary.Blocked` includes closed tasks' blocks; `Candidates` counts only open unblocked ones. Word the summary accordingly.
+- **Plan 4: DST gaps on the timeline.** `Day.At` for wall-clock times inside a DST gap/overlap (e.g. 02:30 on 2026-03-29) is unspecified by Go; the timeline must render those rows deliberately.
+- **Plan 5: auto-close must set `UpdatedAt = now`**, or compare-and-set undo won't notice it.
+- Smaller tests to add when touched: block ending exactly at `day_start + 24h`; Unpin of a closed task; length guards before indexing slices in app planning tests.
+
 ## Deferred (add on friction)
 
 - Slack bot / emoji-reaction capture
