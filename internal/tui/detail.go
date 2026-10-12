@@ -19,8 +19,9 @@ type detailState struct {
 	stack    []int64
 	rows     []domain.Task // the task, then its children: open ones in sibling order, then closed ones
 	cursor   int
-	selected int64 // task id under the cursor; survives reloads
-	offset   int   // first child shown (scroll window)
+	selected int64  // task id under the cursor; survives reloads
+	offset   int    // first child shown (scroll window)
+	from     screen // the screen the detail was opened from; esc ends there
 }
 
 func (d *detailState) top() int64 {
@@ -30,15 +31,15 @@ func (d *detailState) top() int64 {
 	return d.stack[len(d.stack)-1]
 }
 
-// openDetail shows task id's detail, starting a new stack (from Pick).
+// openDetail shows task id's detail, starting a new stack (from Today or the Log).
 func (m *Model) openDetail(id int64) {
-	m.detail = detailState{stack: []int64{id}, selected: id}
+	m.detail = detailState{stack: []int64{id}, selected: id, from: m.screen}
 	m.screen = screenDetail
 	m.detail.refresh(m)
 }
 
 // refresh rebuilds the rows. A task that disappeared falls back one level
-// (to Pick when none is left) and says so.
+// (to the screen it was opened from when none is left) and says so.
 func (d *detailState) refresh(m *Model) {
 	snap := m.state.Snapshot
 	for len(d.stack) > 0 {
@@ -55,7 +56,7 @@ func (d *detailState) refresh(m *Model) {
 	if len(d.stack) == 0 {
 		d.rows = nil
 		if m.screen == screenDetail {
-			m.screen = screenPick
+			m.screen = d.from
 		}
 		return
 	}
@@ -82,17 +83,9 @@ func (d *detailState) move(delta int) {
 	d.selected = d.rows[d.cursor].ID
 }
 
-// childRows is how many children fit below the task's own lines.
-func (m *Model) childRows() int {
-	reserved := 4 + len(m.detailHead())
-	if m.banner != nil {
-		reserved++
-	}
-	if m.overlay != nil {
-		reserved += strings.Count(m.overlay.view(m), "\n") + 1
-	}
-	return max(m.height-reserved, 3)
-}
+// childRows is how many children fit below the task's own lines and a
+// "… N more" line.
+func (m *Model) childRows() int { return max(m.bodyHeight()-1-len(m.detailHead()), 1) }
 
 // follow keeps the cursor's child inside the scroll window (see pickState.follow).
 func (d *detailState) follow(m *Model) {
@@ -121,8 +114,8 @@ func (m *Model) detailKey(key string) tea.Cmd {
 		from := d.top()
 		d.stack = d.stack[:len(d.stack)-1]
 		if len(d.stack) == 0 {
+			m.screen = d.from
 			m.detail = detailState{}
-			m.screen = screenPick
 			return nil
 		}
 		d.selected, d.offset = from, 0 // back on the child we came from

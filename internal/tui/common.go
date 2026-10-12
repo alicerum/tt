@@ -93,8 +93,10 @@ func (m *Model) closedToday(t domain.Task) bool {
 }
 
 func (m *Model) headerView() string {
-	name := "Pick"
+	name := "Log"
 	switch m.screen {
+	case screenToday:
+		name = "Today"
 	case screenInbox:
 		name = "Inbox"
 	case screenDetail:
@@ -130,6 +132,9 @@ func (m *Model) statusView() string {
 }
 
 func (m *Model) hintsView() string {
+	if m.screen == screenToday {
+		return styleDim.Render(m.todayHints())
+	}
 	if m.screen == screenInbox {
 		if t, ok := m.state.Snapshot.Get(m.inbox.current); ok && t.ParentID != 0 {
 			return styleDim.Render("s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help")
@@ -139,9 +144,9 @@ func (m *Model) hintsView() string {
 	if m.screen == screenDetail {
 		return styleDim.Render("j/k move · ⏎ open child · a add child · J/K reorder · e edit · E note · o link · x done · d drop · p pin · esc back · ? help")
 	}
-	hints := "⏎ open · e edit · a add · / filter · g group · p pin · u unpin · x done · d drop · tab pane · →/← expand · i inbox · ctrl+z undo · ? help · q quit"
+	hints := "⏎ open · e edit · a add · / filter · g group · p pin · u unpin · x done · d drop · tab pane · →/← expand · B block today · esc today · i inbox · ctrl+z undo · ? help · q quit"
 	if m.pick.filtered() && m.overlay == nil { // in the filter line, esc restores the previous filter
-		hints = "esc clears filter · " + hints
+		hints = "esc clears filter · " + strings.Replace(hints, " · esc today", "", 1)
 	}
 	return styleDim.Render(hints)
 }
@@ -167,6 +172,34 @@ func ago(now, t time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d/(24*time.Hour)))
 	}
+}
+
+// bodyHeight is how many lines a screen's body gets: the terminal minus the
+// header, status and hints lines, the banner and an open overlay (help takes
+// the whole screen and doesn't count). Every screen shares this budget.
+func (m *Model) bodyHeight() int {
+	used := 3
+	if m.banner != nil {
+		used++
+	}
+	if _, help := m.overlay.(helpOverlay); m.overlay != nil && !help {
+		used += strings.Count(m.overlay.view(m), "\n") + 1
+	}
+	return max(m.height-used, 2)
+}
+
+// clipLines keeps the first n lines of s.
+func clipLines(s string, n int) string {
+	lines := strings.Split(s, "\n")
+	return strings.Join(lines[:min(len(lines), n)], "\n")
+}
+
+// plusChildren renders " + 3 children" (D34 statuses); "" for none.
+func plusChildren(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return " + " + plural(n, "child", "children")
 }
 
 // plural renders "1 match" / "3 matches".

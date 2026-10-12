@@ -13,7 +13,7 @@ import (
 )
 
 func TestGroupingCyclesAndIsRemembered(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("Small one !1 ~s @ana")
 	h.add("Medium one !2 ~m")
 	h.mustSee("BACKLOG · by priority", "P1 · someone is blocked", "P2 ·")
@@ -34,6 +34,7 @@ func TestGroupingCyclesAndIsRemembered(t *testing.T) {
 		m: New(context.Background(), h.svc, h.m.opts)}
 	h2.run(h2.m.Init())
 	h2.send(tea.WindowSizeMsg{Width: 140, Height: 40})
+	h2.keys("L") // a new session opens on Today
 	h2.mustSee("BACKLOG · by requester")
 
 	h.keys("g")
@@ -41,18 +42,19 @@ func TestGroupingCyclesAndIsRemembered(t *testing.T) {
 }
 
 func TestUnknownRememberedGroupingFallsBackToPriority(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	if err := h.svc.SetUIState(context.Background(), groupKey, "colour"); err != nil {
 		t.Fatal(err)
 	}
 	h2 := &harness{t: t, svc: h.svc, clock: h.clock, path: h.path,
 		m: New(context.Background(), h.svc, h.m.opts)}
 	h2.run(h2.m.Init())
+	h2.keys("L")
 	h2.mustSee("BACKLOG · by priority")
 }
 
 func TestFilteredBacklogPlacement(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
 	parent := h.add("Auth migration !1 ~xl #auth")
 	for _, line := range []string{"Rollback plan ~s", "Token spike ~m"} {
@@ -130,7 +132,7 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 }
 
 func TestScrollWindowMovesOnlyWhenTheCursorLeavesIt(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	for i := 1; i <= 10; i++ {
 		h.add(fmt.Sprintf("Task %02d !1 ~s", i))
 	}
@@ -155,7 +157,7 @@ func TestScrollWindowMovesOnlyWhenTheCursorLeavesIt(t *testing.T) {
 }
 
 func TestAllDroppedChildrenHideProgress(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
 	parent := h.add("Parent !1 ~l")
 	kid := h.add("Kid ~s")

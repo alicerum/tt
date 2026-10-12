@@ -10,7 +10,7 @@ import (
 )
 
 func TestFilterEscRestoresTheSelection(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("Alpha !1 ~s")
 	h.add("Beta !1 ~s")
 	gamma := h.add("Gamma !1 ~s")
@@ -25,7 +25,7 @@ func TestFilterEscRestoresTheSelection(t *testing.T) {
 }
 
 func TestGroupingSavesTheLatestChoice(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	g := tea.KeyPressMsg{Code: 'g', Text: "g"}
 
 	// Two quick g presses: the second save waits for the first, then saves the latest.
@@ -46,7 +46,7 @@ func TestGroupingSavesTheLatestChoice(t *testing.T) {
 }
 
 func TestFilteredExpandCollapseLeavesTheBacklogAlone(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	parent, _ := h.family("Auth migration !1 ~xl #auth", "Rollback plan ~s", "Token spike ~m")
 	h.keys("right") // expanded before filtering
 	h.mustSee("▾ [P1 XL] Auth migration", "    [P1 S] Rollback plan")
@@ -66,7 +66,7 @@ func TestFilteredExpandCollapseLeavesTheBacklogAlone(t *testing.T) {
 }
 
 func TestParentWithoutListedChildrenHasNoMarker(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.family("Lonely parent !2 ~m", "Untriaged idea") // the child is in the Inbox
 	h.mustSee("  [P2 M] Lonely parent")
 	h.mustNotSee("▸ [P2 M] Lonely parent")
@@ -75,7 +75,7 @@ func TestParentWithoutListedChildrenHasNoMarker(t *testing.T) {
 }
 
 func TestFilterBarCompletesAfterDashes(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("One @ana !1 ~s")
 	h.keys("/")
 	h.typeText("-- @an") // in a filter, -- is just a word

@@ -228,7 +228,7 @@ func (helpOverlay) view(m *Model) string {
 	case screenDetail:
 		local = []string{
 			"j k      move between the task and its children",
-			"⏎        open the child under the cursor · esc back (child → parent → Pick)",
+			"⏎        open the child under the cursor · esc back (child → parent → where you came from)",
 			"e / E    edit the line (title @who #tag !1 ~s link) / the note in $EDITOR",
 			"o        open the link",
 			"a        add children, one per line (title ~s #tag -- note; priority is the parent's)",
@@ -243,8 +243,10 @@ func (helpOverlay) view(m *Model) string {
 			"s m l x  set size (x = XL); a card with priority and size leaves the inbox",
 			"n        skip (stays in the inbox)",
 			"d / D    drop with optional reason / delete",
-			"esc      back to Pick",
+			"esc      back",
 		}
+	case screenToday:
+		local = todayHelp
 	default:
 		local = []string{
 			"⏎        task detail",
@@ -256,7 +258,8 @@ func (helpOverlay) view(m *Model) string {
 			"d / D    drop with optional reason / delete",
 			"/        filter: @who #tag !1 ~s <7d >30d is:done|dropped|all words (live; esc on the list clears)",
 			"g        group by priority → size → created → requester (remembered)",
-			"i        inbox",
+			"B        done picking: block today's candidates in Today",
+			"esc      back to Today (when no filter is set) · i inbox",
 		}
 	}
 	return styleTitle.Render("KEYS") + "\n" + strings.Join(append(local, global...), "\n") + "\n" + styleDim.Render("any key closes")

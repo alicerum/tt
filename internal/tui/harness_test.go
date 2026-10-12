@@ -72,6 +72,18 @@ func newHarness(t *testing.T, cfg config.Config) *harness {
 		t.Fatal("the first launch of a day shows the new-day banner")
 	}
 	h.keys("esc") // tests start with the banner dismissed
+	if h.m.screen != screenToday {
+		t.Fatalf("tt opens on Today (D35), got screen %d", h.m.screen)
+	}
+	return h
+}
+
+// newLogHarness is newHarness moved on to the Log, where most browsing
+// and editing tests start.
+func newLogHarness(t *testing.T, cfg config.Config) *harness {
+	t.Helper()
+	h := newHarness(t, cfg)
+	h.keys("L")
 	return h
 }
 

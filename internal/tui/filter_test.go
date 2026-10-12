@@ -14,7 +14,7 @@ import (
 )
 
 func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("Schema review !1 ~s @ana")
 	h.add("Deploy fix !2 ~m")
 
@@ -61,7 +61,7 @@ func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
 }
 
 func TestReloadWhileFilteringKeepsTheFilter(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("Schema review !1 ~s")
 	h.keys("/")
 	h.typeText("schema")
@@ -78,7 +78,7 @@ func TestReloadWhileFilteringKeepsTheFilter(t *testing.T) {
 }
 
 func TestTokenInputCompletesAtTheCursor(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("one @ana #photos !1 ~s")
 	h.add("two @andrei !1 ~s")
 
@@ -103,7 +103,7 @@ func TestTokenInputCompletesAtTheCursor(t *testing.T) {
 }
 
 func TestOverlayInputFollowsResize(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.keys("a")
 	h.send(tea.WindowSizeMsg{Width: 60, Height: 40})
 	if w, want := h.m.overlay.(*quickAdd).in.input.Width(), 60-ansi.StringWidth("add › ")-2; w != want {
@@ -117,7 +117,7 @@ func TestOverlayInputFollowsResize(t *testing.T) {
 }
 
 func TestDropKeyKeepsTheReasonOfADroppedTask(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Alpha !1 ~s")
 	h.keys("d")
 	h.typeText("handed to @marko")
@@ -137,7 +137,7 @@ func TestDropKeyKeepsTheReasonOfADroppedTask(t *testing.T) {
 }
 
 func TestMatchCountSurvivesNarrowLeftPane(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.send(tea.WindowSizeMsg{Width: 100, Height: 30})
 	h.add("Schema migration !1 ~s @ana #impl")
 	h.add("Deploy fix !2 ~m")
@@ -147,7 +147,7 @@ func TestMatchCountSurvivesNarrowLeftPane(t *testing.T) {
 }
 
 func TestEscHintHiddenWhileFilterLineOpen(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("Schema review !1 ~s")
 	h.keys("/")
 	h.typeText("sch")

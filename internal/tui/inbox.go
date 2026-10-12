@@ -17,6 +17,13 @@ import (
 type inboxState struct {
 	current int64
 	skipped map[int64]bool
+	from    screen // esc returns here
+}
+
+// openInbox shows the Inbox; esc returns to the current screen.
+func (m *Model) openInbox() {
+	m.inbox.from, m.screen = m.screen, screenInbox
+	m.inbox.sync(m)
 }
 
 func (in *inboxState) order(m *Model) []domain.Task {
@@ -52,7 +59,7 @@ func (in *inboxState) sync(m *Model) {
 func (m *Model) inboxKey(key string) tea.Cmd {
 	in := &m.inbox
 	if key == "esc" {
-		m.screen = screenPick
+		m.screen = in.from
 		return nil
 	}
 	t, ok := m.state.Snapshot.Get(in.current)

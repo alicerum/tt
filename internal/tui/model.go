@@ -43,7 +43,8 @@ func DefaultOptions() Options {
 type screen int
 
 const (
-	screenPick screen = iota
+	screenToday screen = iota // the home screen (D35)
+	screenLog                 // the backlog; the planning step Pick
 	screenInbox
 	screenDetail
 )
@@ -80,6 +81,7 @@ type Model struct {
 	width, height int
 
 	screen screen
+	today  todayState
 	pick   pickState
 	inbox  inboxState
 	detail detailState
@@ -145,6 +147,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmd := m.update(msg)
 	m.pick.follow(m)
 	m.detail.follow(m)
+	m.today.follow(m)
 	return m, cmd
 }
 
@@ -188,6 +191,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if msg.res.New {
 			res := msg.res
 			m.banner = &res
+			m.today.placed = false // a new day's cursor starts on its now row
 		}
 		return m.load()
 	case actionMsg:
@@ -268,9 +272,9 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 		case "enter":
 			m.banner = nil
 			m.detail = detailState{} // a detail left open overnight must not survive the banner
-			m.screen = screenPick
+			m.screen = screenLog     // planning: Inbox → Pick (in the Log) → B → Today (D35)
 			if len(m.state.Snapshot.Inbox()) > 0 {
-				m.screen = screenInbox // planning starts with triage (D12d)
+				m.openInbox() // planning starts with triage (D12d)
 			}
 			return nil
 		case "esc":
@@ -300,6 +304,8 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.startDay()
 	}
 	switch m.screen {
+	case screenToday:
+		return m.todayKey(key)
 	case screenInbox:
 		return m.inboxKey(key)
 	case screenDetail:
@@ -382,10 +388,12 @@ func (m *Model) render() string {
 	}
 	fb, filtering := m.overlay.(*filterBar)
 	switch m.screen {
+	case screenToday:
+		parts = append(parts, m.todayView())
 	case screenInbox:
-		parts = append(parts, m.inboxView())
+		parts = append(parts, clipLines(m.inboxView(), m.bodyHeight()))
 	case screenDetail:
-		parts = append(parts, m.detailView())
+		parts = append(parts, clipLines(m.detailView(), m.bodyHeight()))
 	default:
 		if filtering {
 			parts = append(parts, fb.view(m)) // the filter line sits above the backlog

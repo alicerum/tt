@@ -67,6 +67,7 @@ func (m *Model) refreshRows() {
 	m.pick.rows[paneBacklog] = m.backlogRows()
 	m.pick.rows[paneToday] = m.todayRows()
 	m.pick.clamp(m)
+	m.today.refresh(m)
 	if len(m.detail.stack) > 0 {
 		m.detail.refresh(m)
 	}
@@ -224,12 +225,15 @@ func (p *pickState) clamp(m *Model) {
 	}
 }
 
-func (p *pickState) move(delta int) {
-	rows := p.rows[p.focus]
-	for c := p.cursor[p.focus] + delta; c >= 0 && c < len(rows); c += delta {
+func (p *pickState) move(delta int) { p.moveIn(p.focus, delta) }
+
+// moveIn moves pane pn's cursor to the next task row in direction delta.
+func (p *pickState) moveIn(pn pane, delta int) {
+	rows := p.rows[pn]
+	for c := p.cursor[pn] + delta; c >= 0 && c < len(rows); c += delta {
 		if rows[c].kind == rowTask {
-			p.cursor[p.focus] = c
-			p.selected[p.focus] = rows[c].task.ID
+			p.cursor[pn] = c
+			p.selected[pn] = rows[c].task.ID
 			return
 		}
 	}
@@ -267,22 +271,16 @@ func (p *pickState) follow(m *Model) {
 	}
 }
 
-// visibleRows is how many task rows fit beside the header, pane titles,
-// status and hints, plus the banner and an open overlay.
-func (m *Model) visibleRows() int {
-	reserved := 4
-	if m.banner != nil {
-		reserved++
-	}
-	if m.overlay != nil {
-		reserved += strings.Count(m.overlay.view(m), "\n") + 1
-	}
-	return max(m.height-reserved, 3)
-}
+// visibleRows is how many rows fit in a pane below its title (the Log's
+// panes, Today's candidates and timeline share this budget).
+func (m *Model) visibleRows() int { return max(m.bodyHeight()-1, 1) }
 
-func (m *Model) selectedRow() (row, bool) {
-	rows := m.rows(m.pick.focus)
-	c := m.pick.cursor[m.pick.focus]
+func (m *Model) selectedRow() (row, bool) { return m.selectedIn(m.pick.focus) }
+
+// selectedIn is the task row under pane pn's cursor.
+func (m *Model) selectedIn(pn pane) (row, bool) {
+	rows := m.rows(pn)
+	c := m.pick.cursor[pn]
 	if c < 0 || c >= len(rows) || rows[c].kind != rowTask {
 		return row{}, false
 	}
@@ -303,8 +301,10 @@ func (m *Model) pickKey(key string) tea.Cmd {
 		p.move(-1)
 		return nil
 	case "i":
-		m.screen = screenInbox
-		m.inbox.sync(m)
+		m.openInbox()
+		return nil
+	case "B":
+		m.screen, m.today.focus = screenToday, focusCandidates // Pick done: block in Today (D35)
 		return nil
 	case "/":
 		return m.openFilter()
@@ -317,7 +317,9 @@ func (m *Model) pickKey(key string) tea.Cmd {
 		if p.filtered() {
 			_ = m.applyFilter("") // an empty line always parses
 			m.setStatus("filter cleared")
+			return nil
 		}
+		m.screen = screenToday
 		return nil
 	}
 	r, ok := m.selectedRow()
@@ -369,13 +371,43 @@ func (m *Model) taskKey(key string, t domain.Task) (cmd tea.Cmd, ok bool) {
 			m.setStatus("already pinned")
 			return nil, true
 		}
-		return m.act("pin "+label, "pinned "+label, func(ctx context.Context) (app.Undo, error) { return svc.Pin(ctx, t.ID) }), true
+		status := "pinned " + label
+		if kids := m.idx.children[t.ID]; len(kids) > 0 { // D34: no undo
+			n := 0
+			for _, k := range kids {
+				if _, ok := m.idx.cand[k.ID]; !ok && k.Status == domain.StatusOpen {
+					n++
+				}
+			}
+			status += plusChildren(n) + " · no undo, u unpins"
+		}
+		return m.act("pin "+label, status, func(ctx context.Context) (app.Undo, error) { return svc.Pin(ctx, t.ID) }), true
 	case "u":
 		if !pinned {
 			m.setStatus("not pinned")
 			return nil, true
 		}
-		return m.act("unpin "+label, "unpinned "+label, func(ctx context.Context) (app.Undo, error) { return svc.Unpin(ctx, t.ID) }), true
+		if _, ok := m.idx.cand[t.ParentID]; t.ParentID != 0 && ok {
+			m.setStatus(fmt.Sprintf("pinned with its parent #%d · unpin the parent first", t.ParentID)) // D34
+			return nil, true
+		}
+		status := "unpinned " + label
+		if kids := m.idx.children[t.ID]; len(kids) > 0 { // D34: no undo
+			n, kept := 0, 0
+			for _, k := range kids {
+				if c, ok := m.idx.cand[k.ID]; ok && c.Blocked {
+					kept++
+				} else if ok {
+					n++
+				}
+			}
+			status += plusChildren(n)
+			if kept > 0 {
+				status += " · " + plural(kept, "blocked child", "blocked children") + " kept"
+			}
+			status += " · no undo, p pins"
+		}
+		return m.act("unpin "+label, status, func(ctx context.Context) (app.Undo, error) { return svc.Unpin(ctx, t.ID) }), true
 	case "x":
 		if t.Status != domain.StatusOpen {
 			return m.act("reopen "+label, "reopened "+label, func(ctx context.Context) (app.Undo, error) { return svc.Reopen(ctx, t.ID) }), true
@@ -414,8 +446,13 @@ func (m *Model) pickView() string {
 		title += " · " + plural(n, "match", "matches") + " · " + m.pick.filterText // the count first: truncation eats the filter text
 		empty = "no matches · esc clears"
 	}
-	left := m.paneLines(paneBacklog, title, empty, lw)
-	right := m.paneLines(paneToday, "TODAY'S CANDIDATES", "nothing pinned · p on a backlog task", rw)
+	left := m.paneLines(paneBacklog, title, empty, lw, m.pick.focus == paneBacklog)
+	right := m.paneLines(paneToday, "TODAY'S CANDIDATES", "nothing pinned · p on a backlog task", rw, m.pick.focus == paneToday)
+	return columns(left, right, lw, rw)
+}
+
+// columns renders two panes side by side, lw and rw cells wide.
+func columns(left, right []string, lw, rw int) string {
 	var b strings.Builder
 	for i := range max(len(left), len(right)) {
 		l, r := "", ""
@@ -433,7 +470,8 @@ func (m *Model) pickView() string {
 	return b.String()
 }
 
-func (m *Model) paneLines(pn pane, title, empty string, width int) []string {
+// paneLines renders pane pn's title and visible rows; focused shows its cursor.
+func (m *Model) paneLines(pn pane, title, empty string, width int, focused bool) []string {
 	lines := []string{styleTitle.Render(title)}
 	rows := m.rows(pn)
 	if len(rows) == 0 {
@@ -443,7 +481,7 @@ func (m *Model) paneLines(pn pane, title, empty string, width int) []string {
 	cursor := m.pick.cursor[pn]
 	start := m.pick.offset[pn]
 	for i := start; i < len(rows) && i < start+visible; i++ {
-		lines = append(lines, m.rowLine(rows[i], width, pn == m.pick.focus && i == cursor))
+		lines = append(lines, m.rowLine(rows[i], width, focused && i == cursor))
 	}
 	return lines
 }

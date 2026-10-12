@@ -15,7 +15,7 @@ import (
 )
 
 func TestEditLine(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Old title @ana #a !1 ~s https://x.io -- keep me")
 
 	h.keys("e")
@@ -47,7 +47,7 @@ func TestEditLine(t *testing.T) {
 }
 
 func TestEditLineOfAChildRefusesPriority(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	parent, kids := h.family("Parent !1 ~l", "Child ~s")
 	h.keys("enter", "j", "e")
 	h.mustSee("edit #2 › Child ~s")
@@ -64,7 +64,7 @@ func TestEditLineOfAChildRefusesPriority(t *testing.T) {
 }
 
 func TestNoteInTheEditor(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Task !1 ~s -- first line")
 	var seen string
 	h.editor = func(path string) error {
@@ -138,7 +138,7 @@ func TestNoteInTheEditor(t *testing.T) {
 }
 
 func TestNoteChangedElsewhereKeepsYourText(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Task !1 ~s -- original")
 	var path string
 	h.editor = func(p string) error {
@@ -167,7 +167,7 @@ func TestNoteChangedElsewhereKeepsYourText(t *testing.T) {
 // On a narrow pane the status is cut at the right edge; the path comes first
 // so the part the user needs survives the cut (D29a).
 func TestNoteConflictPathFitsANarrowPane(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Task !1 ~s -- original")
 	h.send(tea.WindowSizeMsg{Width: 100, Height: 40})
 	var path string
@@ -185,7 +185,7 @@ func TestNoteConflictPathFitsANarrowPane(t *testing.T) {
 }
 
 func TestEditorTempFilesAreRemoved(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("Task !1 ~s -- x")
 	var paths []string
 	h.editor = func(p string) error {
@@ -206,7 +206,7 @@ func TestEditorTempFilesAreRemoved(t *testing.T) {
 }
 
 func TestOpenLink(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("With link !1 ~s https://x.io/pr/482")
 	h.add("Without !2 ~s")
 	h.keys("o")
@@ -246,7 +246,7 @@ func TestEditorCommand(t *testing.T) {
 
 // Task detail points at E for writing or reading the whole note.
 func TestDetailNoteHints(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("No note !1 ~s")
 	h.add("Long note !2 ~s -- " + strings.Repeat("line\n", 7) + "last")
 	h.keys("enter")

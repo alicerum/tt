@@ -21,6 +21,7 @@ type tlRow struct {
 type timeline struct {
 	rows   []tlRow
 	blocks []domain.Block // the day's blocks, by start
+	now    time.Duration  // now's wall-clock offset; -1 when there is no now
 	nowRow int            // the row holding now; -1 when there is no now
 	dayEnd time.Duration  // the planning day's end: day start + 24h
 }
@@ -38,7 +39,7 @@ func buildTimeline(blocks []domain.Block, from, to, now, dayStart time.Duration)
 	if to%rowLen != 0 {
 		to = to.Truncate(rowLen) + rowLen
 	}
-	tl := timeline{blocks: blocks, nowRow: -1, dayEnd: dayStart + 24*time.Hour}
+	tl := timeline{blocks: blocks, now: max(now, -1), nowRow: -1, dayEnd: dayStart + 24*time.Hour}
 	for s := from; s < to; s += rowLen {
 		r := tlRow{start: s}
 		for _, b := range blocks {

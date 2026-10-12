@@ -31,7 +31,7 @@ func (h *harness) family(parentLine string, kids ...string) (domain.Task, []doma
 }
 
 func TestDetailShowsTheTaskAndEscGoesBack(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
 	note := "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8"
 	parent, kids := h.family("Auth migration !1 ~xl @ana #auth https://x.io/pr/482 -- "+note,
@@ -68,14 +68,14 @@ func TestDetailShowsTheTaskAndEscGoesBack(t *testing.T) {
 		t.Errorf("back on the parent, the cursor is on #%d; want the child we came from (#%d)", got, kids[2].ID)
 	}
 	h.keys("esc")
-	h.mustSee("tt · Pick", "BACKLOG")
+	h.mustSee("tt · Log", "BACKLOG")
 	if r, _ := h.m.selectedRow(); r.task.ID != parent.ID {
 		t.Errorf("Pick's cursor moved to #%d", r.task.ID)
 	}
 }
 
 func TestDetailKeysActOnTheRowUnderTheCursor(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	parent, kids := h.family("Parent !1 ~l", "First ~s", "Second ~s")
 	h.keys("enter", "j")
 	h.keys("x")
@@ -101,7 +101,7 @@ func TestDetailKeysActOnTheRowUnderTheCursor(t *testing.T) {
 }
 
 func TestDetailFallsBackWhenTheTaskIsGone(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
 	parent, kids := h.family("Parent !1 ~l", "Child ~s")
 	h.keys("enter", "j", "enter")
@@ -117,11 +117,11 @@ func TestDetailFallsBackWhenTheTaskIsGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.keys("R")
-	h.mustSee(fmt.Sprintf("#%d is gone", parent.ID), "tt · Pick")
+	h.mustSee(fmt.Sprintf("#%d is gone", parent.ID), "tt · Log")
 }
 
 func TestFallingBackClosesTheOverlay(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	parent := h.add("Parent !1 ~l")
 	h.keys("enter", "a")
 	h.mustSee("child of #1 › ")
@@ -136,7 +136,7 @@ func TestFallingBackClosesTheOverlay(t *testing.T) {
 }
 
 func TestDetailFromTodayAndChildScrolling(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	var kids []string
 	for i := 1; i <= 12; i++ {
 		kids = append(kids, fmt.Sprintf("Step %02d ~s", i))
@@ -164,7 +164,7 @@ func TestDetailFromTodayAndChildScrolling(t *testing.T) {
 }
 
 func TestDetailOfAClosedTaskAndHelp(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Shipped !1 ~s")
 	h.clock.now = h.clock.now.Add(time.Hour)
 	if _, err := h.svc.Done(context.Background(), a.ID); err != nil {
@@ -181,7 +181,7 @@ func TestDetailOfAClosedTaskAndHelp(t *testing.T) {
 }
 
 func TestNewDayBannerLeavesDetailBehind(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Gone !1 ~s")
 	h.keys("enter") // detail is open when the day rolls over
 	h.mustSee("#1 Gone")
@@ -190,7 +190,7 @@ func TestNewDayBannerLeavesDetailBehind(t *testing.T) {
 	h.send(clockTickMsg{})
 	h.mustSee("tt · Detail")
 	h.keys("enter") // ⏎ on the new-day banner goes to planning
-	h.mustSee("tt · Pick")
+	h.mustSee("tt · Log")
 	if len(h.m.detail.stack) != 0 {
 		t.Fatalf("detail stack survived the banner: %v", h.m.detail.stack)
 	}

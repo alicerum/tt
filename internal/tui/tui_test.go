@@ -18,8 +18,8 @@ import (
 )
 
 func TestQuickAddThenTriageInTwoKeystrokes(t *testing.T) {
-	h := newHarness(t, config.Default())
-	h.mustSee("tt · Pick", "Mon 12 Oct", "nothing triaged yet")
+	h := newLogHarness(t, config.Default())
+	h.mustSee("tt · Log", "Mon 12 Oct", "nothing triaged yet")
 
 	h.keys("a")
 	h.typeText("Reply to Ana @ana #photos")
@@ -38,7 +38,7 @@ func TestQuickAddThenTriageInTwoKeystrokes(t *testing.T) {
 }
 
 func TestQuickAddDirectlyToBacklogAndEscCancels(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.keys("a")
 	h.typeText("Ready !2 ~m")
 	h.keys("enter")
@@ -78,7 +78,7 @@ func TestQuickAddDirectlyToBacklogAndEscCancels(t *testing.T) {
 }
 
 func TestQuickAddAutocomplete(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("one @ana #photos")
 	h.add("two @ana")
 	h.add("three @andrei")
@@ -97,7 +97,7 @@ func TestQuickAddAutocomplete(t *testing.T) {
 }
 
 func TestPickPinDoneUndo(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Alpha !1 ~s")
 	h.add("Beta !2 ~m")
 	h.mustSee("[P1 S] Alpha", "[P2 M] Beta", "nothing pinned")
@@ -123,7 +123,7 @@ func TestPickPinDoneUndo(t *testing.T) {
 }
 
 func TestUndoThatConflictsSaysSo(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Alpha !1 ~s")
 	h.keys("p", "tab", "x")
 	h.clock.now = h.clock.now.Add(time.Minute)
@@ -138,7 +138,7 @@ func TestUndoThatConflictsSaysSo(t *testing.T) {
 }
 
 func TestDropWithReasonAndDeleteConfirm(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Alpha !1 ~s")
 	b := h.add("Beta !1 ~s")
 
@@ -165,7 +165,7 @@ func TestDropWithReasonAndDeleteConfirm(t *testing.T) {
 func TestBacklogParentExpandsAndTodayShowsChildren(t *testing.T) {
 	cfg := config.Default()
 	cfg.RolloverAlert = 1
-	h := newHarness(t, cfg)
+	h := newLogHarness(t, cfg)
 	ctx := context.Background()
 	parent := h.add("Auth migration !1 ~xl")
 	kid1 := h.add("Rollback plan ~s")
@@ -197,7 +197,7 @@ func TestBacklogParentExpandsAndTodayShowsChildren(t *testing.T) {
 }
 
 func TestExternalWriteReloads(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	other, err := store.Open(context.Background(), h.path) // e.g. `tt add` from another shell
 	if err != nil {
 		t.Fatal(err)
@@ -213,7 +213,7 @@ func TestExternalWriteReloads(t *testing.T) {
 }
 
 func TestNewDayBannerStartsPlanning(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Blocked !1 ~s")
 	if _, _, err := h.svc.Block(context.Background(), a.ID, 10*time.Hour, time.Hour); err != nil {
 		t.Fatal(err)
@@ -224,7 +224,7 @@ func TestNewDayBannerStartsPlanning(t *testing.T) {
 	h.send(clockTickMsg{}) // same day again: no new banner, nothing changes
 	h.keys("enter")
 	h.mustNotSee("New day")
-	h.mustSee("tt · Pick") // empty inbox: straight to Pick
+	h.mustSee("tt · Log") // empty inbox: straight to Pick
 
 	h.add("Untriaged")
 	h.clock.now = h.clock.now.Add(24 * time.Hour)
@@ -234,7 +234,7 @@ func TestNewDayBannerStartsPlanning(t *testing.T) {
 }
 
 func TestInboxSkipAndChildPriority(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	parent := h.add("Parent !1 ~xl")
 	child := h.add("Child")
 	h.add("Other")
@@ -256,7 +256,7 @@ func TestInboxSkipAndChildPriority(t *testing.T) {
 }
 
 func TestHelpAndQuit(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.keys("?")
 	h.mustSee("KEYS", "p / u    pin to today / unpin", "any key closes")
 	h.keys("x")
@@ -268,7 +268,7 @@ func TestHelpAndQuit(t *testing.T) {
 }
 
 func TestNarrowTerminalTruncatesInsteadOfWrapping(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("A rather long task title that will not fit in a narrow terminal @someone !1 ~s")
 	h.keys("p")
 	h.send(tea.WindowSizeMsg{Width: 40, Height: 12})
@@ -281,7 +281,7 @@ func TestNarrowTerminalTruncatesInsteadOfWrapping(t *testing.T) {
 }
 
 func TestPasteIntoQuickAdd(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.keys("a")
 	h.send(tea.PasteMsg{Content: "Pasted title https://x.io/a"})
 	h.keys("enter")
@@ -291,7 +291,7 @@ func TestPasteIntoQuickAdd(t *testing.T) {
 }
 
 func TestCursorFollowsTaskAcrossReload(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("Low !2 ~s")
 	if _, _, err := h.svc.Add(context.Background(), "High !1 ~s"); err != nil {
 		t.Fatal(err)
@@ -302,7 +302,7 @@ func TestCursorFollowsTaskAcrossReload(t *testing.T) {
 }
 
 func TestCollapseFromChildSelectsParent(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
 	parent := h.add("Auth migration !1 ~xl")
 	kid1 := h.add("Rollback plan ~s")
@@ -318,7 +318,7 @@ func TestCollapseFromChildSelectsParent(t *testing.T) {
 }
 
 func TestHelpFitsWithFullBacklog(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.send(tea.WindowSizeMsg{Width: 120, Height: 20})
 	for n := 1; n <= 30; n++ {
 		h.add(fmt.Sprintf("T%d !1 ~s", n))
@@ -331,7 +331,7 @@ func TestHelpFitsWithFullBacklog(t *testing.T) {
 }
 
 func TestErrorBeforeFirstLoadIsShown(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	opts := Options{Schedule: func(time.Duration, tea.Msg) tea.Cmd { return nil }}
 	m := New(context.Background(), h.svc, opts)
 	m.Update(dayStartedMsg{err: errors.New("boom")})
@@ -348,7 +348,7 @@ func TestErrorBeforeFirstLoadIsShown(t *testing.T) {
 }
 
 func TestChildProgressExcludesDropped(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
 	parent := h.add("Parent !1 ~xl")
 	done := h.add("Finished ~s")
@@ -370,7 +370,7 @@ func TestChildProgressExcludesDropped(t *testing.T) {
 }
 
 func TestOrphanedChildrenStayInBacklog(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
 	parent := h.add("P !1 ~xl")
 	kid := h.add("Kid ~s")
@@ -394,7 +394,7 @@ func TestOrphanedChildrenStayInBacklog(t *testing.T) {
 }
 
 func TestChildOfPinnedParentNotListedInBacklog(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
 	parent := h.add("Pinned parent !1 ~xl")
 	kid := h.add("Under pin ~s")
@@ -412,14 +412,14 @@ func TestChildOfPinnedParentNotListedInBacklog(t *testing.T) {
 }
 
 func TestNewDayShownWithoutWaitingForTheClockTick(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.clock.now = h.clock.now.Add(24 * time.Hour)
 	h.send(watchTickMsg{})
 	h.mustSee("☀ New day Tue 13 Oct")
 }
 
 func TestKeyOnStaleDayRefreshesInstead(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Alpha !1 ~s")
 	h.keys("p")
 	h.clock.now = h.clock.now.Add(24 * time.Hour)
@@ -431,7 +431,7 @@ func TestKeyOnStaleDayRefreshesInstead(t *testing.T) {
 }
 
 func TestDeleteConfirmKeepsHintOnNarrowScreens(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.add("An extremely long task title that goes on and on and on forever !1 ~s")
 	h.send(tea.WindowSizeMsg{Width: 50, Height: 20})
 	h.keys("D")
@@ -448,7 +448,7 @@ func TestDeleteConfirmKeepsHintOnNarrowScreens(t *testing.T) {
 }
 
 func TestRolloverMarkerShownInBacklog(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	a := h.add("Slipper !1 ~s")
 	h.keys("p")
 	if _, _, err := h.svc.Block(context.Background(), a.ID, 10*time.Hour, time.Hour); err != nil {
@@ -466,7 +466,7 @@ func TestRolloverMarkerShownInBacklog(t *testing.T) {
 func TestPinnedChildGetsAlertLine(t *testing.T) {
 	cfg := config.Default()
 	cfg.RolloverAlert = 1
-	h := newHarness(t, cfg)
+	h := newLogHarness(t, cfg)
 	ctx := context.Background()
 	parent := h.add("Par !1 ~xl")
 	kid := h.add("Kid ~s")
@@ -488,7 +488,7 @@ func TestPinnedChildGetsAlertLine(t *testing.T) {
 }
 
 func TestPinningClosedTaskExplainsItself(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
 	parent := h.add("Par !1 ~xl")
 	kid := h.add("Kid ~s")

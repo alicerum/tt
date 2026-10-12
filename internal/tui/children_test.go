@@ -22,7 +22,7 @@ func (h *harness) childIDs(parentID int64) []int64 {
 }
 
 func TestAddChildrenOneAfterAnother(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	parent := h.add("Auth migration !1 ~xl #auth")
 	h.keys("enter")
 	h.mustSee("no children · a adds one")
@@ -74,7 +74,7 @@ func TestAddChildrenOneAfterAnother(t *testing.T) {
 }
 
 func TestAddChildKeepsTheLineWhenItFails(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	parent := h.add("Auth migration !1 ~xl")
 	h.keys("enter", "a")
 	if err := h.svc.Delete(context.Background(), parent.ID); err != nil { // behind the TUI's back
@@ -89,7 +89,7 @@ func TestAddChildKeepsTheLineWhenItFails(t *testing.T) {
 }
 
 func TestReorderChildren(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	parent, kids := h.family("Parent !1 ~l", "A ~s", "B ~s", "C ~s")
 	a, b, c := kids[0].ID, kids[1].ID, kids[2].ID
 	h.keys("enter", "J")
@@ -130,7 +130,7 @@ func TestReorderChildren(t *testing.T) {
 }
 
 func TestMultiLinePasteBecomesTheNote(t *testing.T) {
-	h := newHarness(t, config.Default())
+	h := newLogHarness(t, config.Default())
 	h.keys("a")
 	h.send(tea.PasteMsg{Content: "Look at the schema @ana !1 ~s\r\nAna: can you check\r\n\r\nthe migration?\r\n"})
 	h.mustSee("add › Look at the schema @ana !1 ~s", "+ 3 lines → note")
