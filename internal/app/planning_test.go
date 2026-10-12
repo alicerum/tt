@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -156,6 +157,8 @@ func TestBlock(t *testing.T) {
 		{"past next day start", 27*h + 30*m, h, ErrInvalidValue},
 		{"zero length", 9 * h, 0, ErrInvalidValue},
 		{"seconds", 9*h + 30*time.Second, h, ErrInvalidValue},
+		{"longer than a day", 5 * h, 25 * h, ErrInvalidValue},
+		{"overflowing length", 5 * h, time.Duration(math.MaxInt64) / time.Minute * time.Minute, ErrInvalidValue},
 	}
 	for _, c := range bad {
 		if _, _, err := s.Block(ctx, other.ID, c.start, c.dur); !errors.Is(err, c.want) {
@@ -271,5 +274,65 @@ func TestServiceDefaultBlockLength(t *testing.T) {
 	}
 	if got := s.DefaultBlockLength(domain.Task{}, 0); got != 30*m {
 		t.Errorf("unsized, no cap = %v; want 30m", got)
+	}
+}
+
+func TestPlanningUndoRefusesAcrossDayBoundary(t *testing.T) {
+	s, clock := startedService(t)
+	ctx := context.Background()
+	task := mustAdd(t, s, "X !1 ~s")
+	_, undo := mustBlock(t, s, task.ID, 10*h, h)
+	clock.Advance(24 * h)
+	if _, err := s.StartDay(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := undo(ctx); !errors.Is(err, ErrConflict) {
+		t.Errorf("undo across the day boundary: %v; want ErrConflict", err)
+	}
+	if _, ok := candidate(t, mustPlan(t, s), task.ID); !ok {
+		t.Error("the rollover's pin must survive a refused undo")
+	}
+	if got := mustGet(t, s, task.ID).RolloverCount; got != 1 {
+		t.Errorf("rollover = %d; want 1", got)
+	}
+}
+
+func TestUndoUnblockRefusesOverlap(t *testing.T) {
+	s, _ := startedService(t)
+	ctx := context.Background()
+	a := mustAdd(t, s, "A !1 ~s")
+	b := mustAdd(t, s, "B !1 ~s")
+	ba, _ := mustBlock(t, s, a.ID, 12*h, h)
+	undo, err := s.Unblock(ctx, ba.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustBlock(t, s, b.ID, 12*h, h)
+
+	if err := undo(ctx); !errors.Is(err, ErrConflict) {
+		t.Errorf("undo of Unblock into a taken slot: %v; want ErrConflict", err)
+	}
+	plan := mustPlan(t, s)
+	if len(plan.Blocks) != 1 || plan.Blocks[0].TaskID != b.ID {
+		t.Errorf("blocks after refused undo = %+v; want only B's block", plan.Blocks)
+	}
+}
+
+func TestPinUndoRefusesWhenBlockedSince(t *testing.T) {
+	s, _ := startedService(t)
+	ctx := context.Background()
+	task := mustAdd(t, s, "Pinned then blocked !1 ~s")
+	pinUndo, err := s.Pin(ctx, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustBlock(t, s, task.ID, 10*h, h)
+
+	if err := pinUndo(ctx); !errors.Is(err, ErrConflict) {
+		t.Errorf("undo of Pin with a block today: %v; want ErrConflict", err)
+	}
+	if c, ok := candidate(t, mustPlan(t, s), task.ID); !ok || !c.Blocked {
+		t.Errorf("task should stay a blocked candidate: %+v, %v", c, ok)
 	}
 }

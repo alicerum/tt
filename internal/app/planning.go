@@ -45,7 +45,19 @@ func (s *Service) Pin(ctx context.Context, id int64) (Undo, error) {
 		if had {
 			return nil
 		}
-		return s.store.InTx(ctx, func(x *store.Tx) error { return x.DeletePin(ctx, id) })
+		if err := s.checkDay(today); err != nil {
+			return err
+		}
+		return s.store.InTx(ctx, func(x *store.Tx) error {
+			blocks, err := x.TaskBlocksOn(ctx, id, today)
+			if err != nil {
+				return err
+			}
+			if len(blocks) > 0 {
+				return fmt.Errorf("task #%d is blocked today: %w", id, ErrConflict)
+			}
+			return x.DeletePin(ctx, id)
+		})
 	}, nil
 }
 
@@ -79,11 +91,17 @@ func (s *Service) Unpin(ctx context.Context, id int64) (Undo, error) {
 		if !had {
 			return nil
 		}
+		if err := s.checkDay(today); err != nil {
+			return err
+		}
 		return s.store.InTx(ctx, func(x *store.Tx) error {
 			if err := x.PutPin(ctx, pin); err != nil {
 				return err
 			}
 			for _, b := range blocks {
+				if err := checkFreeInsert(ctx, x, b); err != nil {
+					return err
+				}
 				if _, err := x.InsertBlock(ctx, b); err != nil {
 					return err
 				}
@@ -127,6 +145,9 @@ func (s *Service) Block(ctx context.Context, id int64, start, dur time.Duration)
 		return domain.Block{}, nil, err
 	}
 	return b, func(ctx context.Context) error {
+		if err := s.checkDay(b.Day); err != nil {
+			return err
+		}
 		return s.store.InTx(ctx, func(x *store.Tx) error {
 			if err := x.DeleteBlock(ctx, b.ID); err != nil {
 				return err
@@ -151,6 +172,7 @@ func (s *Service) ResizeBlock(ctx context.Context, blockID int64, dur time.Durat
 
 // Unblock removes one of today's blocks; the task stays pinned as a candidate.
 func (s *Service) Unblock(ctx context.Context, blockID int64) (Undo, error) {
+	day := s.Today()
 	var old domain.Block
 	err := s.store.InTx(ctx, func(x *store.Tx) error {
 		var err error
@@ -163,7 +185,13 @@ func (s *Service) Unblock(ctx context.Context, blockID int64) (Undo, error) {
 		return nil, err
 	}
 	return func(ctx context.Context) error {
+		if err := s.checkDay(day); err != nil {
+			return err
+		}
 		return s.store.InTx(ctx, func(x *store.Tx) error {
+			if err := checkFreeInsert(ctx, x, old); err != nil {
+				return err
+			}
 			_, err := x.InsertBlock(ctx, old)
 			return err
 		})
@@ -171,6 +199,7 @@ func (s *Service) Unblock(ctx context.Context, blockID int64) (Undo, error) {
 }
 
 func (s *Service) reshape(ctx context.Context, blockID int64, fn func(*domain.Block)) (Undo, error) {
+	day := s.Today()
 	var old domain.Block
 	err := s.store.InTx(ctx, func(x *store.Tx) error {
 		var err error
@@ -191,8 +220,43 @@ func (s *Service) reshape(ctx context.Context, blockID int64, fn func(*domain.Bl
 		return nil, err
 	}
 	return func(ctx context.Context) error {
-		return s.store.InTx(ctx, func(x *store.Tx) error { return x.UpdateBlock(ctx, old) })
+		if err := s.checkDay(day); err != nil {
+			return err
+		}
+		return s.store.InTx(ctx, func(x *store.Tx) error {
+			if err := checkFreeForUndo(ctx, x, old); err != nil {
+				return err
+			}
+			return x.UpdateBlock(ctx, old)
+		})
 	}, nil
+}
+
+// checkDay refuses an undo once the planning day has moved on (ErrConflict):
+// the day's rollover has already rewritten the state the undo would restore.
+func (s *Service) checkDay(day domain.Day) error {
+	if s.Today() != day {
+		return fmt.Errorf("planning day changed since: %w", ErrConflict)
+	}
+	return nil
+}
+
+// checkFreeForUndo is checkFree for undo writes: an overlap means the slot was
+// taken after the original command, so the undo is a conflict.
+func checkFreeForUndo(ctx context.Context, x *store.Tx, b domain.Block) error {
+	err := checkFree(ctx, x, b)
+	if errors.Is(err, ErrOverlap) {
+		return fmt.Errorf("undo would overlap another block: %w", ErrConflict)
+	}
+	return err
+}
+
+// checkFreeInsert is checkFreeForUndo for a block being re-inserted. Its row
+// does not exist, and SQLite may have reused its ID for another block, so no
+// block may be excluded by ID here.
+func checkFreeInsert(ctx context.Context, x *store.Tx, b domain.Block) error {
+	b.ID = 0
+	return checkFreeForUndo(ctx, x, b)
 }
 
 // todaysBlock loads a block and refuses blocks from other days: past days are
@@ -216,6 +280,8 @@ func (s *Service) validateSpan(b domain.Block) error {
 		return fmt.Errorf("block times must be whole minutes: %w", ErrInvalidValue)
 	case b.Duration < time.Minute:
 		return fmt.Errorf("block length %v: %w", b.Duration, ErrInvalidValue)
+	case b.Duration > 24*time.Hour:
+		return fmt.Errorf("block length %v is longer than a day: %w", b.Duration, ErrInvalidValue)
 	case b.Start < s.cfg.DayStart || b.End() > s.cfg.DayStart+24*time.Hour:
 		return fmt.Errorf("block %v–%v is outside the planning day: %w", b.Start, b.End(), ErrInvalidValue)
 	}
