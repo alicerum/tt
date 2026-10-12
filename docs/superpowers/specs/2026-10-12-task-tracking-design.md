@@ -364,6 +364,32 @@ Plan 4 ships in two slices, each merged on its own.
 - Accepted, revisit on friction: `@an` matches requesters exactly, so live results show 0 until the name is complete; a partial `is:` shows an error line while typing (results stay).
 - Tests to add when touched: `search.Oldest`; token-input completion with multi-byte text and a cursor right after a space; `prompt.resize`; a pinned parent with matching children while filtered; the scroll offset after a filter shrinks a scrolled list.
 
+## Carry-forward from Plan 4b review
+
+Plan 4a's carry-forwards are done in Plan 4b, except "before migration 004" and the hints overflow (still open above).
+
+- **With the UI tweaks (footer/hints):** Task detail's hint line leaves out `ctrl+z`, `u` and `D`, and Pick's shows `e` but not `E`/`o`.
+- **On friction: quoted `$EDITOR`.** The editor command is split on spaces, so `EDITOR="'/Applications/Sublime Text.app/…/subl' -w"` or `vim -c 'set ft=markdown'` break; git runs `sh -c "$EDITOR \"$@\""`.
+- **On friction: an editor that returns at once** (`VISUAL=code` without `--wait`) leaves the file unchanged, so tt says "note unchanged" and removes the file while the editor still has it open. A hint ("does your editor need --wait?") is cheap.
+- **Small:**
+  - Deleting the shown task from Task detail ends on "#N is gone" instead of "deleted #N".
+  - Task detail's child-window height counts the full-screen help overlay, so the list can jump after help closes.
+  - Tabs and ANSI codes in a note's first lines are shown as-is in the preview.
+  - Every prompted `tt add` waits ~20ms for a paste to settle.
+  - A `/dev/null` stdin counts as a terminal (spurious `add ›`, then usage).
+  - A multi-line paste into the edit line (`e`) joins into one line; by design, since ` -- ` there replaces the note.
+- **Extract when either rule changes:** the child progress count (Pick row and Task detail) and the ✓/✗ close mark are written twice.
+- Tests to add when touched:
+  - `Reorder` among several closed siblings and with `delta 0`
+  - `AddChild` undo conflict
+  - `Edit` clearing a child's old own priority
+  - `u` in Task detail
+  - a stale day while detail is open
+  - an empty note left untouched in the editor
+  - an editor that can't start
+  - `E`/`o` from Task detail
+  - the grouping-save error path, and the startup read applying when no `g` was pressed
+
 ## UI tweaks backlog (from use; not yet scheduled)
 
 Collected while using the TUI. The user wants these later, batched with other tweaks; don't schedule them unasked.

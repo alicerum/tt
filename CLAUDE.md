@@ -16,8 +16,8 @@ A staff engineer's personal planner: capture asks fast (`tt add` / quick-add), t
 | 2 Planning engine (pins, blocks, StartDay rollover, undo CAS) | merged |
 | 3 TUI foundation (Pick, Inbox, quick-add, undo, live reload, new-day banner) | merged |
 | 4a Find & browse: filter DSL + fuzzy search, switchable grouping, placement rule, row cache (spec "Plan 4 split") | merged |
-| 4b Edit & detail: Task detail (children add/reorder), `e` edit line, `$EDITOR` notes, open link, `tt add` from stdin, plus the "Carry-forward from Plan 4a review" items | **in progress** (plan written) |
-| 5 Calendar & Today/Block: `tt-cal` Swift EventKit helper (spike passed, see spec), `CalendarSource`, timeline, Block phase, commit plan, conflicts | later |
+| 4b Edit & detail: Task detail (children add/reorder), `e` edit line, `$EDITOR` notes, open link, `tt add` from stdin, plus the "Carry-forward from Plan 4a review" items | merged |
+| 5 Calendar & Today/Block: `tt-cal` Swift EventKit helper (spike passed, see spec), `CalendarSource`, timeline, Block phase (`B` from Pick, D31), commit plan, conflicts | **next** — not written yet |
 | 6 GitHub reviews lane (direct requests only, `requested_at`, auto-close) | later |
 
 The UI tweaks backlog in the spec (tab skips empty pane, framed/polished panes) is wanted **later, batched** — don't schedule it unasked.
