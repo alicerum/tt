@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"tt/internal/app"
 	"tt/internal/config"
 	"tt/internal/domain"
+	"tt/internal/dsl"
 	"tt/internal/store"
 	"tt/internal/tui"
 )
@@ -22,6 +24,8 @@ const usage = `usage:
   tt               open the planner (TUI)
   tt add <line>    capture a task, e.g. tt add 'Reply to Ana @ana #photos !1 ~s -- before Friday'
                    quote the line with single quotes: ! and ~ are special in zsh/bash
+  tt add           no line: type it at the add › prompt (no quoting needed), or pipe it in;
+                   piped lines after the first become the note, e.g. pbpaste | tt add
 
 environment:
   TT_CONFIG   config file (default ~/.config/tt/config.toml)
@@ -29,7 +33,43 @@ environment:
 `
 
 func main() {
-	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, os.Getenv, runTUI))
+	in := input{r: os.Stdin}
+	if fi, err := os.Stdin.Stat(); err == nil {
+		in.terminal = fi.Mode()&os.ModeCharDevice != 0
+	}
+	os.Exit(run(context.Background(), os.Args[1:], in, os.Stdout, os.Stderr, os.Getenv, runTUI))
+}
+
+// input is where `tt add` with no line reads from (D33).
+type input struct {
+	r        io.Reader
+	terminal bool // prompt for one line; otherwise read a pipe to the end
+}
+
+// maxPiped bounds what `tt add` reads from a pipe.
+const maxPiped = 1 << 20
+
+// readLine reads the capture line: from a terminal, one line after an
+// "add › " prompt on stderr; from a pipe, line 1 plus lines 2+ as the note.
+func (in input) readLine(stderr io.Writer) (string, error) {
+	if in.terminal {
+		fmt.Fprint(stderr, "add › ")
+		line, err := bufio.NewReader(in.r).ReadString('\n')
+		if err != nil && err != io.EOF {
+			return "", err
+		}
+		return strings.TrimSpace(line), nil
+	}
+	data, err := io.ReadAll(io.LimitReader(in.r, maxPiped))
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	first := strings.TrimSpace(lines[0])
+	if first == "" {
+		return "", nil
+	}
+	return dsl.WithNoteLines(first, lines[1:]), nil
 }
 
 // runTUI runs the full-screen planner until the user quits.
@@ -39,7 +79,7 @@ func runTUI(ctx context.Context, svc *app.Service) error {
 }
 
 // run is main without process globals, so tests can call it directly.
-func run(ctx context.Context, args []string, stdout, stderr io.Writer, getenv func(string) string,
+func run(ctx context.Context, args []string, in input, stdout, stderr io.Writer, getenv func(string) string,
 	ui func(context.Context, *app.Service) error) int {
 	switch {
 	case len(args) == 0:
@@ -63,6 +103,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, getenv fu
 	}
 	// Join the rest so both `tt add "a b"` and `tt add a b` work.
 	line := strings.TrimSpace(strings.Join(args[1:], " "))
+	if len(args) == 1 {
+		var err error
+		if line, err = in.readLine(stderr); err != nil {
+			fmt.Fprintf(stderr, "tt: %v\n", err)
+			return 1
+		}
+	}
 	if line == "" {
 		fmt.Fprint(stderr, usage)
 		return 2

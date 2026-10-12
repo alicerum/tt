@@ -139,3 +139,24 @@ func isSize(s string) bool {
 func isURL(s string) bool {
 	return strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://")
 }
+
+// WithNoteLines appends rest (extra lines from a multi-line paste or piped
+// stdin, D33) to line as its note: after the line's own " -- " note on a new
+// line, or as a new " -- " note. Trailing blank lines are dropped.
+func WithNoteLines(line string, rest []string) string {
+	for len(rest) > 0 && strings.TrimSpace(rest[len(rest)-1]) == "" {
+		rest = rest[:len(rest)-1]
+	}
+	if len(rest) == 0 {
+		return line
+	}
+	note := strings.Join(rest, "\n")
+	switch head := strings.TrimRight(line, " "); {
+	case strings.HasSuffix(" "+head, " --"): // an empty " --" note: fill it
+		return head + " " + note
+	case strings.Contains(" "+line+" ", noteSep):
+		return line + "\n" + note
+	default:
+		return line + noteSep + note
+	}
+}

@@ -97,3 +97,31 @@ func TestFormatAddRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestWithNoteLines(t *testing.T) {
+	cases := []struct {
+		line string
+		rest []string
+		want Draft
+	}{
+		{"Reply to Ana @ana", nil, Draft{Title: "Reply to Ana", Requester: "ana"}},
+		{"Reply to Ana @ana", []string{"", "  "}, Draft{Title: "Reply to Ana", Requester: "ana"}},
+		{"Reply to Ana @ana", []string{"Hey, can you look at", "", "the schema?"},
+			Draft{Title: "Reply to Ana", Requester: "ana", Note: "Hey, can you look at\n\nthe schema?", HasNote: true}},
+		{"Reply -- context first", []string{"pasted body", ""},
+			Draft{Title: "Reply", Note: "context first\npasted body", HasNote: true}},
+		{"Reply --", []string{"body"}, Draft{Title: "Reply", Note: "body", HasNote: true}},
+		// Tokens in the extra lines stay in the note.
+		{"Ship it", []string{"#not-a-tag !1 @nobody"}, Draft{Title: "Ship it", Note: "#not-a-tag !1 @nobody", HasNote: true}},
+	}
+	for _, c := range cases {
+		got, err := ParseAdd(WithNoteLines(c.line, c.rest), 3)
+		if err != nil {
+			t.Errorf("WithNoteLines(%q, %q): %v", c.line, c.rest, err)
+			continue
+		}
+		if diff := cmp.Diff(c.want, got, cmp.Comparer(tagsEqual)); diff != "" {
+			t.Errorf("WithNoteLines(%q, %q) (-want +got):\n%s", c.line, c.rest, diff)
+		}
+	}
+}

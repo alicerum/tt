@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"tt/internal/app"
+	"tt/internal/domain"
 	"tt/internal/store"
 )
 
@@ -19,9 +21,32 @@ type result struct {
 
 func runTT(t *testing.T, env map[string]string, args ...string) result {
 	t.Helper()
+	return runWithInput(t, env, input{r: strings.NewReader("")}, args...)
+}
+
+func runWithInput(t *testing.T, env map[string]string, in input, args ...string) result {
+	t.Helper()
 	var out, errOut bytes.Buffer
-	code := run(context.Background(), args, &out, &errOut, func(k string) string { return env[k] }, noUI)
+	code := run(context.Background(), args, in, &out, &errOut, func(k string) string { return env[k] }, noUI)
 	return result{code, out.String(), errOut.String()}
+}
+
+func storedTask(t *testing.T, env map[string]string, id int64) domain.Task {
+	t.Helper()
+	st, err := store.Open(context.Background(), env["TT_DB"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	snap, err := st.LoadSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, ok := snap.Get(id)
+	if !ok {
+		t.Fatalf("task #%d not stored", id)
+	}
+	return task
 }
 
 func testEnv(t *testing.T) map[string]string {
@@ -109,10 +134,70 @@ func TestNoArgsStartsTheTUI(t *testing.T) {
 	env := testEnv(t)
 	var got *app.Service
 	var out, errOut bytes.Buffer
-	code := run(context.Background(), nil, &out, &errOut, func(k string) string { return env[k] },
+	code := run(context.Background(), nil, input{}, &out, &errOut, func(k string) string { return env[k] },
 		func(_ context.Context, svc *app.Service) error { got = svc; return nil })
 	if code != 0 || got == nil {
 		t.Errorf("tt with no args: exit %d, ui started: %v, stderr %q", code, got != nil, errOut.String())
+	}
+}
+
+func TestTUIErrorsExitNonZero(t *testing.T) {
+	env := testEnv(t)
+	var out, errOut bytes.Buffer
+	code := run(context.Background(), nil, input{}, &out, &errOut, func(k string) string { return env[k] },
+		func(context.Context, *app.Service) error { return errors.New("terminal went away") })
+	if code != 1 || !strings.Contains(errOut.String(), "tt: terminal went away") {
+		t.Errorf("ui error: exit %d, stderr %q", code, errOut.String())
+	}
+
+	// The database can't be opened: its directory is a file.
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env["TT_DB"] = filepath.Join(blocker, "tt.db")
+	errOut.Reset()
+	code = run(context.Background(), nil, input{}, &out, &errOut, func(k string) string { return env[k] }, noUI)
+	if code != 1 || !strings.HasPrefix(errOut.String(), "tt: ") {
+		t.Errorf("open error: exit %d, stderr %q", code, errOut.String())
+	}
+}
+
+func TestAddFromAPrompt(t *testing.T) {
+	env := testEnv(t)
+	in := input{r: strings.NewReader("Reply to Ana! @ana ~s #photos?\nignored second line\n"), terminal: true}
+	r := runWithInput(t, env, in, "add")
+	if r.code != 0 || r.stdout != "added #1 to inbox\n" || r.stderr != "add › " {
+		t.Fatalf("prompted add: %+v", r)
+	}
+	if got := storedTask(t, env, 1); got.Title != "Reply to Ana!" || got.Requester != "ana" || got.Note != "" ||
+		len(got.Tags) != 1 || got.Tags[0] != "photos" {
+		t.Errorf("stored: %+v", got)
+	}
+	// Nothing typed (or ctrl+d): usage, nothing stored.
+	if r := runWithInput(t, env, input{r: strings.NewReader("   \n"), terminal: true}, "add"); r.code != 2 || !strings.Contains(r.stderr, "usage:") {
+		t.Errorf("empty prompt: %+v", r)
+	}
+}
+
+func TestAddFromAPipe(t *testing.T) {
+	env := testEnv(t)
+	in := input{r: strings.NewReader("Look at the schema !1 ~m -- from Slack\r\nAna: can you check\r\n\r\nthe migration?\r\n")}
+	if r := runWithInput(t, env, in, "add"); r.code != 0 || r.stdout != "added #1 to backlog\n" || r.stderr != "" {
+		t.Fatalf("piped add: %+v", r)
+	}
+	if got := storedTask(t, env, 1); got.Title != "Look at the schema" || got.Note != "from Slack\nAna: can you check\n\nthe migration?" {
+		t.Errorf("stored: %+v", got)
+	}
+	if r := runWithInput(t, env, input{r: strings.NewReader("\nbody without a title\n")}, "add"); r.code != 2 || !strings.Contains(r.stderr, "usage:") {
+		t.Errorf("empty first line: %+v", r)
+	}
+	// A line on the command line wins; stdin isn't read.
+	if r := runWithInput(t, env, input{r: strings.NewReader("from stdin")}, "add", "from args"); r.code != 0 {
+		t.Fatalf("args add: %+v", r)
+	}
+	if got := storedTask(t, env, 2); got.Title != "from args" {
+		t.Errorf("stored: %+v", got)
 	}
 }
 
