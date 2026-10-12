@@ -11,6 +11,7 @@ import (
 
 	"tt/internal/app"
 	"tt/internal/domain"
+	"tt/internal/dsl"
 )
 
 func newInput(prompt, placeholder string, width int) textinput.Model {
@@ -27,7 +28,10 @@ func newInput(prompt, placeholder string, width int) textinput.Model {
 }
 
 // quickAdd is the one-line capture overlay (D25) with @/# autocomplete.
-type quickAdd struct{ input textinput.Model }
+type quickAdd struct {
+	input textinput.Model
+	err   error // why the last enter was refused; shown under the input
+}
 
 func (m *Model) openQuickAdd() tea.Cmd {
 	m.overlay = &quickAdd{input: newInput("add › ", "title @who #tag !1 ~s link -- note", m.width)}
@@ -46,6 +50,10 @@ func (q *quickAdd) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 		return nil
 	case "enter":
 		line := q.input.Value()
+		if _, err := dsl.ParseAdd(line, len(m.svc.Config().Priorities)); err != nil {
+			q.err = err
+			return nil
+		}
 		m.overlay = nil
 		svc, ctx := m.svc, m.ctx
 		return func() tea.Msg {
@@ -57,6 +65,7 @@ func (q *quickAdd) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 			return actionMsg{label: fmt.Sprintf("add %q", t.Title), status: fmt.Sprintf("added #%d to %s", t.ID, where), undo: undo, err: err}
 		}
 	}
+	q.err = nil
 	var cmd tea.Cmd
 	q.input, cmd = q.input.Update(k)
 	return cmd
@@ -112,6 +121,9 @@ func (q *quickAdd) paste(msg tea.PasteMsg) tea.Cmd {
 
 func (q *quickAdd) view(m *Model) string {
 	out := q.input.View()
+	if q.err != nil {
+		out += "\n" + styleError.Render("✗ "+q.err.Error())
+	}
 	if s := q.suggestions(m); len(s) > 0 {
 		out += "\n" + styleDim.Render("  tab → "+strings.Join(s, "  "))
 	}
@@ -173,11 +185,11 @@ func (c *confirm) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-func (c *confirm) view(*Model) string { return styleAlert.Render(c.question + " (y/n)") }
+func (c *confirm) view(*Model) string { return styleAlert.Render(c.question) }
 
 func (m *Model) openDeleteConfirm(t domain.Task) tea.Cmd {
 	m.overlay = &confirm{
-		question: fmt.Sprintf("Delete #%d %q? This can't be undone.", t.ID, t.Title),
+		question: fmt.Sprintf("(y/n) Delete #%d %q? This can't be undone.", t.ID, ansi.Truncate(t.Title, 30, "…")),
 		onYes: func() tea.Cmd {
 			ctx, svc := m.ctx, m.svc
 			return func() tea.Msg {

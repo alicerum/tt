@@ -55,7 +55,26 @@ func TestQuickAddDirectlyToBacklogAndEscCancels(t *testing.T) {
 	h.keys("a")
 	h.typeText("@only-tokens")
 	h.keys("enter")
-	h.mustSee("✗ title is required")
+	if h.m.overlay == nil {
+		t.Fatal("a failed quick-add must keep the overlay open")
+	}
+	h.mustSee("add › @only-tokens", "✗ title is required")
+	h.keys("esc")
+	if h.m.overlay != nil {
+		t.Error("esc closes the overlay")
+	}
+
+	h.keys("a")
+	h.typeText("Long capture @ana !7")
+	h.keys("enter")
+	if h.m.overlay == nil {
+		t.Fatal("an out-of-range priority must keep the overlay open")
+	}
+	h.mustSee("add › Long capture @ana !7", "✗ priority !7 out of range")
+	h.keys("esc")
+	if snap, _ := h.svc.Snapshot(context.Background()); len(snap.Tasks()) != 1 {
+		t.Errorf("failed adds must not add: %d tasks", len(snap.Tasks()))
+	}
 }
 
 func TestQuickAddAutocomplete(t *testing.T) {
@@ -132,7 +151,7 @@ func TestDropWithReasonAndDeleteConfirm(t *testing.T) {
 	}
 
 	h.keys("D")
-	h.mustSee(`Delete #2 "Beta"? This can't be undone. (y/n)`)
+	h.mustSee(`(y/n) Delete #2 "Beta"? This can't be undone.`)
 	h.keys("n")
 	h.mustSee("cancelled")
 	h.task(b.ID) // still there
@@ -348,4 +367,142 @@ func TestChildProgressExcludesDropped(t *testing.T) {
 	}
 	h.keys("R")
 	h.mustSee("▸ [P1 XL] Parent 1/2")
+}
+
+func TestOrphanedChildrenStayInBacklog(t *testing.T) {
+	h := newHarness(t, config.Default())
+	ctx := context.Background()
+	parent := h.add("P !1 ~xl")
+	kid := h.add("Kid ~s")
+	if _, err := h.svc.SetParent(ctx, kid.ID, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.Done(ctx, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R")
+	h.mustSee("[P1 S] Kid", "↳ #1")
+
+	// A parent still in the Inbox (no size) doesn't hide its children either.
+	p2 := h.add("P2 !1")
+	kid2 := h.add("Kid2 ~s")
+	if _, err := h.svc.SetParent(ctx, kid2.ID, p2.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R")
+	h.mustSee("Kid2")
+}
+
+func TestChildOfPinnedParentNotListedInBacklog(t *testing.T) {
+	h := newHarness(t, config.Default())
+	ctx := context.Background()
+	parent := h.add("Pinned parent !1 ~xl")
+	kid := h.add("Under pin ~s")
+	if _, err := h.svc.SetParent(ctx, kid.ID, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.Pin(ctx, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R")
+	h.mustSee("Under pin")
+	if n := strings.Count(h.screen(), "Under pin"); n != 1 {
+		t.Errorf("child shown %d times, want once (under its pinned parent):\n%s", n, h.screen())
+	}
+}
+
+func TestNewDayShownWithoutWaitingForTheClockTick(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.clock.now = h.clock.now.Add(24 * time.Hour)
+	h.send(watchTickMsg{})
+	h.mustSee("☀ New day Tue 13 Oct")
+}
+
+func TestKeyOnStaleDayRefreshesInstead(t *testing.T) {
+	h := newHarness(t, config.Default())
+	a := h.add("Alpha !1 ~s")
+	h.keys("p")
+	h.clock.now = h.clock.now.Add(24 * time.Hour)
+	h.keys("u")
+	h.mustSee("new day — refreshing", "☀ New day Tue 13 Oct")
+	if _, ok := h.m.idx.cand[a.ID]; !ok {
+		t.Error("the key's action must not run; Alpha stays a candidate")
+	}
+}
+
+func TestDeleteConfirmKeepsHintOnNarrowScreens(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.add("An extremely long task title that goes on and on and on forever !1 ~s")
+	h.send(tea.WindowSizeMsg{Width: 50, Height: 20})
+	h.keys("D")
+	h.mustSee("(y/n)")
+	h.keys("n")
+	h.add("Untriaged card with a very long title that goes on and on and on forever @someone #tag")
+	h.keys("i")
+	h.mustSee("INBOX")
+	for _, line := range strings.Split(h.m.render(), "\n") {
+		if w := ansi.StringWidth(line); w > 50 {
+			t.Errorf("line is %d cells wide (> 50): %q", w, ansi.Strip(line))
+		}
+	}
+}
+
+func TestRolloverMarkerShownInBacklog(t *testing.T) {
+	h := newHarness(t, config.Default())
+	a := h.add("Slipper !1 ~s")
+	h.keys("p")
+	if _, _, err := h.svc.Block(context.Background(), a.ID, 10*time.Hour, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	h.clock.now = h.clock.now.Add(24 * time.Hour)
+	h.send(clockTickMsg{})
+	h.keys("esc", "tab", "u")
+	h.mustSee("[P1 S] Slipper", "↻1")
+	if _, ok := h.m.idx.cand[a.ID]; ok {
+		t.Fatal("Slipper should be unpinned")
+	}
+}
+
+func TestPinnedChildGetsAlertLine(t *testing.T) {
+	cfg := config.Default()
+	cfg.RolloverAlert = 1
+	h := newHarness(t, cfg)
+	ctx := context.Background()
+	parent := h.add("Par !1 ~xl")
+	kid := h.add("Kid ~s")
+	if _, err := h.svc.SetParent(ctx, kid.ID, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{parent.ID, kid.ID} {
+		if _, err := h.svc.Pin(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := h.svc.Block(ctx, kid.ID, 10*time.Hour, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	h.clock.now = h.clock.now.Add(24 * time.Hour)
+	h.send(clockTickMsg{})
+	h.keys("esc")
+	h.mustSee("⚠ rolled over 1×")
+}
+
+func TestPinningClosedTaskExplainsItself(t *testing.T) {
+	h := newHarness(t, config.Default())
+	ctx := context.Background()
+	parent := h.add("Par !1 ~xl")
+	kid := h.add("Kid ~s")
+	if _, err := h.svc.SetParent(ctx, kid.ID, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{parent.ID, kid.ID} {
+		if _, err := h.svc.Pin(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := h.svc.Done(ctx, kid.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R", "tab", "down", "p")
+	h.mustSee("can't pin a closed task — x reopens it")
 }

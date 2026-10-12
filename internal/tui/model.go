@@ -130,9 +130,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pick.clamp(m)
 		m.inbox.sync(m)
 	case watchTickMsg:
-		return m, tea.Batch(m.checkVersion(), m.opts.Schedule(m.opts.WatchEvery, watchTickMsg{}))
+		cmds := []tea.Cmd{m.checkVersion(), m.opts.Schedule(m.opts.WatchEvery, watchTickMsg{})}
+		if m.dayIsStale() {
+			cmds = append(cmds, m.startDay())
+		}
+		return m, tea.Batch(cmds...)
 	case versionMsg:
-		if msg.err == nil && msg.version != m.state.Version {
+		if msg.err != nil {
+			m.setErr(fmt.Errorf("can't read the database: %w", msg.err))
+			return m, nil
+		}
+		if msg.version != m.state.Version {
 			return m, m.load()
 		}
 	case clockTickMsg:
@@ -222,10 +230,20 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 	case "R":
 		return m.load()
 	}
+	if m.dayIsStale() {
+		m.setStatus("new day — refreshing")
+		return m.startDay()
+	}
 	if m.screen == screenInbox {
 		return m.inboxKey(key)
 	}
 	return m.pickKey(key)
+}
+
+// dayIsStale: the planning day rolled over since the last load, so the view
+// still shows yesterday until StartDay runs.
+func (m *Model) dayIsStale() bool {
+	return m.loaded && m.svc.Today() != m.state.Plan.Day
 }
 
 func (m *Model) load() tea.Cmd {

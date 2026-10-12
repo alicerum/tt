@@ -128,6 +128,9 @@ func (m *Model) statusView() string {
 
 func (m *Model) hintsView() string {
 	if m.screen == screenInbox {
+		if t, ok := m.state.Snapshot.Get(m.inbox.current); ok && t.ParentID != 0 {
+			return styleDim.Render("s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help")
+		}
 		return styleDim.Render(fmt.Sprintf("1-%d priority · s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help", len(m.svc.Config().Priorities)))
 	}
 	return styleDim.Render("a add · p pin · u unpin · x done · d drop · tab pane · →/← expand · i inbox · ctrl+z undo · ? help · q quit")

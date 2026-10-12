@@ -112,6 +112,9 @@ func (m *Model) inboxView() string {
 	for _, tag := range t.Tags {
 		meta = append(meta, "#"+tag)
 	}
+	if t.RolloverCount > 0 {
+		meta = append(meta, fmt.Sprintf("↻%d", t.RolloverCount))
+	}
 	parent := m.state.Snapshot.ParentOf(t)
 	if parent != nil {
 		meta = append(meta, fmt.Sprintf("parent #%d %s", parent.ID, parent.Title))

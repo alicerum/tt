@@ -35,6 +35,7 @@ type row struct {
 	child  bool              // indented under its parent
 	cand   *domain.Candidate // set when the task is pinned
 	parent bool              // has children
+	orphan int64             // child listed top-level because this parent isn't shown in the backlog
 }
 
 type pickState struct {
@@ -44,22 +45,37 @@ type pickState struct {
 	expanded map[int64]bool
 }
 
-// backlogRows: triaged open top-level tasks that aren't pinned, grouped by
-// priority (oldest first within a group, D26). Expanded parents list their
-// open, triaged, unpinned children.
+// backlogRows: triaged open tasks that aren't pinned, grouped by priority
+// (oldest first within a group, D26). Expanded parents list their open,
+// triaged, unpinned children. A child whose parent isn't itself listed here
+// (closed, in the Inbox, missing) is listed top-level so it never vanishes;
+// children of a pinned parent live under it in Today.
 func (m *Model) backlogRows() []row {
 	snap := m.state.Snapshot
 	levels := m.svc.Config().Priorities
 	groups := map[int][]domain.Task{}
+	orphanOf := map[int64]int64{}
 	for _, t := range snap.Tasks() {
-		if t.Status != domain.StatusOpen || t.ParentID != 0 || m.idx.inInbox[t.ID] {
+		if t.Status != domain.StatusOpen || m.idx.inInbox[t.ID] {
 			continue
 		}
 		if _, pinned := m.idx.cand[t.ID]; pinned {
 			continue
 		}
-		p := t.Priority
-		if p > len(levels) {
+		parent := snap.ParentOf(t)
+		if t.ParentID != 0 {
+			if parent != nil {
+				if _, pinned := m.idx.cand[parent.ID]; pinned {
+					continue
+				}
+				if parent.Status == domain.StatusOpen && !m.idx.inInbox[parent.ID] {
+					continue // listed under its parent
+				}
+			}
+			orphanOf[t.ID] = t.ParentID
+		}
+		p := domain.EffectivePriority(t, parent)
+		if p > len(levels) || p < 1 {
 			p = len(levels) + 1 // shrunk config: "P?" group at the end
 		}
 		groups[p] = append(groups[p], t)
@@ -78,7 +94,7 @@ func (m *Model) backlogRows() []row {
 		rows = append(rows, row{kind: rowHeader, text: header})
 		for _, t := range items {
 			kids := m.idx.children[t.ID]
-			rows = append(rows, row{kind: rowTask, task: t, parent: len(kids) > 0})
+			rows = append(rows, row{kind: rowTask, task: t, parent: len(kids) > 0, orphan: orphanOf[t.ID]})
 			if !m.pick.expanded[t.ID] {
 				continue
 			}
@@ -106,7 +122,7 @@ func (m *Model) todayRows() []row {
 		kids := m.idx.children[c.Task.ID]
 		rows = append(rows, row{kind: rowTask, task: c.Task, cand: &cc, parent: len(kids) > 0})
 		if c.Alert {
-			rows = append(rows, row{kind: rowHint, text: fmt.Sprintf("⚠ rolled over %d× → refine · split · reprioritize · hand off · drop", c.Task.RolloverCount)})
+			rows = append(rows, rolloverHint(c.Task))
 		}
 		for _, k := range kids {
 			if k.Status != domain.StatusOpen && !m.closedToday(k) {
@@ -117,9 +133,16 @@ func (m *Model) todayRows() []row {
 				kc = &x
 			}
 			rows = append(rows, row{kind: rowTask, task: k, child: true, cand: kc})
+			if kc != nil && kc.Alert {
+				rows = append(rows, rolloverHint(k))
+			}
 		}
 	}
 	return rows
+}
+
+func rolloverHint(t domain.Task) row {
+	return row{kind: rowHint, text: fmt.Sprintf("⚠ rolled over %d× → refine · split · reprioritize · hand off · drop", t.RolloverCount)}
 }
 
 func (m *Model) rows(p pane) []row {
@@ -231,6 +254,10 @@ func (m *Model) pickKey(key string) tea.Cmd {
 			p.expanded[t.ID] = false
 		}
 	case "p":
+		if t.Status != domain.StatusOpen {
+			m.setStatus("can't pin a closed task — x reopens it")
+			return nil
+		}
 		if r.cand != nil {
 			m.setStatus("already pinned")
 			return nil
@@ -333,18 +360,25 @@ func (m *Model) rowLine(r row, width int, selected bool) string {
 		if c.Blocked {
 			b.WriteString(" ▓")
 		}
-		if t.RolloverCount > 0 {
-			fmt.Fprintf(&b, " ↻%d", t.RolloverCount)
-		}
-		if c.PinnedDays > 1 {
-			fmt.Fprintf(&b, " 📌%d", c.PinnedDays)
-		}
+	}
+	if t.RolloverCount > 0 {
+		fmt.Fprintf(&b, " ↻%d", t.RolloverCount)
+	}
+	if c := r.cand; c != nil && c.PinnedDays > 1 {
+		fmt.Fprintf(&b, " 📌%d", c.PinnedDays)
 	}
 	switch t.Status {
 	case domain.StatusDone:
 		b.WriteString(" ✓")
 	case domain.StatusDropped:
 		b.WriteString(" ✗")
+	}
+	if r.orphan != 0 {
+		suffix := fmt.Sprintf(" ↳ #%d", r.orphan)
+		if !selected {
+			suffix = styleDim.Render(suffix)
+		}
+		b.WriteString(suffix)
 	}
 	line := pad(b.String(), width)
 	if t.Status != domain.StatusOpen {
