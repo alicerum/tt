@@ -95,6 +95,7 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D31 | `⏎` on any task opens Task detail; Pick → Block gets its own key, `B` (Plan 5) | Opening a task is the common action while browsing; Block is a once-a-day step |
 | D32 | Children never take `!n`: the edit line of a child leaves priority out, and `!n` in a child's edit or add-child line is refused ("children inherit priority from #parent") | A stored-but-unused value is confusing (D6) |
 | D33 | `tt add` with no line: from a terminal it prompts `add › ` on stderr and reads one line (no shell quoting); a multi-line paste there behaves like a pipe: line 1 is the token line, lines 2+ already pending become the note, and nothing is left on the terminal for the shell (`TIOCFLUSH`); from a pipe it reads all of stdin (over 1 MiB fails), line 1 = token line, lines 2+ = note (appended after the line's own ` -- ` note). The same rule maps a multi-line paste in quick-add / add-child | Capture without quoting `!` `~` `#`; pasting a Slack message keeps its body |
+| D34 | **A pinned parent pins its children.** Pinning a parent pins all its open children; a child added to or reopened under a pinned parent is pinned too. Unpinning the parent unpins all its children. A child can be pinned on its own; once its parent is pinned, unpinning the child is refused ("unpin the parent first"). One undo reverts the whole parent pin/unpin | One easy rule: what's under a pinned parent is pinned. Today "pin parent, then unpin a child" says the child isn't pinned, which is confusing |
 | D28 | Stack: **Go + Bubble Tea/Lip Gloss**, pure-Go SQLite, plus a small **Swift helper** for EventKit | Strong TUI ecosystem, single fast binary, good typing for refactors; EventKit isolated behind `CalendarSource` |
 
 ## Item model
@@ -119,7 +120,7 @@ Plus, outside the task itself: **pins** (task is a Today candidate since day X �
 
 **Parent/child:**
 - Children inherit priority and tags from their parent (no override in v1), so a child needs only a title and size and skips the Inbox.
-- Any item can be pinned, parents included, without warning. A pinned parent shows in candidates with its open children indented beneath it (plus children done today, struck through); children can be blocked individually.
+- Any item can be pinned, parents included, without warning. Pinning a parent pins its children (D34). A pinned parent shows in candidates with its open children indented beneath it (plus children done today, struck through); children can be blocked individually.
 - Time-blocking a parent asks: "This is a parent task; time-blocking its children is recommended. Proceed?"
 - When all children are done, the app suggests closing the parent.
 
@@ -365,6 +366,8 @@ Plan 4 ships in two slices, each merged on its own.
 - Tests to add when touched: `search.Oldest`; token-input completion with multi-byte text and a cursor right after a space; `prompt.resize`; a pinned parent with matching children while filtered; the scroll offset after a filter shrinks a scrolled list.
 
 ## Carry-forward from Plan 4b review
+
+- **Plan 5 (from use): a pinned parent pins its children (D34).** `Pin` on a parent pins its open children in the same transaction, and `Unpin` unpins them; `Unpin` on a child of a pinned parent returns an error the TUI shows as "unpin the parent first"; `AddChild`, `SetParent` and `Reopen` under a pinned parent pin the child. Undo restores exactly the pins the command changed (compare-and-set as for other planning undos). StartDay's carry-over and pinned-days (D10d) apply per child as today.
 
 Plan 4a's carry-forwards are done in Plan 4b, except "before migration 004" and the hints overflow (still open above).
 
