@@ -90,7 +90,11 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D26e | `/` opens the filter line prefilled with the current filter and narrows live; a parse error keeps the last valid results and refuses enter; `enter` keeps the filter, `esc` in the line restores the previous one, `esc` on the list clears it. Filters are never persisted. `g` cycles grouping (D26); created-date groups are age buckets: this week (<7d), this month (<30d), older (<90d), ancient. Priority grouping ends with `P?` then `unset`; size with `unsized` | Live feedback, no lost typing; a restart starts clean |
 | D27 | No separate Backlog view; Pick doubles as backlog browser/editor outside planning | One fewer view |
 | D29 | Notes are edited in the system editor: `E` suspends the TUI (Bubble Tea `ExecProcess`), opens the note as a temp markdown file in `$VISUAL` → `$EDITOR` → `vi`, and saves on exit. Unchanged file → no write; empty file → note cleared; non-zero editor exit → discard | My own editor and config beat any in-app modal; nothing to build or maintain |
+| D29a | A note edit refuses when the note changed elsewhere while the editor was open ("note changed since you opened it"); the edited text stays in the temp file, whose path the status shows | Never overwrite silently, never lose typing |
 | D30 | Timezone = the system timezone (Go `time.Local`); the standard `TZ` environment variable overrides it. No config option. The zone is read at process start, so an always-open TUI picks up a changed system zone (travel) only after a restart | System-wide is what the user wants; `TZ` already covers overrides |
+| D31 | `⏎` on any task opens Task detail; Pick → Block gets its own key, `B` (Plan 5) | Opening a task is the common action while browsing; Block is a once-a-day step |
+| D32 | Children never take `!n`: the edit line of a child leaves priority out, and `!n` in a child's edit or add-child line is refused ("children inherit priority from #parent") | A stored-but-unused value is confusing (D6) |
+| D33 | `tt add` with no line: from a terminal it prompts `add › ` on stderr and reads one line (no shell quoting); from a pipe it reads all of stdin, line 1 = token line, lines 2+ = note (appended after the line's own ` -- ` note). The same rule maps a multi-line paste in quick-add / add-child | Capture without quoting `!` `~` `#`; pasting a Slack message keeps its body |
 | D28 | Stack: **Go + Bubble Tea/Lip Gloss**, pure-Go SQLite, plus a small **Swift helper** for EventKit | Strong TUI ecosystem, single fast binary, good typing for refactors; EventKit isolated behind `CalendarSource` |
 
 ## Item model
@@ -132,7 +136,7 @@ Plus, outside the task itself: **pins** (task is a Today candidate since day X �
 ## Views
 
 1. **Today**: timeline (meetings, task blocks, free gaps, "now" line) beside candidates; Reviews lane docked below. *(Today mockup)*
-2. **Pick** (planning phase 1, also the everyday backlog browser): backlog left with grouping (D26), filter bar (D26a/b) and Reviews lane; today's candidates right with counters and inline ⚠ rollover prompts. Keys: `p` pin, `u` unpin, `x` done, `d` drop, `e` edit, `/` filter, `Tab` pane, `⏎` → Block. *(Pick mockup)*
+2. **Pick** (planning phase 1, also the everyday backlog browser): backlog left with grouping (D26), filter bar (D26a/b) and Reviews lane; today's candidates right with counters and inline ⚠ rollover prompts. Keys: `p` pin, `u` unpin, `x` done, `d` drop, `e` edit, `/` filter, `g` group, `Tab` pane, `⏎` detail (D31), `B` → Block (Plan 5). *(Pick mockup)*
 3. **Block** (planning phase 2): Today layout with a timeline cursor. Select candidate → `Tab` → cursor to gap → `⏎` places (D24); `+/-` resize, `f` fine-tune, `m` move, `u` unblock; ⚠ on conflicts (D18); calendar freshness indicator. Commit → summary → Today. *(Block mockup; validate in use)*
 4. **Inbox**: one card at a time; priority definitions always visible; `1-3` priority, `s/m/l/x` size, `@`/`#`/`>` requester/tags/parent, `n` skip, `d` drop; auto-advance once priority + size are set (2 keystrokes). *(Inbox mockup)*
 5. **Task detail** (`⏎` on any task): header, link, and a note preview (first few lines plus size, e.g. "+38 lines"); `E` opens the full note in `$EDITOR` (D29). Lists show a small marker on tasks that have a note. For parents, also children with progress bar, done children kept with date; `a` repeating add-child input (token syntax), `J/K` reorder. *(Parent mockup)*
@@ -298,7 +302,7 @@ Must be handled in the named plan:
 - **Plan 3: shrinking priority levels.** Tasks with a level above the configured count produce an edit prefill that `Edit` rejects; clamp or show as unset.
 - **Plan 3: parser edge.** `@.` / `#.` (sigil + only punctuation) still parse as requester/tag `.`; they should stay in the title.
 - **Plan 3: watch order.** Read `DataVersion` before `LoadSnapshot` so a write during the load triggers another reload.
-- **Plan 3: `tt add` without shell quoting.** Consider `tt add` with no line reading one line from stdin or a prompt, so `!`, `~`, `#`, `?` need no quoting.
+- **Plan 3: `tt add` without shell quoting.** Consider `tt add` with no line reading one line from stdin or a prompt, so `!`, `~`, `#`, `?` need no quoting. *(Decided: D33, Plan 4b.)*
 - Smaller: duplicate priority names aren't rejected; `tt --help` exits 2; undo-path tests for Drop/Reopen/SetNote/SetPriority/detach to add when the undo stack is wired.
 
 ## Carry-forward from Plan 2 review
@@ -338,7 +342,16 @@ Plan 4 ships in two slices, each merged on its own.
 - **Grouping remembered**: migration `003_ui_state.sql` (`ui_state(key PK, value)`), `Service.UIState`/`SetUIState`; not undoable; unknown values fall back to priority.
 - Leftovers: hide `0/0` progress when all children are dropped; stable scroll window; capture `svc` in pickKey closures.
 
-**Plan 4b — edit & detail**: Task detail (view 5) with children add (`a`, repeating) and `J/K` reorder (`Service.Reorder`), `e` edit line (P1), `E` note in `$EDITOR` (D29), open link (D21), `tt add` with no line reads stdin, multi-line paste maps lines 2+ to the note, `tt` open/ui error-path tests.
+**Plan 4b — edit & detail** (D21, D29, D29a, D31–D33, P1):
+- **Task detail screen** (full screen, `tt · Detail`). `⏎` on a task in either Pick pane opens it; `esc` goes back one level (child → parent → Pick, Pick's cursor unchanged); detail keeps a stack of task ids. Layout: header `#id title [P S] ↻n`; requester · tags · "captured 9d ago" · drop reason if dropped; 🔗 link; note preview (first 6 lines, then `… +N lines · E edit in $EDITOR`); for parents `CHILDREN ████░░ 2/4` with open children in position order, then closed ones with their close date (`✓ Fri 9 Oct`). The cursor starts on the task itself; `j/k` move through the children; `x d D p u e E o` act on the row under the cursor (same meaning as Pick); `⏎` on a child opens its detail. Rows are cached (rebuilt on load and navigation). If the shown task disappears, detail falls back a level and says so.
+- **Note marker**: lists (Pick panes, detail children) show `✎` after a title when the task has a note.
+- **`e` edit line** (P1): overlay on the shared token input, prefilled with `app.EditLine` (no note; D32 for children); validates on enter and keeps the text on error; ` -- ` replaces the note; undo via `Edit`.
+- **`E` note** (D29, D29a): `tea.ExecProcess` on a temp `tt-note-<id>-*.md` in `$VISUAL` → `$EDITOR` → `vi`; unchanged → no write; empty → cleared; non-zero exit → discarded (status says so); otherwise a compare-and-set note write (`Service.SetNoteFrom(ctx, id, from, note)`, `ErrConflict` when the note isn't `from` any more) with undo; the temp file is removed unless kept for D29a.
+- **`o` open link** (D21): runs `open <link>` in the background; "no link" when empty; errors shown.
+- **`a` add child** (detail of a top-level task): repeating `child › …` input, token syntax, `!n` refused (D32); `Service.AddChild(ctx, parentID, line)` inserts appended last in one transaction with one undo. On a child's detail: "one level only — esc to the parent". Inside detail `a` means add child; quick-add is one `esc` away.
+- **`J/K` reorder**: `Service.Reorder(ctx, id, delta)` swaps positions with the neighbouring sibling in one transaction; undo swaps back, `ErrConflict` if either row changed; at either end: "already first/last".
+- **Capture** (D33): `tt add` with no line (terminal prompt / piped stdin); multi-line paste in quick-add and add-child holds lines 2+ as a note shown as `+ N lines → note`, dropped on esc. One helper `dsl.WithNoteLines(line string, rest []string) string` composes the line for both.
+- **4a carry-forwards included**: esc in the filter line restores the selected tasks; `g` saves only the latest grouping and a late startup read can't override a choice already made; filtered `l/h` leave the unfiltered expansion alone and a parent with no listed children shows no `▸`; completion works after `--` in the filter bar. Plus `tt` open/ui error-path tests (Plan 3). Hints overflow stays with the UI tweaks; the hardening-test version waits for the next migration.
 
 ## Carry-forward from Plan 4a review
 
@@ -377,7 +390,7 @@ Collected while using the TUI. The user wants these later, batched with other tw
 ## Open items
 
 Proposed defaults (pending confirmation):
-- **P1 Edit**: `e` opens the token line prefilled with the task's current values. Notes: see D29.
+- **P1 Edit**: `e` opens the token line prefilled with the task's current values. Notes: see D29. *(Accepted; Plan 4b.)*
 - **P2 Undo**: session-level undo stack (`ctrl+z`) built from inverse commands; not persisted.
 - **P3 Done with future blocks**: blocks stay on the timeline, shown as done; `u` frees the time.
 - **P4 Timeline**: visible hours configurable (default 08:00–19:00), 30m rows, scrolls; off-grid meetings show exact times in the label; overlapping meetings merge into one busy band with a count.
