@@ -118,7 +118,7 @@ func TestPlanningNudges(t *testing.T) {
 	}
 	h.mustSee(" 17:00 ░ Parent") // the first free row after Large
 	h.keys("enter")
-	h.mustSee(`blocked "Parent" 17:00–04:00 · big task · consider splitting`) // XL: the rest of the planning day
+	h.mustSee(`blocked "Parent" 17:00–19:00 · big task · consider splitting`) // XL: the rest of the working hours (D39)
 
 	done := h.pinned("Done already !2 ~s")
 	if _, err := h.svc.Done(ctx, done.ID); err != nil {
@@ -280,31 +280,41 @@ func TestPinRepairsAParentPinnedBeforeD34(t *testing.T) {
 	h.mustSee("already pinned")
 }
 
-func TestTimelineGrowsPastItsWindow(t *testing.T) {
-	h := newHarness(t, config.Default())
-	h.pinned("Late !1 ~s")
-	h.clock.now = time.Date(2026, 10, 12, 21, 40, 0, 0, time.UTC)
-	h.keys("R", "tab", "b")
-	h.keys("j", "j", "j") // 21:30 -> 22:00, 22:30, 23:00
-	if h.m.today.at != 23*time.Hour {
-		t.Fatalf("the cursor is at %v; want 23:00", h.m.today.at)
+func TestBlockingOutsideWorkingHours(t *testing.T) {
+	h := newHarness(t, config.Default()) // working hours 08:00–19:00 (D39)
+	late := h.pinned("Late !1 ~s")
+	h.clock.now = time.Date(2026, 10, 13, 0, 20, 0, 0, time.UTC) // past midnight: still the 12th's planning day
+	h.m.today.placed = false                                     // as when tt starts now
+	h.keys("R")
+	h.mustSee("TIMELINE · outside of working hours", " 18:30 ")
+	h.mustNotSee("━━ now", " 19:00 ", " 00:00 ")
+	if h.m.today.at != 18*time.Hour+30*time.Minute {
+		t.Errorf("after hours the cursor rests on the last working row, got %v", h.m.today.at)
 	}
-	h.mustSee(" 23:00 ░ Late 1h")
-	h.keys("enter")
-	h.mustSee(`blocked "Late" 23:00–00:00`)
 
-	// The planning day ends at day_start + 24h; no row beyond it.
-	for range 100 {
+	h.keys("tab", "b") // placing in the past is allowed (D36): from the first free row
+	for range 30 {
 		h.keys("j")
 	}
-	if rows := h.m.today.tl.rows; rows[len(rows)-1].start != 27*time.Hour+30*time.Minute || h.m.today.at != rows[len(rows)-1].start {
-		t.Errorf("last row %v, cursor %v; want 03:30", rows[len(rows)-1].start, h.m.today.at)
+	if h.m.today.at != 18*time.Hour+30*time.Minute {
+		t.Fatalf("j stops at the last working row, got %v", h.m.today.at)
 	}
-	for range 100 {
-		h.keys("k")
+	h.mustSee(" 18:30 ░ Late 30m") // D24: capped by the end of the hours
+	h.keys("enter")
+	h.mustSee(`blocked "Late" 18:30–19:00`)
+
+	h.keys("+")
+	h.mustSee("✗ outside of working hours (08:00–19:00)")
+	h.keys("f")
+	for range 10 {
+		h.keys("backspace")
 	}
-	if rows := h.m.today.tl.rows; rows[0].start != 4*time.Hour || h.m.today.at != 4*time.Hour {
-		t.Errorf("first row %v, cursor %v; want 04:00", rows[0].start, h.m.today.at)
+	h.typeText("22:00 1h")
+	h.keys("enter")
+	h.mustSee("✗ outside of working hours (08:00–19:00)")
+	h.keys("esc")
+	if b := h.blocks(); len(b) != 1 || b[0].TaskID != late.ID || b[0].Start != 18*time.Hour+30*time.Minute {
+		t.Errorf("refused changes change nothing: %+v", b)
 	}
 }
 

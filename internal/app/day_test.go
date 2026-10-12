@@ -263,6 +263,7 @@ func TestUndoDoneAfterNewDayConflicts(t *testing.T) {
 
 func TestStartDayKeepsBlockPlacedBeforeItRan(t *testing.T) {
 	s, clock := startedService(t)
+	s.cfg.WorkStart = s.cfg.DayStart // the 05:00 block below is inside working hours (D39)
 	ctx := context.Background()
 	task := mustAdd(t, s, "Early bird !1 ~s")
 	mustBlock(t, s, task.ID, 10*h, h)

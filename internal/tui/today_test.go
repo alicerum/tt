@@ -10,6 +10,7 @@ import (
 
 	"tt/internal/config"
 	"tt/internal/domain"
+	"tt/internal/store"
 )
 
 // block places task id on today's timeline through the service and reloads.
@@ -75,17 +76,57 @@ func TestTimelineShowsBlocks(t *testing.T) {
 	h.mustSee("TIMELINE · 1/2 done", " 10:00 ▓ Alpha [P1 S] ✓") // P3: done blocks stay
 }
 
-func TestTimelineStretchesToBlocksAndNow(t *testing.T) {
-	h := newHarness(t, config.Default())
-	late := h.add("Late one !1 ~s")
-	h.block(late.ID, 21*time.Hour, time.Hour)
-	h.mustSee(" 21:00 ▓ Late one", " 21:30 ▓ ")
-	h.mustNotSee(" 22:00 ")
-
-	h.clock.now = time.Date(2026, 10, 12, 6, 40, 0, 0, time.UTC)
+// blockDirectly puts a block on today's timeline behind the service's back:
+// real data has blocks placed before the working hours existed (D39).
+func (h *harness) blockDirectly(id int64, start, dur time.Duration) {
+	h.t.Helper()
+	ctx := context.Background()
+	st, err := store.Open(ctx, h.path)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer st.Close()
+	err = st.InTx(ctx, func(x *store.Tx) error {
+		if err := x.PutPin(ctx, domain.Pin{TaskID: id, PinnedOn: h.svc.Today()}); err != nil {
+			return err
+		}
+		_, err := x.InsertBlock(ctx, domain.Block{TaskID: id, Day: h.svc.Today(), Start: start, Duration: dur})
+		return err
+	})
+	if err != nil {
+		h.t.Fatal(err)
+	}
 	h.keys("R")
-	h.mustSee(" 06:30 ", "━━ now 06:40")
-	h.mustNotSee(" 06:00 ")
+}
+
+func TestTimelineShowsOnlyWorkingHours(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.clock.now = time.Date(2026, 10, 12, 6, 40, 0, 0, time.UTC) // before the hours
+	h.m.today.placed = false                                     // as when tt starts now
+	h.keys("R")
+	h.mustSee("TIMELINE · outside of working hours", " 08:00 ")
+	h.mustNotSee(" 06:30 ", "━━ now")
+	if h.m.today.at != 8*time.Hour {
+		t.Errorf("before the hours the cursor starts on the first row, got %v", h.m.today.at)
+	}
+
+	// A block outside the hours (placed before D39) keeps a row of its own.
+	late := h.add("Late one !1 ~s")
+	h.blockDirectly(late.ID, 21*time.Hour, time.Hour)
+	h.mustSee(" 21:00 ▓ 21:00–22:00 Late one [P1 S] · outside of working hours", "TIMELINE · 0/1 done")
+	h.mustNotSee(" 21:30 ")
+	for range 30 {
+		h.keys("j")
+	}
+	h.keys("m", "k", "k", "enter") // it can be moved into the hours…
+	h.mustSee(`moved "Late one" to 18:00–19:00`)
+	h.blockDirectly(late.ID, 21*time.Hour, time.Hour)
+	for range 30 {
+		h.keys("j")
+	}
+	h.keys("u") // …or unblocked
+	h.mustSee(`unblocked "Late one" · still a candidate`)
+	h.mustNotSee(" 21:00 ▓")
 }
 
 func TestTimelineCursorAndBlockKeys(t *testing.T) {
@@ -172,7 +213,7 @@ func TestScreensShareTheHeightBudget(t *testing.T) {
 	for range 30 {
 		h.keys("k")
 	}
-	h.mustSee(" 04:00 ") // k past the window's start grows it, down to the day start
+	h.mustSee(" 08:00 ")
 }
 
 func TestTimelineRowsAcrossADSTGap(t *testing.T) {
@@ -181,7 +222,7 @@ func TestTimelineRowsAcrossADSTGap(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.DayStart, cfg.TimelineStart, cfg.TimelineEnd = 0, 0, 6*time.Hour
+	cfg.DayStart, cfg.WorkStart, cfg.WorkEnd = 0, 0, 6*time.Hour
 	h := newHarness(t, cfg)
 	h.clock.now = time.Date(2026, 3, 29, 3, 40, 0, 0, ams) // 02:00–03:00 doesn't exist this night
 	h.keys("R")

@@ -11,58 +11,88 @@ const rowLen = 30 * time.Minute
 
 // tlRow is one row of Today's timeline.
 type tlRow struct {
-	start  time.Duration  // wall-clock offset from midnight of the plan's day
-	blocks []domain.Block // the blocks that overlap the row, by start
+	start   time.Duration  // wall-clock offset from midnight of the plan's day
+	blocks  []domain.Block // the blocks that overlap the row, by start
+	outside bool           // a row of its own for a block outside the working hours (D39)
 }
 
-// timeline is Today's grid (D38), rebuilt on every load. Rows are
-// wall-clock offsets like stored blocks, so a DST night needs no special
-// case: a row that doesn't exist on the clock that night is still a row.
+// timeline is Today's grid (D38): the working hours in rows (D39), rebuilt
+// on every load. A block outside them (placed before D39, or before the
+// hours changed) gets a row of its own before or after them, so it never
+// vanishes. Rows are wall-clock offsets like stored blocks, so a DST night
+// needs no special case: a row that doesn't exist on the clock that night
+// is still a row.
 type timeline struct {
-	rows   []tlRow
-	blocks []domain.Block // the day's blocks, by start
-	now    time.Duration  // now's wall-clock offset; -1 when there is no now
-	nowRow int            // the row holding now; -1 when there is no now
-	dayEnd time.Duration  // the planning day's end: day start + 24h
+	rows       []tlRow
+	blocks     []domain.Block // the day's blocks, by start
+	now        time.Duration  // now's wall-clock offset; -1 when there is no now
+	nowRow     int            // the row holding now; -1 when now is outside the hours or there is none
+	start, end time.Duration  // the working hours
 }
 
-// buildTimeline lays out the hours from–to in rows, stretched to include
-// every block and now. now < 0 means no now (the shown day isn't today).
-func buildTimeline(blocks []domain.Block, from, to, now, dayStart time.Duration) timeline {
-	if now >= 0 {
-		from, to = min(from, now), max(to, now+time.Minute)
-	}
+// buildTimeline lays out the working hours from–to in rows. now < 0 means
+// no now (the shown day isn't today).
+func buildTimeline(blocks []domain.Block, from, to, now time.Duration) timeline {
+	tl := timeline{blocks: blocks, now: max(now, -1), nowRow: -1, start: from, end: to}
+	var before, after []tlRow
 	for _, b := range blocks {
-		from, to = min(from, b.Start), max(to, b.End())
+		switch {
+		case b.End() <= from:
+			before = append(before, tlRow{start: b.Start, blocks: []domain.Block{b}, outside: true})
+		case b.Start >= to:
+			after = append(after, tlRow{start: b.Start, blocks: []domain.Block{b}, outside: true})
+		}
 	}
-	from = from.Truncate(rowLen)
-	if to%rowLen != 0 {
-		to = to.Truncate(rowLen) + rowLen
-	}
-	tl := timeline{blocks: blocks, now: max(now, -1), nowRow: -1, dayEnd: dayStart + 24*time.Hour}
-	for s := from; s < to; s += rowLen {
+	tl.rows = before
+	for s := from.Truncate(rowLen); s < to; s += rowLen {
 		r := tlRow{start: s}
 		for _, b := range blocks {
 			if b.Start < s+rowLen && s < b.End() {
 				r.blocks = append(r.blocks, b)
 			}
 		}
-		if now >= s && now < s+rowLen {
+		if now >= max(s, from) && now < min(s+rowLen, to) {
 			tl.nowRow = len(tl.rows)
 		}
 		tl.rows = append(tl.rows, r)
 	}
+	tl.rows = append(tl.rows, after...)
 	return tl
 }
 
-// rowOf is the index of the row holding offset at, or -1.
+// outsideNow reports a now outside the working hours.
+func (tl *timeline) outsideNow() bool { return tl.now >= 0 && tl.nowRow < 0 }
+
+// rowOf is the index of the row holding offset at, or -1. An outside row
+// holds only its block's start.
 func (tl *timeline) rowOf(at time.Duration) int {
 	for i, r := range tl.rows {
-		if at >= r.start && at < r.start+rowLen {
+		if r.outside && at == r.start || !r.outside && at >= r.start && at < r.start+rowLen {
 			return i
 		}
 	}
 	return -1
+}
+
+// homeRow is where the cursor starts: the row holding now, else the last
+// working row once the hours are over, else the first.
+func (tl *timeline) homeRow() int {
+	if tl.nowRow >= 0 {
+		return tl.nowRow
+	}
+	first, last := -1, -1
+	for i, r := range tl.rows {
+		if !r.outside {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+	}
+	if tl.now >= tl.end {
+		return last
+	}
+	return first
 }
 
 // blockAt is the block keys on row i act on: the earliest one starting in it,
@@ -80,9 +110,12 @@ func (tl *timeline) blockAt(i int) (domain.Block, bool) {
 }
 
 // gapFrom is the free time from offset at until the next block starts or
-// the planning day ends; 0 when a block covers at.
+// the working hours end; 0 when a block covers at or at is outside the hours.
 func (tl *timeline) gapFrom(at time.Duration) time.Duration {
-	end := tl.dayEnd
+	if at < tl.start || at >= tl.end {
+		return 0
+	}
+	end := tl.end
 	for _, b := range tl.blocks {
 		if b.Start <= at && at < b.End() {
 			return 0

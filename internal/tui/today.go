@@ -32,7 +32,6 @@ type todayState struct {
 	cursor int           // the row index of at
 	offset int           // first timeline line shown (the now line counts as one)
 	carry  *carry        // a block being placed or moved (D36); nil otherwise
-	lo, hi time.Duration // the window grown by j/k past its ends; 0 = not grown
 }
 
 // carry is a picked-up block: a candidate being placed, or a block being
@@ -50,18 +49,10 @@ func (td *todayState) refresh(m *Model) {
 	if m.svc.Today() == plan.Day {
 		now = plan.Day.Offset(m.svc.Now())
 	}
-	from, to := cfg.TimelineStart, cfg.TimelineEnd
-	if td.lo != 0 {
-		from = min(from, td.lo)
-	}
-	to = max(to, td.hi)
-	td.tl = buildTimeline(plan.Blocks, from, to, now, cfg.DayStart)
+	td.tl = buildTimeline(plan.Blocks, cfg.WorkStart, cfg.WorkEnd, now)
 	rows := td.tl.rows
 	if !td.placed {
-		td.at, td.placed = rows[0].start, true
-		if td.tl.nowRow >= 0 {
-			td.at = rows[td.tl.nowRow].start
-		}
+		td.at, td.placed = rows[td.tl.homeRow()].start, true
 	}
 	td.cursor = td.tl.rowOf(td.at)
 	if td.cursor < 0 { // the window shrank past the cursor
@@ -122,7 +113,7 @@ func (m *Model) ghost() domain.Block {
 	c := td.carry
 	if c.block.ID != 0 {
 		b := c.block // keeps its offset within the row, so 09:10 moves to 10:10
-		b.Start = td.at + (c.block.Start - c.block.Start.Truncate(rowLen))
+		b.Start = td.at.Truncate(rowLen) + (c.block.Start - c.block.Start.Truncate(rowLen))
 		return b
 	}
 	// gapFrom is 0 inside a block, and a gap of 0 means "no cap": the ghost
@@ -131,14 +122,15 @@ func (m *Model) ghost() domain.Block {
 	return domain.Block{TaskID: c.task.ID, Day: m.state.Plan.Day, Start: td.at, Duration: length}
 }
 
-// fits explains why b can't go where it is: another block (D36), or the end
-// of the planning day. nil when it fits.
+// fits explains why b can't go where it is: another block (D36), or outside
+// the working hours (D39). nil when it fits.
 func (m *Model) fits(b domain.Block) error {
-	if o, clash := m.today.tl.clash(b); clash {
+	tl := &m.today.tl
+	if o, clash := tl.clash(b); clash {
 		return fmt.Errorf("overlaps %s", m.blockName(o))
 	}
-	if b.End() > m.today.tl.dayEnd {
-		return errors.New("runs past the end of the planning day")
+	if b.Start < tl.start || b.End() > tl.end {
+		return fmt.Errorf("outside of working hours (%s–%s)", clock(tl.start), clock(tl.end))
 	}
 	return nil
 }
@@ -185,9 +177,9 @@ func (m *Model) carryKey(key string) tea.Cmd {
 	td := &m.today
 	switch key {
 	case "j", "down":
-		td.move(m, +1)
+		td.move(+1)
 	case "k", "up":
-		td.move(m, -1)
+		td.move(-1)
 	case "enter":
 		return m.drop()
 	case "esc":
@@ -270,27 +262,10 @@ func (m *Model) commitPlan() tea.Cmd {
 	}
 }
 
-// move steps the cursor. Past the last or first row the window grows by one
-// row, within the planning day.
-func (td *todayState) move(m *Model, delta int) {
-	next := td.cursor + delta
-	rows := td.tl.rows
-	switch {
-	case next >= len(rows):
-		if start := rows[len(rows)-1].start + rowLen; start+rowLen <= td.tl.dayEnd {
-			td.hi, td.at = start+rowLen, start
-			td.refresh(m)
-		}
-		return
-	case next < 0:
-		if start := rows[0].start - rowLen; start >= m.svc.Config().DayStart {
-			td.lo, td.at = start, start
-			td.refresh(m)
-		}
-		return
-	}
-	td.cursor = next
-	td.at = rows[next].start
+// move steps the cursor, stopping at the first and the last row.
+func (td *todayState) move(delta int) {
+	td.cursor = max(0, min(td.cursor+delta, len(td.tl.rows)-1))
+	td.at = td.tl.rows[td.cursor].start
 }
 
 // line is the timeline line row i is drawn on: the now line comes right
@@ -384,10 +359,10 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	}
 	switch key {
 	case "j", "down":
-		td.move(m, +1)
+		td.move(+1)
 		return nil
 	case "k", "up":
-		td.move(m, -1)
+		td.move(-1)
 		return nil
 	}
 	if !blockKeys[key] {
@@ -461,6 +436,9 @@ func (m *Model) timelineLines(width int) []string {
 		}
 		title += fmt.Sprintf(" · %d/%d done", done, n)
 	}
+	if td.tl.outsideNow() {
+		title += " · outside of working hours"
+	}
 	var all []string
 	for i := range td.tl.rows {
 		all = append(all, m.timelineRow(i, width))
@@ -483,6 +461,14 @@ func (m *Model) timelineRow(i, width int) string {
 		if g := m.ghost(); r.start < g.End() && g.Start < r.start+rowLen {
 			return m.ghostRow(r, g, width)
 		}
+	}
+	if r.outside {
+		b := r.blocks[0]
+		line := pad(" "+clock(r.start)+" ▓ "+m.blockText(b, true)+" · outside of working hours", width)
+		if td.focus == focusTimeline && i == td.cursor {
+			return styleSelected.Render(line)
+		}
+		return styleDim.Render(line)
 	}
 	var labels []string
 	carried := false
@@ -532,13 +518,18 @@ func (m *Model) ghostRow(r tlRow, g domain.Block, width int) string {
 // blockLabel is a block's text on its first row: exact times when it is off
 // the half-hour grid, the task's title and badge, struck through when closed.
 func (m *Model) blockLabel(b domain.Block) string {
+	return m.blockText(b, b.Start%rowLen != 0 || b.Duration%rowLen != 0)
+}
+
+// blockText is blockLabel with the exact times shown when times is set.
+func (m *Model) blockText(b domain.Block, times bool) string {
 	t, ok := m.state.Snapshot.Get(b.TaskID)
 	if !ok {
 		return fmt.Sprintf("#%d", b.TaskID)
 	}
 	s := t.Title + " " + m.badge(t)
-	if b.Start%rowLen != 0 || b.Duration%rowLen != 0 {
-		s = clock(b.Start) + "–" + clock(b.End()) + " " + s
+	if times {
+		s = span(b) + " " + s
 	}
 	switch t.Status {
 	case domain.StatusDone:

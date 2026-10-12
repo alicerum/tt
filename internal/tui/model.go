@@ -192,7 +192,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			res := msg.res
 			m.banner = &res
 			m.today.placed = false // a new day's cursor starts on its now row
-			m.today.carry, m.today.lo, m.today.hi = nil, 0, 0
+			m.today.carry = nil
 		}
 		return m.load()
 	case actionMsg:

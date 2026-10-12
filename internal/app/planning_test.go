@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -141,6 +142,9 @@ func TestBlock(t *testing.T) {
 		t.Errorf("undo of Block on an unpinned task should leave it unpinned: %+v", plan)
 	}
 
+	// This test checks the planning day's edges; the working hours (D39)
+	// have their own test.
+	s.cfg.WorkStart, s.cfg.WorkEnd = s.cfg.DayStart, s.cfg.DayStart+24*h
 	mustBlock(t, s, task.ID, 11*h, h)
 	mustBlock(t, s, task.ID, 14*h, h) // a task may have several blocks
 	mustBlock(t, s, task.ID, 25*h, h) // 01:00 after midnight is still today (day start 04:00)
@@ -384,4 +388,35 @@ func TestRestoredBlockKeepsItsIDWithoutCollision(t *testing.T) {
 			t.Errorf("restored 12:00 block id = %d; want %d", blk.ID, ba.ID)
 		}
 	}
+}
+
+func TestBlocksStayInsideWorkingHours(t *testing.T) {
+	s, _ := startedService(t) // default working hours 08:00–19:00 (D39)
+	ctx := context.Background()
+	must := mustUndo(t)
+	a := mustAdd(t, s, "A !1 ~s")
+	blk, _ := mustBlock(t, s, a.ID, 18*h, h) // ends exactly at 19:00
+	mustBlock(t, s, a.ID, 8*h, 30*m)         // starts exactly at 08:00
+
+	bad := []struct {
+		name string
+		fn   func() error
+	}{
+		{"block before the hours", func() error { _, _, err := s.Block(ctx, a.ID, 7*h+30*m, h); return err }},
+		{"block past the hours", func() error { _, _, err := s.Block(ctx, a.ID, 21*h, h); return err }},
+		{"block after midnight", func() error { _, _, err := s.Block(ctx, a.ID, 25*h, h); return err }},
+		{"move past the hours", func() error { _, err := s.MoveBlock(ctx, blk.ID, 18*h+30*m); return err }},
+		{"resize past the hours", func() error { _, err := s.ResizeBlock(ctx, blk.ID, 90*m); return err }},
+		{"fine-tune before the hours", func() error { _, err := s.SetBlockSpan(ctx, blk.ID, 7*h, 30*m); return err }},
+	}
+	for _, c := range bad {
+		err := c.fn()
+		if !errors.Is(err, ErrInvalidValue) || err == nil || !strings.Contains(err.Error(), "outside of working hours (08:00–19:00)") {
+			t.Errorf("%s: %v; want ErrInvalidValue, outside of working hours (08:00–19:00)", c.name, err)
+		}
+	}
+	if got := mustPlan(t, s).Blocks; len(got) != 2 || got[1].Start != 18*h || got[1].Duration != h {
+		t.Errorf("refused changes must change nothing: %+v", got)
+	}
+	must(s.MoveBlock(ctx, blk.ID, 17*h))
 }

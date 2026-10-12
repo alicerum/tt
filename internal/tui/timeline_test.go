@@ -21,29 +21,46 @@ func starts(tl timeline) []time.Duration {
 }
 
 func TestTimelineWindow(t *testing.T) {
-	const dayStart = 4 * hr
-	tl := buildTimeline(nil, 8*hr, 19*hr, 10*hr+12*mn, dayStart)
+	tl := buildTimeline(nil, 8*hr, 19*hr, 10*hr+12*mn)
 	if got := starts(tl); len(got) != 22 || got[0] != 8*hr || got[21] != 18*hr+30*mn {
-		t.Fatalf("default window: %d rows %v…; want 22 rows 08:00…18:30", len(got), got[:1])
+		t.Fatalf("working hours: %d rows %v…; want 22 rows 08:00…18:30", len(got), got[:1])
 	}
-	if tl.nowRow != 4 { // 10:00
-		t.Errorf("nowRow = %d; want 4 (the 10:00 row)", tl.nowRow)
+	if tl.nowRow != 4 || tl.homeRow() != 4 || tl.outsideNow() { // 10:00
+		t.Errorf("nowRow = %d, homeRow %d; want 4 (the 10:00 row)", tl.nowRow, tl.homeRow())
 	}
 
-	// The window stretches to an early now and a late, off-grid block.
+	// D39: only the working hours. An early now doesn't stretch them; a
+	// block outside them (placed before D39) gets a row of its own after them.
 	late := domain.Block{ID: 1, TaskID: 1, Start: 21*hr + 10*mn, Duration: 40 * mn}
-	tl = buildTimeline([]domain.Block{late}, 8*hr, 19*hr, 6*hr+45*mn, dayStart)
+	early := domain.Block{ID: 2, TaskID: 2, Start: 6 * hr, Duration: hr}
+	tl = buildTimeline([]domain.Block{early, late}, 8*hr, 19*hr, 6*hr+45*mn)
 	got := starts(tl)
-	if got[0] != 6*hr+30*mn || got[len(got)-1] != 21*hr+30*mn {
-		t.Errorf("stretched window %v–%v; want 06:30–21:30 rows", got[0], got[len(got)-1])
+	if len(got) != 24 || got[0] != 6*hr || got[1] != 8*hr || got[22] != 18*hr+30*mn || got[23] != late.Start {
+		t.Errorf("rows %v; want 06:00 (outside), 08:00…18:30, 21:10 (outside)", got)
 	}
-	if tl.nowRow != 0 {
-		t.Errorf("nowRow = %d; want 0", tl.nowRow)
+	if !tl.rows[0].outside || !tl.rows[23].outside || tl.rows[1].outside {
+		t.Error("only the blocks outside the hours get outside rows")
+	}
+	if !tl.outsideNow() || tl.nowRow != -1 || tl.homeRow() != 1 {
+		t.Errorf("now 06:45 is outside: nowRow %d, homeRow %d; want -1 and the 08:00 row", tl.nowRow, tl.homeRow())
+	}
+	if tl.rowOf(late.Start) != 23 || tl.rowOf(late.Start+mn) != -1 {
+		t.Error("an outside row holds only its block's start")
+	}
+	if g := tl.gapFrom(7 * hr); g != 0 {
+		t.Errorf("gapFrom outside the hours = %v; want 0", g)
 	}
 
-	// No now (a stale day): no stretching for it, no now row.
-	tl = buildTimeline(nil, 8*hr, 19*hr, -1, dayStart)
-	if len(tl.rows) != 22 || tl.nowRow != -1 {
+	// After the hours (e.g. past midnight, still the same planning day): the
+	// cursor rests on the last working row.
+	tl = buildTimeline(nil, 8*hr, 19*hr, 24*hr+20*mn)
+	if !tl.outsideNow() || tl.homeRow() != 21 {
+		t.Errorf("after hours: outsideNow %v, homeRow %d; want true, 21", tl.outsideNow(), tl.homeRow())
+	}
+
+	// No now (a stale day).
+	tl = buildTimeline(nil, 8*hr, 19*hr, -1)
+	if len(tl.rows) != 22 || tl.nowRow != -1 || tl.outsideNow() {
 		t.Errorf("without now: %d rows, nowRow %d", len(tl.rows), tl.nowRow)
 	}
 }
@@ -52,7 +69,7 @@ func TestTimelineRowsAndGaps(t *testing.T) {
 	a := domain.Block{ID: 1, TaskID: 10, Start: 9 * hr, Duration: 90 * mn}        // 09:00–10:30
 	b := domain.Block{ID: 2, TaskID: 11, Start: 11*hr + 10*mn, Duration: 15 * mn} // 11:10–11:25
 	c := domain.Block{ID: 3, TaskID: 12, Start: 11*hr + 25*mn, Duration: 5 * mn}  // 11:25–11:30
-	tl := buildTimeline([]domain.Block{a, b, c}, 8*hr, 19*hr, 8*hr, 4*hr)
+	tl := buildTimeline([]domain.Block{a, b, c}, 8*hr, 19*hr, 8*hr)
 
 	at := func(off time.Duration) int { return tl.rowOf(off) }
 	if blk, ok := tl.blockAt(at(9*hr + 30*mn)); !ok || blk.ID != a.ID {
@@ -69,7 +86,7 @@ func TestTimelineRowsAndGaps(t *testing.T) {
 	// an earlier row loses to one starting in it.
 	a2 := domain.Block{ID: 1, TaskID: 10, Start: 10 * hr, Duration: 40 * mn}       // 10:00–10:40
 	b2 := domain.Block{ID: 2, TaskID: 11, Start: 10*hr + 40*mn, Duration: 20 * mn} // 10:40–11:00
-	tl2 := buildTimeline([]domain.Block{a2, b2}, 8*hr, 19*hr, 8*hr, 4*hr)
+	tl2 := buildTimeline([]domain.Block{a2, b2}, 8*hr, 19*hr, 8*hr)
 	if blk, ok := tl2.blockAt(tl2.rowOf(10*hr + 30*mn)); !ok || blk.ID != b2.ID {
 		t.Errorf("10:30 row names B (it starts at 10:40 in this row; A only carries on): got %+v %v", blk, ok)
 	}
@@ -83,10 +100,10 @@ func TestTimelineRowsAndGaps(t *testing.T) {
 	cases := []struct {
 		at, want time.Duration
 	}{
-		{8 * hr, hr},                   // until a starts
-		{9*hr + 30*mn, 0},              // inside a
-		{10*hr + 30*mn, 40 * mn},       // until b
-		{11*hr + 30*mn, 16*hr + 30*mn}, // until the planning day ends (04:00 next date)
+		{8 * hr, hr},                  // until a starts
+		{9*hr + 30*mn, 0},             // inside a
+		{10*hr + 30*mn, 40 * mn},      // until b
+		{11*hr + 30*mn, 7*hr + 30*mn}, // until the working hours end (19:00)
 	}
 	for _, c := range cases {
 		if got := tl.gapFrom(c.at); got != c.want {

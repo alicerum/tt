@@ -434,7 +434,8 @@ func (s *Service) todaysBlock(ctx context.Context, x *store.Tx, id int64) (domai
 }
 
 // validateSpan checks that b is whole minutes, at least a minute long, and
-// inside the planning day: from day start until the next day start.
+// inside the planning day (from day start until the next day start) and the
+// working hours (D39).
 func (s *Service) validateSpan(b domain.Block) error {
 	switch {
 	case b.Start%time.Minute != 0 || b.Duration%time.Minute != 0:
@@ -447,8 +448,17 @@ func (s *Service) validateSpan(b domain.Block) error {
 		return fmt.Errorf("block start %v is past the planning day: %w", b.Start, ErrInvalidValue)
 	case b.Start < s.cfg.DayStart || b.End() > s.cfg.DayStart+24*time.Hour:
 		return fmt.Errorf("block %v–%v is outside the planning day: %w", b.Start, b.End(), ErrInvalidValue)
+	case b.Start < s.cfg.WorkStart || b.End() > s.cfg.WorkEnd:
+		return fmt.Errorf("%s–%s is outside of working hours (%s–%s): %w",
+			hhmm(b.Start), hhmm(b.End()), hhmm(s.cfg.WorkStart), hhmm(s.cfg.WorkEnd), ErrInvalidValue)
 	}
 	return nil
+}
+
+// hhmm renders a wall-clock offset as "09:30"; offsets past 24h wrap.
+func hhmm(off time.Duration) string {
+	minutes := int(off / time.Minute)
+	return fmt.Sprintf("%02d:%02d", minutes/60%24, minutes%60)
 }
 
 // checkFree fails with ErrOverlap if b overlaps another block on its day.
