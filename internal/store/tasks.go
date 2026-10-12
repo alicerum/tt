@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"tt/internal/domain"
 )
@@ -75,6 +76,13 @@ func (x *Tx) DeleteTask(ctx context.Context, id int64) error {
 		return err
 	}
 	return mustAffect(res, id)
+}
+
+// TouchChildren sets updated_at on parentID's children, so undos recorded
+// against them are refused once the parent changes or goes away.
+func (x *Tx) TouchChildren(ctx context.Context, parentID int64, now time.Time) error {
+	_, err := x.tx.ExecContext(ctx, "UPDATE tasks SET updated_at = ? WHERE parent_id = ?", formatTime(now), parentID)
+	return err
 }
 
 func (x *Tx) HasChildren(ctx context.Context, id int64) (bool, error) {

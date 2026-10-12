@@ -171,5 +171,11 @@ func (s *Service) Reopen(ctx context.Context, id int64) (Undo, error) {
 // Delete hard-deletes a task (D23). It is not undoable; the TUI confirms first.
 // Children of a deleted parent become top-level.
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.store.InTx(ctx, func(x *store.Tx) error { return x.DeleteTask(ctx, id) })
+	return s.store.InTx(ctx, func(x *store.Tx) error {
+		// Children are detached by the delete; their pending undos must not resurrect the link.
+		if err := x.TouchChildren(ctx, id, s.clock.Now()); err != nil {
+			return err
+		}
+		return x.DeleteTask(ctx, id)
+	})
 }

@@ -96,3 +96,25 @@ func TestUndoMoveAfterUnblockConflicts(t *testing.T) {
 		t.Errorf("undo Move after Unblock: %v; want ErrConflict", err)
 	}
 }
+
+func TestUndoRefusesAfterParentDeleted(t *testing.T) {
+	s, clock := newService(t)
+	ctx := context.Background()
+	parent := mustAdd(t, s, "Parent !1 ~xl")
+	kid := mustAdd(t, s, "Kid")
+	if _, err := s.SetParent(ctx, kid.ID, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	clock.Advance(time.Minute)
+	sizeUndo, err := s.SetSize(ctx, kid.ID, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.Advance(time.Minute)
+	if err := s.Delete(ctx, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := sizeUndo(ctx); !errors.Is(err, ErrConflict) {
+		t.Errorf("undo after the parent was deleted: %v; want ErrConflict", err)
+	}
+}
