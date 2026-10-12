@@ -31,7 +31,9 @@ func inheritedPriority(parentID int64, p int) error {
 	return fmt.Errorf("%w: children inherit priority from #%d; drop !%d", ErrInvalidValue, parentID, p)
 }
 
-// AddChild captures a task from line as the last child of parentID.
+// AddChild captures a task from line as the last child of parentID. Under a
+// pinned parent the child is pinned too (D34); undoing the add deletes the
+// child, and its pin with it.
 func (s *Service) AddChild(ctx context.Context, parentID int64, line string) (domain.Task, Undo, error) {
 	d, err := s.ParseChild(parentID, line)
 	if err != nil {
@@ -53,7 +55,10 @@ func (s *Service) AddChild(ctx context.Context, parentID int64, line string) (do
 		if t.Position, err = x.NextChildPosition(ctx, parentID); err != nil {
 			return err
 		}
-		t.ID, err = x.InsertTask(ctx, t)
+		if t.ID, err = x.InsertTask(ctx, t); err != nil {
+			return err
+		}
+		_, err = s.pinUnderParent(ctx, x, t)
 		return err
 	})
 	if err != nil {

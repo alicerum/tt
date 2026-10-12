@@ -129,35 +129,46 @@ func (s *Service) SetSize(ctx context.Context, id int64, size domain.Size) (Undo
 }
 
 // SetParent makes id a child of parentID (appended last); 0 detaches it.
-// Only one level of nesting is allowed (D6).
+// Only one level of nesting is allowed (D6). Under a pinned parent the
+// child is pinned too (D34).
 func (s *Service) SetParent(ctx context.Context, id, parentID int64) (Undo, error) {
-	return s.modify(ctx, id, func(x *store.Tx, t *domain.Task) error {
+	return s.modifyAnd(ctx, id, func(x *store.Tx, t *domain.Task) (undoStep, error) {
 		if parentID == 0 {
 			t.ParentID, t.Position = 0, 0
-			return nil
+			return nil, nil
 		}
 		if parentID == id {
-			return fmt.Errorf("%w: a task can't be its own parent", ErrInvalidParent)
+			return nil, fmt.Errorf("%w: a task can't be its own parent", ErrInvalidParent)
 		}
 		parent, err := x.GetTask(ctx, parentID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if parent.ParentID != 0 {
-			return fmt.Errorf("%w: #%d is already a child; only one level of nesting", ErrInvalidParent, parentID)
+			return nil, fmt.Errorf("%w: #%d is already a child; only one level of nesting", ErrInvalidParent, parentID)
 		}
 		if has, err := x.HasChildren(ctx, id); err != nil {
-			return err
+			return nil, err
 		} else if has {
-			return fmt.Errorf("%w: #%d has children; only one level of nesting", ErrInvalidParent, id)
+			return nil, fmt.Errorf("%w: #%d has children; only one level of nesting", ErrInvalidParent, id)
 		}
 		pos, err := x.NextChildPosition(ctx, parentID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		t.ParentID, t.Position = parentID, pos
-		return nil
+		return s.pinnedUnderParent(ctx, x, *t)
 	})
+}
+
+// pinnedUnderParent pins t if it joins a pinned parent and returns the undo
+// step that removes that pin again (nil when nothing was pinned).
+func (s *Service) pinnedUnderParent(ctx context.Context, x *store.Tx, t domain.Task) (undoStep, error) {
+	added, err := s.pinUnderParent(ctx, x, t)
+	if err != nil || !added {
+		return nil, err
+	}
+	return removeAddedPin(t.ID), nil
 }
 
 // closedAt keeps the original close time when t is already closed.
@@ -184,11 +195,12 @@ func (s *Service) Drop(ctx context.Context, id int64, reason string) (Undo, erro
 	})
 }
 
-// Reopen returns a done or dropped task to open.
+// Reopen returns a done or dropped task to open. A child of a pinned parent
+// is pinned again (D34).
 func (s *Service) Reopen(ctx context.Context, id int64) (Undo, error) {
-	return s.modify(ctx, id, func(_ *store.Tx, t *domain.Task) error {
+	return s.modifyAnd(ctx, id, func(x *store.Tx, t *domain.Task) (undoStep, error) {
 		t.Status, t.ClosedAt, t.ClosedBy, t.DropReason = domain.StatusOpen, time.Time{}, "", ""
-		return nil
+		return s.pinnedUnderParent(ctx, x, *t)
 	})
 }
 

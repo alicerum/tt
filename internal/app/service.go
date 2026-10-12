@@ -59,10 +59,22 @@ func (s *Service) DataVersion(ctx context.Context) (int64, error) {
 // a rollover or a GitHub auto-close; undoing would silently revert that.
 var ErrConflict = errors.New("task changed since; can't undo")
 
+// undoStep is extra work an undo does in its transaction.
+type undoStep func(ctx context.Context, x *store.Tx) error
+
 // modify loads task id, applies fn, saves it, and returns an Undo that
 // restores the previous row, but only if nothing has changed the row since.
 func (s *Service) modify(ctx context.Context, id int64, fn func(x *store.Tx, t *domain.Task) error) (Undo, error) {
-	var before, after domain.Task
+	return s.modifyAnd(ctx, id, func(x *store.Tx, t *domain.Task) (undoStep, error) { return nil, fn(x, t) })
+}
+
+// modifyAnd is modify for commands whose undo has more to do: the step fn
+// returns (if any) runs in the undo's transaction after the row is restored.
+func (s *Service) modifyAnd(ctx context.Context, id int64, fn func(x *store.Tx, t *domain.Task) (undoStep, error)) (Undo, error) {
+	var (
+		before, after domain.Task
+		step          undoStep
+	)
 	err := s.store.InTx(ctx, func(x *store.Tx) error {
 		var err error
 		if before, err = x.GetTask(ctx, id); err != nil {
@@ -70,7 +82,7 @@ func (s *Service) modify(ctx context.Context, id int64, fn func(x *store.Tx, t *
 		}
 		after = before
 		after.Tags = append([]string(nil), before.Tags...)
-		if err := fn(x, &after); err != nil {
+		if step, err = fn(x, &after); err != nil {
 			return err
 		}
 		after.UpdatedAt = s.clock.Now()
@@ -84,7 +96,10 @@ func (s *Service) modify(ctx context.Context, id int64, fn func(x *store.Tx, t *
 			if err := unchangedSince(ctx, x, after); err != nil {
 				return err
 			}
-			return x.UpdateTask(ctx, before)
+			if err := x.UpdateTask(ctx, before); err != nil || step == nil {
+				return err
+			}
+			return step(ctx, x)
 		})
 	}, nil
 }

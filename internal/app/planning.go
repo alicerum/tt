@@ -12,6 +12,10 @@ import (
 
 var ErrOverlap = errors.New("overlaps another block")
 
+// ErrParentPinned: a child of a pinned parent is pinned with it, so it can't
+// be unpinned on its own (D34).
+var ErrParentPinned = errors.New("unpin the parent first")
+
 // Today is the current planning day (D19).
 func (s *Service) Today() domain.Day {
 	return domain.PlanningDay(s.clock.Now(), s.cfg.DayStart)
@@ -30,21 +34,25 @@ func (s *Service) DefaultBlockLength(t domain.Task, gap time.Duration) time.Dura
 }
 
 // Pin makes an open task one of today's candidates. Pinning a pinned task
-// changes nothing.
+// changes nothing. Pinning a parent pins its open children too (D34); a task
+// with children returns no undo (unpinning it by hand reverses the pin).
 func (s *Service) Pin(ctx context.Context, id int64) (Undo, error) {
 	today := s.Today()
-	var had bool
+	var had, parent bool
 	err := s.store.InTx(ctx, func(x *store.Tx) error {
 		if err := mustBeOpen(ctx, x, id); err != nil {
 			return err
 		}
 		var err error
+		if parent, err = pinChildren(ctx, x, id, today); err != nil {
+			return err
+		}
 		if _, had, err = x.GetPin(ctx, id); err != nil || had {
 			return err
 		}
 		return x.PutPin(ctx, domain.Pin{TaskID: id, PinnedOn: today})
 	})
-	if err != nil {
+	if err != nil || parent {
 		return nil, err
 	}
 	return func(ctx context.Context) error {
@@ -68,16 +76,35 @@ func (s *Service) Pin(ctx context.Context, id int64) (Undo, error) {
 }
 
 // Unpin removes a task from Today, together with its blocks on today's timeline.
+// Unpinning a parent unpins its children too, except children with a block
+// today: they stay pinned on their own, so no block is lost (D34). A task with
+// children returns no undo. A child of a pinned parent can't be unpinned on
+// its own (ErrParentPinned).
 func (s *Service) Unpin(ctx context.Context, id int64) (Undo, error) {
 	today := s.Today()
 	var (
 		pin    domain.Pin
 		had    bool
+		parent bool
 		blocks []domain.Block
 	)
 	err := s.store.InTx(ctx, func(x *store.Tx) error {
 		var err error
 		if pin, had, err = x.GetPin(ctx, id); err != nil || !had {
+			return err
+		}
+		t, err := x.GetTask(ctx, id)
+		if err != nil {
+			return err
+		}
+		if t.ParentID != 0 {
+			if _, parentPinned, err := x.GetPin(ctx, t.ParentID); err != nil {
+				return err
+			} else if parentPinned {
+				return fmt.Errorf("#%d is pinned with its parent #%d: %w", id, t.ParentID, ErrParentPinned)
+			}
+		}
+		if parent, err = unpinChildren(ctx, x, id, today); err != nil {
 			return err
 		}
 		if blocks, err = x.TaskBlocksOn(ctx, id, today); err != nil {
@@ -90,7 +117,7 @@ func (s *Service) Unpin(ctx context.Context, id int64) (Undo, error) {
 		}
 		return x.DeletePin(ctx, id)
 	})
-	if err != nil {
+	if err != nil || parent {
 		return nil, err
 	}
 	return func(ctx context.Context) error {
@@ -122,8 +149,9 @@ func (s *Service) Unpin(ctx context.Context, id int64) (Undo, error) {
 
 // Block places an open task on today's timeline at wall-clock offset start
 // (from midnight) for dur. It pins the task and resets its pinned-days
-// counter (D10d). Blocks may not overlap each other; meetings are not checked
-// here (D18 conflicts are shown, not prevented).
+// counter (D10d); a parent it pins brings its open children along (D34; the
+// undo leaves those pinned). Blocks may not overlap each other; meetings are
+// not checked here (D18 conflicts are shown, not prevented).
 func (s *Service) Block(ctx context.Context, id int64, start, dur time.Duration) (domain.Block, Undo, error) {
 	b := domain.Block{TaskID: id, Day: s.Today(), Start: start, Duration: dur}
 	if err := s.validateSpan(b); err != nil {
@@ -143,6 +171,11 @@ func (s *Service) Block(ctx context.Context, id int64, start, dur time.Duration)
 		var err error
 		if pin, had, err = x.GetPin(ctx, id); err != nil {
 			return err
+		}
+		if !had {
+			if _, err := pinChildren(ctx, x, id, b.Day); err != nil {
+				return err
+			}
 		}
 		if err := x.PutPin(ctx, domain.Pin{TaskID: id, PinnedOn: b.Day}); err != nil {
 			return err
@@ -179,6 +212,12 @@ func (s *Service) Block(ctx context.Context, id int64, start, dur time.Duration)
 			return x.DeletePin(ctx, id)
 		})
 	}, nil
+}
+
+// SetBlockSpan sets the start and the length of one of today's blocks in one
+// step (fine-tune, D36).
+func (s *Service) SetBlockSpan(ctx context.Context, blockID int64, start, dur time.Duration) (Undo, error) {
+	return s.reshape(ctx, blockID, func(b *domain.Block) { b.Start, b.Duration = start, dur })
 }
 
 // MoveBlock moves one of today's blocks to a new start.
@@ -258,6 +297,83 @@ func (s *Service) reshape(ctx context.Context, blockID int64, fn func(*domain.Bl
 			}
 		})
 	}, nil
+}
+
+// pinChildren pins id's open children that aren't pinned yet (D34) and
+// reports whether id has any children.
+func pinChildren(ctx context.Context, x *store.Tx, id int64, day domain.Day) (bool, error) {
+	kids, err := x.Children(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	for _, k := range kids {
+		if k.Status != domain.StatusOpen {
+			continue
+		}
+		if _, had, err := x.GetPin(ctx, k.ID); err != nil {
+			return false, err
+		} else if had {
+			continue
+		}
+		if err := x.PutPin(ctx, domain.Pin{TaskID: k.ID, PinnedOn: day}); err != nil {
+			return false, err
+		}
+	}
+	return len(kids) > 0, nil
+}
+
+// unpinChildren unpins id's children that have no block on day (D34) and
+// reports whether id has any children.
+func unpinChildren(ctx context.Context, x *store.Tx, id int64, day domain.Day) (bool, error) {
+	kids, err := x.Children(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	for _, k := range kids {
+		blocks, err := x.TaskBlocksOn(ctx, k.ID, day)
+		if err != nil {
+			return false, err
+		}
+		if len(blocks) > 0 {
+			continue // a blocked child stays pinned on its own
+		}
+		if err := x.DeletePin(ctx, k.ID); err != nil {
+			return false, err
+		}
+	}
+	return len(kids) > 0, nil
+}
+
+// pinUnderParent pins t when it is an open child of a pinned parent and not
+// pinned yet (D34). added reports whether it put a pin; the undo of the
+// command then removes it again with removeAddedPin.
+func (s *Service) pinUnderParent(ctx context.Context, x *store.Tx, t domain.Task) (added bool, err error) {
+	if t.ParentID == 0 || t.Status != domain.StatusOpen {
+		return false, nil
+	}
+	if _, parentPinned, err := x.GetPin(ctx, t.ParentID); err != nil || !parentPinned {
+		return false, err
+	}
+	if _, had, err := x.GetPin(ctx, t.ID); err != nil || had {
+		return false, err
+	}
+	return true, x.PutPin(ctx, domain.Pin{TaskID: t.ID, PinnedOn: s.Today()})
+}
+
+// removeAddedPin is the undo step for a pin pinUnderParent added: the pin
+// goes unless the task got a block meanwhile.
+func removeAddedPin(id int64) undoStep {
+	return func(ctx context.Context, x *store.Tx) error {
+		pin, had, err := x.GetPin(ctx, id)
+		if err != nil || !had {
+			return err
+		}
+		blocks, err := x.TaskBlocksOn(ctx, id, pin.PinnedOn)
+		if err != nil || len(blocks) > 0 {
+			return err
+		}
+		return x.DeletePin(ctx, id)
+	}
 }
 
 // taskStillExists fails with ErrConflict if the task was deleted since.
