@@ -37,9 +37,14 @@ func (s *Service) Add(ctx context.Context, line string) (domain.Task, Undo, erro
 	if err != nil {
 		return domain.Task{}, nil, err
 	}
-	id := t.ID
+	added := t
 	undo := func(ctx context.Context) error {
-		return s.store.InTx(ctx, func(x *store.Tx) error { return x.DeleteTask(ctx, id) })
+		return s.store.InTx(ctx, func(x *store.Tx) error {
+			if err := unchangedSince(ctx, x, added); err != nil {
+				return err
+			}
+			return x.DeleteTask(ctx, added.ID)
+		})
 	}
 	return t, undo, nil
 }

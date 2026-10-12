@@ -4,6 +4,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"tt/internal/config"
@@ -48,16 +50,20 @@ func (s *Service) DataVersion(ctx context.Context) (int64, error) {
 	return s.store.DataVersion(ctx)
 }
 
+// ErrConflict means the task changed after the command being undone, e.g.
+// a rollover or a GitHub auto-close; undoing would silently revert that.
+var ErrConflict = errors.New("task changed since; can't undo")
+
 // modify loads task id, applies fn, saves it, and returns an Undo that
-// restores the previous row.
+// restores the previous row, but only if nothing has changed the row since.
 func (s *Service) modify(ctx context.Context, id int64, fn func(x *store.Tx, t *domain.Task) error) (Undo, error) {
-	var before domain.Task
+	var before, after domain.Task
 	err := s.store.InTx(ctx, func(x *store.Tx) error {
 		var err error
 		if before, err = x.GetTask(ctx, id); err != nil {
 			return err
 		}
-		after := before
+		after = before
 		after.Tags = append([]string(nil), before.Tags...)
 		if err := fn(x, &after); err != nil {
 			return err
@@ -69,6 +75,24 @@ func (s *Service) modify(ctx context.Context, id int64, fn func(x *store.Tx, t *
 		return nil, err
 	}
 	return func(ctx context.Context) error {
-		return s.store.InTx(ctx, func(x *store.Tx) error { return x.UpdateTask(ctx, before) })
+		return s.store.InTx(ctx, func(x *store.Tx) error {
+			if err := unchangedSince(ctx, x, after); err != nil {
+				return err
+			}
+			return x.UpdateTask(ctx, before)
+		})
 	}, nil
+}
+
+// unchangedSince fails with ErrConflict unless task want.ID still has the
+// UpdatedAt that want carries.
+func unchangedSince(ctx context.Context, x *store.Tx, want domain.Task) error {
+	cur, err := x.GetTask(ctx, want.ID)
+	if err != nil {
+		return err
+	}
+	if !cur.UpdatedAt.Equal(want.UpdatedAt) {
+		return fmt.Errorf("task #%d: %w", want.ID, ErrConflict)
+	}
+	return nil
 }
