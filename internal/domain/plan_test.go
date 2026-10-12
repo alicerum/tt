@@ -104,3 +104,29 @@ func TestDefaultBlockLength(t *testing.T) {
 		}
 	}
 }
+
+func TestDayOffset(t *testing.T) {
+	ams, err := time.LoadLocation("Europe/Amsterdam")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const day Day = "2026-03-28"
+	cases := []struct {
+		name string
+		t    time.Time
+		want time.Duration
+	}{
+		{"morning", time.Date(2026, 3, 28, 9, 30, 15, 0, ams), 9*time.Hour + 30*time.Minute + 15*time.Second},
+		{"after midnight", time.Date(2026, 3, 29, 1, 0, 0, 0, ams), 25 * time.Hour},
+		// Spring forward: 02:00 → 03:00. Wall clock, not elapsed time.
+		{"after the DST gap", time.Date(2026, 3, 29, 3, 30, 0, 0, ams), 27*time.Hour + 30*time.Minute},
+	}
+	for _, c := range cases {
+		if got := day.Offset(c.t); got != c.want {
+			t.Errorf("%s: Offset(%v) = %v; want %v", c.name, c.t, got, c.want)
+		}
+	}
+	if got := Day("2026-10-12").Offset(Day("2026-10-12").At(14*time.Hour+5*time.Minute, ams)); got != 14*time.Hour+5*time.Minute {
+		t.Errorf("Offset(At(14:05)) = %v", got)
+	}
+}

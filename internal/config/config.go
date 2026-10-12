@@ -27,6 +27,9 @@ type Config struct {
 	UnsizedBlock time.Duration
 	// RolloverAlert is the rollover count at which planning flags a task (D10a).
 	RolloverAlert int
+	// TimelineStart and TimelineEnd are the hours Today's timeline shows (D38),
+	// as offsets from midnight; it stretches to show blocks and "now" outside them.
+	TimelineStart, TimelineEnd time.Duration
 }
 
 func Default() Config {
@@ -45,6 +48,8 @@ func Default() Config {
 		},
 		UnsizedBlock:  30 * time.Minute,
 		RolloverAlert: 3,
+		TimelineStart: 8 * time.Hour,
+		TimelineEnd:   19 * time.Hour,
 	}
 }
 
@@ -57,6 +62,10 @@ type file struct {
 		UnsizedBlock  *string `toml:"unsized_block"`
 		RolloverAlert *int    `toml:"rollover_alert"`
 	} `toml:"planning"`
+	Timeline struct {
+		Start *string `toml:"start"`
+		End   *string `toml:"end"`
+	} `toml:"timeline"`
 }
 
 // Load reads path. A missing file yields Default().
@@ -126,6 +135,26 @@ func Parse(data []byte) (Config, error) {
 			return Config{}, fmt.Errorf("planning.rollover_alert: want 1 or more, got %d", *p)
 		}
 		cfg.RolloverAlert = *p
+	}
+	if p := f.Timeline.Start; p != nil {
+		if cfg.TimelineStart, err = parseClock(*p); err != nil {
+			return Config{}, fmt.Errorf("timeline.start: %w", err)
+		}
+	} else {
+		cfg.TimelineStart = max(cfg.TimelineStart, cfg.DayStart) // a late day_start moves the default along
+	}
+	if p := f.Timeline.End; p != nil {
+		if cfg.TimelineEnd, err = parseClock(*p); err != nil {
+			return Config{}, fmt.Errorf("timeline.end: %w", err)
+		}
+	} else if cfg.TimelineEnd <= cfg.TimelineStart {
+		cfg.TimelineEnd = min(cfg.TimelineStart+time.Hour, 24*time.Hour-time.Minute)
+	}
+	switch {
+	case cfg.TimelineEnd <= cfg.TimelineStart:
+		return Config{}, fmt.Errorf("timeline.end must be after timeline.start")
+	case cfg.TimelineStart < cfg.DayStart:
+		return Config{}, fmt.Errorf("timeline.start must not be before day_start (rows before it belong to the previous day)")
 	}
 	return cfg, nil
 }

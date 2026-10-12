@@ -40,6 +40,20 @@ func (d Day) At(off time.Duration, loc *time.Location) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), minutes/60, minutes%60, 0, 0, loc)
 }
 
+// Offset is t's wall-clock offset from midnight of d, the inverse of At:
+// 9h30m for 09:30 on d, 25h for 01:00 on the following date. It reads t's
+// wall clock in t's own location, so a DST change doesn't shift it.
+func (d Day) Offset(t time.Time) time.Duration {
+	day, err := time.Parse(time.DateOnly, string(d))
+	if err != nil {
+		panic(fmt.Sprintf("invalid Day %q", d))
+	}
+	y, m, dd := t.Date()
+	days := time.Date(y, m, dd, 0, 0, 0, 0, time.UTC).Sub(day) / (24 * time.Hour)
+	return days*24*time.Hour + time.Duration(t.Hour())*time.Hour + time.Duration(t.Minute())*time.Minute +
+		time.Duration(t.Second())*time.Second
+}
+
 // Pin marks a task as one of today's candidates since PinnedOn (D12a, D10d).
 type Pin struct {
 	TaskID   int64
