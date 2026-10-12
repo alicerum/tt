@@ -115,6 +115,7 @@ type (
 		label, status string
 		undo          app.Undo
 		err           error
+		restore       func(*Model) // on error: give back what the user typed
 	}
 	undoneMsg struct {
 		label string
@@ -192,6 +193,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case actionMsg:
 		if msg.err != nil {
 			m.setErr(msg.err)
+			if msg.restore != nil {
+				msg.restore(m)
+			}
 			return m.load()
 		}
 		if msg.undo != nil {

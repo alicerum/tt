@@ -120,6 +120,21 @@ func TestDetailFallsBackWhenTheTaskIsGone(t *testing.T) {
 	h.mustSee(fmt.Sprintf("#%d is gone", parent.ID), "tt · Pick")
 }
 
+func TestFallingBackClosesTheOverlay(t *testing.T) {
+	h := newHarness(t, config.Default())
+	parent := h.add("Parent !1 ~l")
+	h.keys("enter", "a")
+	h.mustSee("child of #1 › ")
+	if err := h.svc.Delete(context.Background(), parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.run(h.m.load()) // as the live reload does
+	if h.m.overlay != nil {
+		t.Errorf("the overlay of a gone task stays open: %T", h.m.overlay)
+	}
+	h.mustSee(fmt.Sprintf("#%d is gone", parent.ID))
+}
+
 func TestDetailFromTodayAndChildScrolling(t *testing.T) {
 	h := newHarness(t, config.Default())
 	var kids []string

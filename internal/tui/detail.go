@@ -50,6 +50,7 @@ func (d *detailState) refresh(m *Model) {
 		}
 		d.selected = d.top()
 		d.stack = d.stack[:len(d.stack)-1]
+		m.overlay = nil // it was bound to the task that is gone
 	}
 	if len(d.stack) == 0 {
 		d.rows = nil

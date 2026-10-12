@@ -93,15 +93,28 @@ func (a *addChild) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 			a.err = err
 			return nil
 		}
+		typed, extra := a.in.value(), a.in.extra
 		a.in.reset() // ready for the next child
 		svc, ctx, parentID := m.svc, m.ctx, a.parent.ID
 		return func() tea.Msg {
 			c, undo, err := svc.AddChild(ctx, parentID, line)
-			return actionMsg{label: fmt.Sprintf("add %q", c.Title), status: fmt.Sprintf("added #%d under #%d", c.ID, parentID), undo: undo, err: err}
+			return actionMsg{label: fmt.Sprintf("add %q", c.Title), status: fmt.Sprintf("added #%d under #%d", c.ID, parentID), undo: undo, err: err,
+				restore: func(m *Model) { a.restore(m, typed, extra) }}
 		}
 	}
 	a.err = nil
 	return a.in.update(k)
+}
+
+// restore puts a refused line back (with its pasted note lines) unless the
+// overlay was closed or the user already started the next one.
+func (a *addChild) restore(m *Model, typed string, extra []string) {
+	if m.overlay != a || a.in.value() != "" || len(a.in.extra) > 0 {
+		return
+	}
+	a.in.input.SetValue(typed)
+	a.in.input.CursorEnd()
+	a.in.extra = extra
 }
 
 func (a *addChild) paste(_ *Model, msg tea.PasteMsg) tea.Cmd { return a.in.pasteLines(msg) }
@@ -173,10 +186,16 @@ func (m *Model) editNote(t domain.Task) tea.Cmd {
 }
 
 // noteEdited saves what the editor left: unchanged → no write; empty →
-// cleared; a failed editor → discarded. A note that changed elsewhere in the
+// cleared; a failed editor → not saved, changed text kept in the file. A note that changed elsewhere in the
 // meantime is not overwritten; the text stays in the file (D29a).
 func (m *Model) noteEdited(msg noteEditedMsg) tea.Cmd {
-	if msg.err != nil {
+	if msg.err != nil { // never saved; but typing is not thrown away (D29a)
+		if data, rerr := os.ReadFile(msg.path); rerr == nil &&
+			strings.TrimRight(string(data), "\n") != strings.TrimRight(msg.from, "\n") {
+			// the path comes first so a narrow pane's cut keeps it
+			m.setErr(fmt.Errorf("your text is in %s — editor failed (%v); note unchanged", msg.path, msg.err))
+			return nil
+		}
 		os.Remove(msg.path)
 		m.setErr(fmt.Errorf("editor failed (%v); note unchanged", msg.err))
 		return nil

@@ -108,15 +108,32 @@ func TestNoteInTheEditor(t *testing.T) {
 		t.Errorf("cleared note = %q", got)
 	}
 
-	// The editor fails → discarded.
+	// The editor fails after typing → not saved, but the text stays in the file.
+	var kept string
 	h.editor = func(path string) error {
+		kept = path
 		os.WriteFile(path, []byte("half-typed"), 0o600)
 		return errors.New("exit status 1")
 	}
 	h.keys("E")
-	h.mustSee("✗ editor failed (exit status 1); note unchanged")
+	h.mustSee("✗ your text is in "+kept, "editor failed (exit status 1); note unchanged")
 	if got := h.task(a.ID).Note; got != "" {
 		t.Errorf("a failed editor changed the note: %q", got)
+	}
+	if data, err := os.ReadFile(kept); err != nil || string(data) != "half-typed" {
+		t.Errorf("the typing must survive in %s: %q, %v", kept, data, err)
+	}
+	os.Remove(kept)
+
+	// The editor fails without changing the file → removed.
+	h.editor = func(path string) error {
+		kept = path
+		return errors.New("exit status 1")
+	}
+	h.keys("E")
+	h.mustSee("✗ editor failed (exit status 1); note unchanged")
+	if _, err := os.Stat(kept); !os.IsNotExist(err) {
+		t.Errorf("%s left behind: %v", kept, err)
 	}
 }
 

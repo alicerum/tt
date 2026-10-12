@@ -73,6 +73,21 @@ func TestAddChildrenOneAfterAnother(t *testing.T) {
 	h.mustSee("add › ")
 }
 
+func TestAddChildKeepsTheLineWhenItFails(t *testing.T) {
+	h := newHarness(t, config.Default())
+	parent := h.add("Auth migration !1 ~xl")
+	h.keys("enter", "a")
+	if err := h.svc.Delete(context.Background(), parent.ID); err != nil { // behind the TUI's back
+		t.Fatal(err)
+	}
+	h.typeText("Token spike ~s")
+	// Deliver the failure by hand: the reload that follows it would close the
+	// overlay of a parent that is gone (see TestFallingBackClosesTheOverlay).
+	_, cmd := h.m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	h.m.Update(cmd())
+	h.mustSee("✗ ", "child of #1 › Token spike ~s")
+}
+
 func TestReorderChildren(t *testing.T) {
 	h := newHarness(t, config.Default())
 	parent, kids := h.family("Parent !1 ~l", "A ~s", "B ~s", "C ~s")
