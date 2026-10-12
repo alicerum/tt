@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"tt/internal/config"
 )
 
@@ -131,7 +133,7 @@ func TestNoteChangedElsewhereKeepsYourText(t *testing.T) {
 		return os.WriteFile(p, []byte("my careful edit\n"), 0o600)
 	}
 	h.keys("E")
-	h.mustSee("✗ note changed since you opened it — your text is in ")
+	h.mustSee("✗ your text is kept in ")
 	if got := h.task(a.ID).Note; got != "from another shell" {
 		t.Errorf("note overwritten: %q", got)
 	}
@@ -143,6 +145,26 @@ func TestNoteChangedElsewhereKeepsYourText(t *testing.T) {
 	if !strings.Contains(h.screen(), path) {
 		t.Errorf("the status names the file:\n%s", h.screen())
 	}
+}
+
+// On a narrow pane the status is cut at the right edge; the path comes first
+// so the part the user needs survives the cut (D29a).
+func TestNoteConflictPathFitsANarrowPane(t *testing.T) {
+	h := newHarness(t, config.Default())
+	a := h.add("Task !1 ~s -- original")
+	h.send(tea.WindowSizeMsg{Width: 100, Height: 40})
+	var path string
+	h.editor = func(p string) error {
+		path = p
+		h.clock.now = h.clock.now.Add(time.Minute)
+		if _, err := h.svc.SetNote(context.Background(), a.ID, "from another shell"); err != nil {
+			return err
+		}
+		return os.WriteFile(p, []byte("my careful edit\n"), 0o600)
+	}
+	h.keys("E")
+	h.mustSee("your text is kept in " + path)
+	os.Remove(path)
 }
 
 func TestEditorTempFilesAreRemoved(t *testing.T) {

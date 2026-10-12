@@ -136,7 +136,7 @@ func (m *Model) noteEdited(msg noteEditedMsg) tea.Cmd {
 			err = errors.New("note changed since you opened it")
 		}
 		if err != nil {
-			return actionMsg{err: fmt.Errorf("%w — your text is in %s", err, path)}
+			return actionMsg{err: fmt.Errorf("your text is kept in %s — %w", path, err)}
 		}
 		os.Remove(path)
 		return actionMsg{label: label, status: status, undo: undo}
