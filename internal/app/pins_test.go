@@ -200,3 +200,24 @@ func TestSetBlockSpan(t *testing.T) {
 		t.Errorf("after undo: %v +%v; want 9h +1h", got.Start, got.Duration)
 	}
 }
+
+func TestUnpinningABlockedParentIsRefused(t *testing.T) {
+	s, _ := startedService(t)
+	ctx := context.Background()
+	parent := mustAdd(t, s, "Parent !1 ~xl")
+	a := mustAddChild(t, s, parent.ID, "A ~s")
+	if _, err := s.Pin(ctx, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	mustBlock(t, s, parent.ID, 10*h, h)
+
+	if _, err := s.Unpin(ctx, parent.ID); !errors.Is(err, ErrInvalidValue) {
+		t.Fatalf("Unpin(blocked parent) = %v; want ErrInvalidValue", err)
+	}
+	if !pinned(t, s, parent.ID) || !pinned(t, s, a.ID) {
+		t.Error("the refused unpin changed a pin")
+	}
+	if blocks := mustPlan(t, s).Blocks; len(blocks) != 1 || blocks[0].TaskID != parent.ID {
+		t.Errorf("the parent's block must survive: %+v", blocks)
+	}
+}

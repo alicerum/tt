@@ -78,7 +78,8 @@ func (s *Service) Pin(ctx context.Context, id int64) (Undo, error) {
 // Unpin removes a task from Today, together with its blocks on today's timeline.
 // Unpinning a parent unpins its children too, except children with a block
 // today: they stay pinned on their own, so no block is lost (D34). A task with
-// children returns no undo. A child of a pinned parent can't be unpinned on
+// children returns no undo, so one with blocks today is refused
+// (ErrInvalidValue): unblock it first. A child of a pinned parent can't be unpinned on
 // its own (ErrParentPinned).
 func (s *Service) Unpin(ctx context.Context, id int64) (Undo, error) {
 	today := s.Today()
@@ -104,10 +105,17 @@ func (s *Service) Unpin(ctx context.Context, id int64) (Undo, error) {
 				return fmt.Errorf("#%d is pinned with its parent #%d: %w", id, t.ParentID, ErrParentPinned)
 			}
 		}
-		if parent, err = unpinChildren(ctx, x, id, today); err != nil {
+		if blocks, err = x.TaskBlocksOn(ctx, id, today); err != nil {
 			return err
 		}
-		if blocks, err = x.TaskBlocksOn(ctx, id, today); err != nil {
+		kids, err := x.Children(ctx, id)
+		if err != nil {
+			return err
+		}
+		if len(kids) > 0 && len(blocks) > 0 { // no undo here to bring the blocks back
+			return fmt.Errorf("#%d has blocks today; unblock them first (u on the timeline): %w", id, ErrInvalidValue)
+		}
+		if parent, err = unpinChildren(ctx, x, id, today); err != nil {
 			return err
 		}
 		for _, b := range blocks {
