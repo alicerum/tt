@@ -4,7 +4,7 @@ CREATE TABLE pins (
 );
 
 CREATE TABLE blocks (
-    id           INTEGER PRIMARY KEY,
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id      INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     day          TEXT    NOT NULL,
     start_min    INTEGER NOT NULL CHECK (start_min >= 0),

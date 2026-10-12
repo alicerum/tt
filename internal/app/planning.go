@@ -155,6 +155,13 @@ func (s *Service) Block(ctx context.Context, id int64, start, dur time.Duration)
 			if had {
 				return x.PutPin(ctx, pin)
 			}
+			left, err := x.TaskBlocksOn(ctx, id, b.Day)
+			if err != nil {
+				return err
+			}
+			if len(left) > 0 {
+				return nil
+			}
 			return x.DeletePin(ctx, id)
 		})
 	}, nil
@@ -282,6 +289,8 @@ func (s *Service) validateSpan(b domain.Block) error {
 		return fmt.Errorf("block length %v: %w", b.Duration, ErrInvalidValue)
 	case b.Duration > 24*time.Hour:
 		return fmt.Errorf("block length %v is longer than a day: %w", b.Duration, ErrInvalidValue)
+	case b.Start > s.cfg.DayStart+24*time.Hour:
+		return fmt.Errorf("block start %v is past the planning day: %w", b.Start, ErrInvalidValue)
 	case b.Start < s.cfg.DayStart || b.End() > s.cfg.DayStart+24*time.Hour:
 		return fmt.Errorf("block %v–%v is outside the planning day: %w", b.Start, b.End(), ErrInvalidValue)
 	}

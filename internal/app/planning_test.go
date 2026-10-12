@@ -159,6 +159,7 @@ func TestBlock(t *testing.T) {
 		{"seconds", 9*h + 30*time.Second, h, ErrInvalidValue},
 		{"longer than a day", 5 * h, 25 * h, ErrInvalidValue},
 		{"overflowing length", 5 * h, time.Duration(math.MaxInt64) / time.Minute * time.Minute, ErrInvalidValue},
+		{"start far past the day", time.Duration(math.MaxInt64)/time.Minute*time.Minute - h, h, ErrInvalidValue},
 	}
 	for _, c := range bad {
 		if _, _, err := s.Block(ctx, other.ID, c.start, c.dur); !errors.Is(err, c.want) {
@@ -334,5 +335,53 @@ func TestPinUndoRefusesWhenBlockedSince(t *testing.T) {
 	}
 	if c, ok := candidate(t, mustPlan(t, s), task.ID); !ok || !c.Blocked {
 		t.Errorf("task should stay a blocked candidate: %+v, %v", c, ok)
+	}
+}
+
+func TestBlockUndoKeepsPinWhileOtherBlocksRemain(t *testing.T) {
+	s, _ := startedService(t)
+	ctx := context.Background()
+	a := mustAdd(t, s, "A !1 ~s")
+	_, first := mustBlock(t, s, a.ID, 10*h, h)
+	second, _ := mustBlock(t, s, a.ID, 14*h, h)
+
+	if err := first(ctx); err != nil {
+		t.Fatal(err)
+	}
+	plan := mustPlan(t, s)
+	if len(plan.Blocks) != 1 || plan.Blocks[0] != second {
+		t.Errorf("blocks after undoing the first = %+v; want only %+v", plan.Blocks, second)
+	}
+	if c, ok := candidate(t, plan, a.ID); !ok || !c.Blocked {
+		t.Errorf("task must stay a blocked candidate while another block remains: %+v, %v", c, ok)
+	}
+}
+
+func TestRestoredBlockKeepsItsIDWithoutCollision(t *testing.T) {
+	s, _ := startedService(t)
+	ctx := context.Background()
+	a := mustAdd(t, s, "A !1 ~s")
+	b := mustAdd(t, s, "B !1 ~s")
+	ba, _ := mustBlock(t, s, a.ID, 12*h, h)
+	undo, err := s.Unblock(ctx, ba.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bb, _ := mustBlock(t, s, b.ID, 15*h, h)
+	if bb.ID == ba.ID {
+		t.Fatalf("new block reused the deleted id %d; test needs distinct ids", ba.ID)
+	}
+
+	if err := undo(ctx); err != nil {
+		t.Fatalf("undo of Unblock with a reused-id neighbour: %v", err)
+	}
+	plan := mustPlan(t, s)
+	if len(plan.Blocks) != 2 {
+		t.Fatalf("blocks = %+v; want 2", plan.Blocks)
+	}
+	for _, blk := range plan.Blocks {
+		if blk.Start == 12*h && blk.ID != ba.ID {
+			t.Errorf("restored 12:00 block id = %d; want %d", blk.ID, ba.ID)
+		}
 	}
 }
