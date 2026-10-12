@@ -43,6 +43,9 @@ func New(st Store, clock Clock, cfg config.Config) *Service {
 
 func (s *Service) Config() config.Config { return s.cfg }
 
+// Now is the service clock's current time (for "captured 2d ago" and similar).
+func (s *Service) Now() time.Time { return s.clock.Now() }
+
 func (s *Service) Snapshot(ctx context.Context) (domain.Snapshot, error) {
 	return s.store.LoadSnapshot(ctx)
 }

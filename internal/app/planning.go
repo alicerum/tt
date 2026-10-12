@@ -158,7 +158,9 @@ func (s *Service) Block(ctx context.Context, id int64, start, dur time.Duration)
 			return err
 		}
 		return s.store.InTx(ctx, func(x *store.Tx) error {
-			if err := x.DeleteBlock(ctx, b.ID); err != nil {
+			if err := x.DeleteBlock(ctx, b.ID); errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("block #%d is gone: %w", b.ID, ErrConflict)
+			} else if err != nil {
 				return err
 			}
 			if had {

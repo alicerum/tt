@@ -127,11 +127,34 @@ func (s *Service) CommitPlan(ctx context.Context) (CommitSummary, error) {
 // Plan returns today's candidates and blocks. Closed tasks stay among the
 // candidates until the next planning day, so the day's wins remain visible.
 func (s *Service) Plan(ctx context.Context) (domain.Plan, error) {
+	st, err := s.Load(ctx)
+	return st.Plan, err
+}
+
+// State is everything a view needs, read consistently.
+type State struct {
+	Version  int64 // DataVersion read before loading; compare to detect later writes
+	Snapshot domain.Snapshot
+	Plan     domain.Plan
+}
+
+// Load reads the data version first, then all tasks and today's plan in one
+// read. A write that lands during the load changes the version, so the next
+// version check reloads again.
+func (s *Service) Load(ctx context.Context) (State, error) {
+	version, err := s.store.DataVersion(ctx)
+	if err != nil {
+		return State{}, err
+	}
 	today := s.Today()
 	snap, state, err := s.store.LoadPlan(ctx, today)
 	if err != nil {
-		return domain.Plan{}, err
+		return State{}, err
 	}
+	return State{Version: version, Snapshot: snap, Plan: s.buildPlan(today, snap, state)}, nil
+}
+
+func (s *Service) buildPlan(today domain.Day, snap domain.Snapshot, state store.PlanState) domain.Plan {
 	blocked := map[int64]bool{}
 	for _, b := range state.Blocks {
 		blocked[b.TaskID] = true
@@ -154,7 +177,7 @@ func (s *Service) Plan(ctx context.Context) (domain.Plan, error) {
 		pb := domain.EffectivePriority(b.Task, snap.ParentOf(b.Task))
 		return cmp.Or(cmp.Compare(unsetLast(pa), unsetLast(pb)), cmp.Compare(a.Task.ID, b.Task.ID))
 	})
-	return plan, nil
+	return plan
 }
 
 // unsetLast sorts priority 0 (unset) after every real level.

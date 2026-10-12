@@ -54,13 +54,11 @@ func ParseAdd(line string, levels int) (Draft, error) {
 		if strings.ContainsRune("@#!~", rune(tok[0])) {
 			stripped := strings.TrimRight(tok, trailingPunct)
 			// "#482." stays whole (issue ref); "@." has nothing left to classify.
-			if len(stripped) > 1 {
-				if stripped[0] == '#' && isDigits(stripped[1:]) {
-					title = append(title, orig)
-					continue
-				}
-				tok = stripped
+			if len(stripped) <= 1 || (stripped[0] == '#' && isDigits(stripped[1:])) {
+				title = append(title, orig)
+				continue
 			}
+			tok = stripped
 		}
 		switch sigil, rest := tok[0], tok[1:]; {
 		case sigil == '@' && rest != "":

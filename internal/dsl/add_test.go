@@ -30,6 +30,7 @@ func TestParseAdd(t *testing.T) {
 		{"clean ~/tmp and ~zz", Draft{Title: "clean ~/tmp and ~zz"}},
 		{"Fix this! now !!", Draft{Title: "Fix this! now !!"}},
 		{"lone @ # ! ~ sigils", Draft{Title: "lone @ # ! ~ sigils"}},
+		{"sigil plus punctuation @. #, ~? !)", Draft{Title: "sigil plus punctuation @. #, ~? !)"}},
 		{"mail bob@x.com about #2", Draft{Title: "mail bob@x.com about #2"}},
 		{"two https://a.io links https://b.io", Draft{Title: "two links https://b.io", Link: "https://a.io"}},
 		{"🚀 launch #Ünïcode", Draft{Title: "🚀 launch", Tags: []string{"ünïcode"}}},
