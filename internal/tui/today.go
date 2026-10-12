@@ -1,13 +1,17 @@
 package tui
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"tt/internal/app"
 	"tt/internal/domain"
 )
 
@@ -27,6 +31,14 @@ type todayState struct {
 	placed bool          // at has been set; until then the cursor goes to the now row
 	cursor int           // the row index of at
 	offset int           // first timeline line shown (the now line counts as one)
+	carry  *carry        // a block being placed or moved (D36); nil otherwise
+}
+
+// carry is a picked-up block: a candidate being placed, or a block being
+// moved. It follows the timeline cursor as a ghost until ⏎ drops it.
+type carry struct {
+	task  domain.Task
+	block domain.Block // the block being moved; ID 0 when placing a candidate
 }
 
 // refresh rebuilds the timeline from the loaded plan and puts the cursor
@@ -53,6 +65,199 @@ func (td *todayState) refresh(m *Model) {
 		}
 	}
 	td.at = rows[td.cursor].start
+	td.refreshCarry(m)
+}
+
+// refreshCarry drops a pick-up whose task or block went away meanwhile (an
+// undo, another shell) and picks up the latest copy of a moved block.
+func (td *todayState) refreshCarry(m *Model) {
+	c := td.carry
+	if c == nil {
+		return
+	}
+	t, ok := m.state.Snapshot.Get(c.task.ID)
+	if !ok || t.Status != domain.StatusOpen && c.block.ID == 0 {
+		td.carry = nil
+		m.setStatus(fmt.Sprintf("stopped placing %q: it changed meanwhile", c.task.Title))
+		return
+	}
+	c.task = t
+	if c.block.ID == 0 {
+		return
+	}
+	i := slices.IndexFunc(td.tl.blocks, func(b domain.Block) bool { return b.ID == c.block.ID })
+	if i < 0 {
+		td.carry = nil
+		m.setStatus(fmt.Sprintf("stopped moving %q: its block is gone", t.Title))
+		return
+	}
+	c.block = td.tl.blocks[i]
+}
+
+// pickUp starts placing candidate t (D36): the cursor goes to the first free
+// row from now.
+func (m *Model) pickUp(t domain.Task) {
+	td := &m.today
+	td.carry = &carry{task: t}
+	td.focus = focusTimeline
+	td.cursor = td.tl.firstFree(max(td.tl.nowRow, 0))
+	td.at = td.tl.rows[td.cursor].start
+}
+
+// ghost is the carried block as it would land at the cursor: a moved block
+// keeps its length; a candidate gets its D24 length, min(size, the free time
+// from the cursor to the next block or the planning day's end).
+func (m *Model) ghost() domain.Block {
+	td := &m.today
+	c := td.carry
+	if c.block.ID != 0 {
+		b := c.block
+		b.Start = td.at
+		return b
+	}
+	// gapFrom is 0 inside a block, and a gap of 0 means "no cap": the ghost
+	// keeps its full length there and shows the clash.
+	length := m.svc.DefaultBlockLength(c.task, td.tl.gapFrom(td.at))
+	return domain.Block{TaskID: c.task.ID, Day: m.state.Plan.Day, Start: td.at, Duration: length}
+}
+
+// fits explains why b can't go where it is: another block (D36), or the end
+// of the planning day. nil when it fits.
+func (m *Model) fits(b domain.Block) error {
+	if o, clash := m.today.tl.clash(b); clash {
+		return fmt.Errorf("overlaps %s", m.blockName(o))
+	}
+	if b.End() > m.today.tl.dayEnd {
+		return errors.New("runs past the end of the planning day")
+	}
+	return nil
+}
+
+// blockName renders `"Title" 10:00–11:00`.
+func (m *Model) blockName(b domain.Block) string {
+	title := fmt.Sprintf("#%d", b.TaskID)
+	if t, ok := m.state.Snapshot.Get(b.TaskID); ok {
+		title = fmt.Sprintf("%q", t.Title)
+	}
+	return title + " " + span(b)
+}
+
+func span(b domain.Block) string { return clock(b.Start) + "–" + clock(b.End()) }
+
+// drop places or moves the carried block at the cursor. A clash keeps it
+// picked up, so another row can be tried.
+func (m *Model) drop() tea.Cmd {
+	td := &m.today
+	c, g := td.carry, m.ghost()
+	if err := m.fits(g); err != nil {
+		m.setErr(err)
+		return nil
+	}
+	td.carry = nil
+	svc, label := m.svc, fmt.Sprintf("%q", c.task.Title)
+	if c.block.ID != 0 {
+		return m.act("move "+label, "moved "+label+" to "+span(g), func(ctx context.Context) (app.Undo, error) {
+			return svc.MoveBlock(ctx, c.block.ID, g.Start)
+		})
+	}
+	status := "blocked " + label + " " + span(g)
+	if c.task.Size == domain.SizeL || c.task.Size == domain.SizeXL {
+		status += " · big task · consider splitting" // D37
+	}
+	return m.act("block "+label, status, func(ctx context.Context) (app.Undo, error) {
+		_, undo, err := svc.Block(ctx, c.task.ID, g.Start, g.Duration)
+		return undo, err
+	})
+}
+
+// carryKey handles keys while a block is picked up.
+func (m *Model) carryKey(key string) tea.Cmd {
+	td := &m.today
+	switch key {
+	case "j", "down":
+		td.move(+1)
+	case "k", "up":
+		td.move(-1)
+	case "enter":
+		return m.drop()
+	case "esc":
+		td.carry = nil
+		m.setStatus("cancelled")
+	}
+	return nil
+}
+
+// reshape resizes or re-times block b after checking it still fits.
+func (m *Model) reshape(old domain.Block, t domain.Task, b domain.Block) tea.Cmd {
+	if err := m.fits(b); err != nil {
+		m.setErr(err)
+		return nil
+	}
+	svc, label := m.svc, fmt.Sprintf("%q", t.Title)
+	return m.act("change "+label, label+" now "+span(b), func(ctx context.Context) (app.Undo, error) {
+		if b.Start == old.Start {
+			return svc.ResizeBlock(ctx, b.ID, b.Duration)
+		}
+		return svc.SetBlockSpan(ctx, b.ID, b.Start, b.Duration)
+	})
+}
+
+// openFineTune asks for a block's exact start and length (D36).
+func (m *Model) openFineTune(b domain.Block, t domain.Task) tea.Cmd {
+	dayStart := m.svc.Config().DayStart
+	in := newInput(fmt.Sprintf("fine-tune %q › ", ansi.Truncate(t.Title, 30, "…")), "09:30 45m", m.width)
+	in.SetValue(clock(b.Start) + " " + shortDur(b.Duration))
+	in.CursorEnd()
+	nb := b
+	m.overlay = &prompt{
+		input: in,
+		check: func(v string) error {
+			start, dur, err := parseSpan(v, dayStart)
+			if err != nil {
+				return err
+			}
+			nb.Start, nb.Duration = start, dur
+			return m.fits(nb)
+		},
+		onEnter: func(string) tea.Cmd { return m.reshape(b, t, nb) },
+	}
+	return nil
+}
+
+// parseSpan reads a fine-tune line "HH:MM <length>", e.g. "09:30 45m". A
+// time before the day start is after midnight, in the same planning day.
+func parseSpan(s string, dayStart time.Duration) (start, dur time.Duration, err error) {
+	f := strings.Fields(s)
+	if len(f) != 2 {
+		return 0, 0, errors.New("want a start and a length, like 09:30 45m")
+	}
+	at, err := time.Parse("15:04", f[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("start %q: want HH:MM", f[0])
+	}
+	start = time.Duration(at.Hour())*time.Hour + time.Duration(at.Minute())*time.Minute
+	if start < dayStart {
+		start += 24 * time.Hour
+	}
+	dur, err = time.ParseDuration(f[1])
+	if err != nil || dur < time.Minute || dur%time.Minute != 0 {
+		return 0, 0, fmt.Errorf("length %q: want whole minutes, like 45m or 1h30m", f[1])
+	}
+	return start, dur, nil
+}
+
+// commitPlan commits today's plan and shows the summary (D22, D35).
+func (m *Model) commitPlan() tea.Cmd {
+	svc, ctx := m.svc, m.ctx
+	return func() tea.Msg {
+		sum, err := svc.CommitPlan(ctx)
+		status := "plan committed · no blocks"
+		if sum.Blocks > 0 {
+			status = "plan committed · " + plural(sum.Blocks, "block", "blocks") + " · " + shortDur(sum.Blocked)
+		}
+		status += " · " + plural(sum.Candidates, "candidate", "candidates") + " left"
+		return actionMsg{status: status, err: err}
+	}
 }
 
 func (td *todayState) move(delta int) {
@@ -90,11 +295,19 @@ func (td *todayState) follow(m *Model) {
 }
 
 // blockKeys act on the block under the timeline cursor.
-var blockKeys = map[string]bool{"enter": true, "x": true, "d": true, "D": true, "e": true, "E": true, "o": true}
+var blockKeys = map[string]bool{
+	"enter": true, "x": true, "d": true, "D": true, "e": true, "E": true, "o": true,
+	"m": true, "+": true, "=": true, "-": true, "f": true, "u": true,
+}
 
 func (m *Model) todayKey(key string) tea.Cmd {
 	td := &m.today
+	if td.carry != nil {
+		return m.carryKey(key)
+	}
 	switch key {
+	case "c":
+		return m.commitPlan()
 	case "tab":
 		td.focus = 1 - td.focus
 		return nil
@@ -118,11 +331,27 @@ func (m *Model) todayKey(key string) tea.Cmd {
 		if !ok {
 			return nil
 		}
-		if key == "enter" {
-			m.openDetail(r.task.ID) // D31
+		t := r.task
+		switch key {
+		case "enter":
+			m.openDetail(t.ID) // D31
+			return nil
+		case "b":
+			if t.Status != domain.StatusOpen {
+				m.setStatus("can't block a closed task — x reopens it")
+				return nil
+			}
+			if m.hasOpenChildren(t) { // D37
+				m.overlay = &nudge{
+					question: "parent task; blocking its children is recommended · ⏎ block anyway · esc",
+					onEnter:  func() tea.Cmd { m.pickUp(t); return nil },
+				}
+				return nil
+			}
+			m.pickUp(t)
 			return nil
 		}
-		cmd, _ := m.taskKey(key, r.task)
+		cmd, _ := m.taskKey(key, t)
 		return cmd
 	}
 	switch key {
@@ -145,12 +374,39 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if key == "enter" {
+	switch key {
+	case "enter":
 		m.openDetail(t.ID)
 		return nil
+	case "m":
+		td.carry = &carry{task: t, block: b}
+		return nil
+	case "+", "=":
+		nb := b
+		nb.Duration += rowLen
+		return m.reshape(b, t, nb)
+	case "-":
+		if b.Duration <= rowLen {
+			m.setStatus("can't be shorter · f sets an exact length · u unblocks")
+			return nil
+		}
+		nb := b
+		nb.Duration -= rowLen
+		return m.reshape(b, t, nb)
+	case "f":
+		return m.openFineTune(b, t)
+	case "u":
+		label := fmt.Sprintf("%q", t.Title)
+		return m.act("unblock "+label, "unblocked "+label+" · still a candidate", func(ctx context.Context) (app.Undo, error) {
+			return m.svc.Unblock(ctx, b.ID)
+		})
 	}
 	cmd, _ := m.taskKey(key, t)
 	return cmd
+}
+
+func (m *Model) hasOpenChildren(t domain.Task) bool {
+	return slices.ContainsFunc(m.idx.children[t.ID], func(k domain.Task) bool { return k.Status == domain.StatusOpen })
 }
 
 func (m *Model) todayView() string {
@@ -188,10 +444,16 @@ func (m *Model) timelineLines(width int) []string {
 }
 
 // timelineRow renders row i: its time, then the blocks starting in it
-// (▓ title [P S]), or ▓ where a block carries on from an earlier row.
+// (▓ title [P S]), or ▓ where a block carries on from an earlier row. A
+// picked-up block shows as a ░ ghost over the rows it would take.
 func (m *Model) timelineRow(i, width int) string {
 	td := &m.today
 	r := td.tl.rows[i]
+	if td.carry != nil {
+		if g := m.ghost(); r.start < g.End() && g.Start < r.start+rowLen {
+			return m.ghostRow(r, g, width)
+		}
+	}
 	var labels []string
 	carried := false
 	for _, b := range r.blocks {
@@ -216,6 +478,25 @@ func (m *Model) timelineRow(i, width int) string {
 		line = styleSelected.Render(line)
 	}
 	return line
+}
+
+// ghostRow renders a row the carried block would take; it turns the alert
+// colour when the block doesn't fit there.
+func (m *Model) ghostRow(r tlRow, g domain.Block, width int) string {
+	text := " " + clock(r.start) + " ░"
+	if r.start <= g.Start {
+		text += fmt.Sprintf(" %s %s", m.today.carry.task.Title, shortDur(g.Duration))
+	}
+	for _, b := range r.blocks {
+		if b.ID != g.ID {
+			text += " · " + m.blockLabel(b)
+		}
+	}
+	line := pad(text, width)
+	if m.fits(g) != nil {
+		return styleError.Render(line)
+	}
+	return styleSelected.Render(line)
 }
 
 // blockLabel is a block's text on its first row: exact times when it is off
@@ -245,18 +526,30 @@ func clock(off time.Duration) string {
 }
 
 func (m *Model) todayHints() string {
-	if m.today.focus == focusCandidates {
-		return "⏎ open · u unpin · x done · d drop · e edit · tab timeline · L log · i inbox · a add · ctrl+z undo · ? help · q quit"
+	if c := m.today.carry; c != nil {
+		verb := "placing"
+		if c.block.ID != 0 {
+			verb = "moving"
+		}
+		return fmt.Sprintf("%s %q · j/k move · ⏎ drop · esc cancel", verb, c.task.Title)
 	}
-	return "j/k move · ⏎ open · x done · e edit · tab candidates · L log · i inbox · a add · ctrl+z undo · ? help · q quit"
+	if m.today.focus == focusCandidates {
+		return "b block · ⏎ open · u unpin · x done · d drop · e edit · c commit · tab timeline · L log · i inbox · a add · ctrl+z undo · ? help · q quit"
+	}
+	return "j/k move · m move · +/- size · f fine-tune · u unblock · ⏎ open · x done · c commit · tab candidates · L log · i inbox · ctrl+z undo · ? help"
 }
 
 var todayHelp = []string{
 	"tab      switch timeline / candidates",
 	"j k      move",
+	"b        on a candidate: pick it up; j/k choose the row, ⏎ drops it, esc cancels",
+	"m        on a block: pick it up to move it (keeps its length)",
+	"+ / -    on a block: 30m longer / shorter",
+	"f        on a block: fine-tune start and length (09:30 45m)",
+	"u        on a block: unblock (stays a candidate) · on a candidate: unpin",
 	"⏎        task detail (the block's task on the timeline)",
 	"x d D    done (again: reopen) / drop / delete",
 	"e / E    edit the line / the note in $EDITOR · o open the link",
-	"u        on a candidate: unpin",
+	"c        commit the plan (again: refresh)",
 	"L        the log (backlog; pick today's work there, B comes back) · i inbox",
 }

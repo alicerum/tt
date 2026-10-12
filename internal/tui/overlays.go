@@ -137,8 +137,11 @@ func (f *filterBar) resize(width int) { f.in.resize(width) }
 func (f *filterBar) view(m *Model) string { return f.in.view(m, f.err) }
 
 // prompt is a one-line text question, e.g. the optional drop reason (D23).
+// With check set, enter is refused while check fails; the text stays.
 type prompt struct {
 	input   textinput.Model
+	check   func(value string) error
+	err     error
 	onEnter func(value string) tea.Cmd
 }
 
@@ -148,9 +151,15 @@ func (p *prompt) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 		m.overlay = nil
 		return nil
 	case "enter":
+		if p.check != nil {
+			if p.err = p.check(p.input.Value()); p.err != nil {
+				return nil
+			}
+		}
 		m.overlay = nil
 		return p.onEnter(p.input.Value())
 	}
+	p.err = nil
 	var cmd tea.Cmd
 	p.input, cmd = p.input.Update(k)
 	return cmd
@@ -164,7 +173,12 @@ func (p *prompt) paste(_ *Model, msg tea.PasteMsg) tea.Cmd {
 
 func (p *prompt) resize(width int) { fitInput(&p.input, width) }
 
-func (p *prompt) view(*Model) string { return p.input.View() }
+func (p *prompt) view(*Model) string {
+	if p.err != nil {
+		return p.input.View() + "\n" + styleError.Render("✗ "+p.err.Error())
+	}
+	return p.input.View()
+}
 
 func (m *Model) openDropPrompt(t domain.Task) tea.Cmd {
 	label := fmt.Sprintf("%q", t.Title)
@@ -208,6 +222,24 @@ func (m *Model) openDeleteConfirm(t domain.Task) tea.Cmd {
 	}
 	return nil
 }
+
+// nudge asks before something discouraged (D37): ⏎ goes ahead, any other
+// key cancels.
+type nudge struct {
+	question string
+	onEnter  func() tea.Cmd
+}
+
+func (n *nudge) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
+	m.overlay = nil
+	if k.String() == "enter" {
+		return n.onEnter()
+	}
+	m.setStatus("cancelled")
+	return nil
+}
+
+func (n *nudge) view(*Model) string { return styleAlert.Render(n.question) }
 
 // helpOverlay lists the keys; any key closes it.
 type helpOverlay struct{}
