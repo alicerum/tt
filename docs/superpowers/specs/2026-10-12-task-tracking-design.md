@@ -95,7 +95,11 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D31 | `⏎` on any task opens Task detail; Pick → Block gets its own key, `B` (Plan 5) | Opening a task is the common action while browsing; Block is a once-a-day step |
 | D32 | Children never take `!n`: the edit line of a child leaves priority out, and `!n` in a child's edit or add-child line is refused ("children inherit priority from #parent") | A stored-but-unused value is confusing (D6) |
 | D33 | `tt add` with no line: from a terminal it prompts `add › ` on stderr and reads one line (no shell quoting); a multi-line paste there behaves like a pipe: line 1 is the token line, lines 2+ already pending become the note, and nothing is left on the terminal for the shell (`TIOCFLUSH`); from a pipe it reads all of stdin (over 1 MiB fails), line 1 = token line, lines 2+ = note (appended after the line's own ` -- ` note). The same rule maps a multi-line paste in quick-add / add-child | Capture without quoting `!` `~` `#`; pasting a Slack message keeps its body |
-| D34 | **A pinned parent pins its children.** Pinning a parent pins all its open children; a child added to or reopened under a pinned parent is pinned too. Unpinning the parent unpins all its children. A child can be pinned on its own; once its parent is pinned, unpinning the child is refused ("unpin the parent first"). Pinning or unpinning a task that has children is **not undoable** (the status says so; `u`/`p` reverses it by hand); pin/unpin of a childless task keeps its undo | One easy rule: what's under a pinned parent is pinned. Today "pin parent, then unpin a child" says the child isn't pinned, which is confusing |
+| D34 | **A pinned parent pins its children.** Pinning a parent pins all its open children; a child added to or reopened under a pinned parent is pinned too. Unpinning the parent unpins all its children. A child can be pinned on its own; once its parent is pinned, unpinning the child is refused ("unpin the parent first"). Pinning or unpinning a task that has children is **not undoable** (the status says so; `u`/`p` reverses it by hand); pin/unpin of a childless task keeps its undo. Unpinning a parent leaves children that have blocks today pinned on their own (`unpinned "X" + 2 children · 1 blocked child kept · no undo`), so no block is lost without undo | One easy rule: what's under a pinned parent is pinned. Today "pin parent, then unpin a child" says the child isn't pinned, which is confusing |
+| D35 | **Today is the home screen** (`tt · Today`): timeline left, candidates right, `tab` switches. The Pick screen is renamed **Log** (`tt · Log`; the planning step is still called Pick): `L` from Today opens it, `esc` returns; `B` in Log goes to Today (end of Pick). `i` opens Inbox, `esc` returns to the screen it came from. The new-day banner's `⏎` starts planning: Inbox (if anything is waiting) → Log → `B` → Today. No separate planning mode: block keys always work on Today (D22) and `c` always commits (committing again refreshes the time); the summary shows in the status line | Opening the app should show today's plan; the backlog is for planning or a deliberate look |
+| D36 | **Placement by pick-up and drop**: `b` on a candidate picks it up and moves the cursor to the first free timeline row from now; `j/k` move a ghost block of D24 length (min(size, free time from the cursor to the next block or the planning day's end)); `⏎` drops it, `esc` cancels. `m` on a block picks it up keeping its length. Outside a pick-up, `⏎` opens Task detail (D31). Dropping onto another block is refused ("overlaps …"); placing in the past is allowed. On a block: `+/-` resize by 30m, `f` one-line fine-tune prefilled `09:00 1h` (`HH:MM` + duration such as `45m`, `1h30m`; one undoable step), `u` unblocks (task stays a candidate), `x d e E o ⏎` act on its task. On a candidate `u` unpins | See where a block lands before committing to it; `⏎` keeps one meaning |
+| D37 | **Planning nudges**: placing an L or XL task says "big task · consider splitting"; dropping a parent asks "parent task; blocking its children is recommended · ⏎ block anyway · esc" | Small leaves are the motivation engine; nudge, never block |
+| D38 | **Timeline**: visible hours from config (`[timeline] start = "08:00"`, `end = "19:00"`), 30m rows, scrolls within the shared height budget; the window stretches to include any block or "now" outside it. A block's first row shows `▓ title [P S]`, later rows `▓`; a block off the half-hour grid shows exact times (`▓ 09:10–09:55 title`); a row holding two short blocks shows both titles and keys act on the earlier one. Free rows are blank. Blocks of closed tasks stay, struck through with ✓ (P3); the title shows `TIMELINE · 2/5 done` (blocks whose task is done). A `━ now 10:12 ━` line sits between rows, earlier rows are dimmed, the cursor starts on the current row. Rows are wall-clock labels like stored blocks: a row that doesn't exist on a DST night is still drawn and works; "now" uses the current wall-clock time | One predictable grid; precise times only where they matter |
 | D28 | Stack: **Go + Bubble Tea/Lip Gloss**, pure-Go SQLite, plus a small **Swift helper** for EventKit | Strong TUI ecosystem, single fast binary, good typing for refactors; EventKit isolated behind `CalendarSource` |
 
 ## Item model
@@ -126,7 +130,7 @@ Plus, outside the task itself: **pins** (task is a Today candidate since day X �
 
 ## Motivation & feedback
 
-- **Small leaves (nudge)**: items bigger than a day get a "consider splitting" hint when planned.
+- **Small leaves (nudge)**: placing an L or XL task says "big task · consider splitting" (D37).
 - **Done stays visible**: closed items remain in Today, struck through.
 - **Day progress**: visible on the timeline (done blocks vs remaining).
 - **Plan lock-in**: "commit plan" is the morning's finish line.
@@ -136,9 +140,9 @@ Plus, outside the task itself: **pins** (task is a Today candidate since day X �
 
 ## Views
 
-1. **Today**: timeline (meetings, task blocks, free gaps, "now" line) beside candidates; Reviews lane docked below. *(Today mockup)*
-2. **Pick** (planning phase 1, also the everyday backlog browser): backlog left with grouping (D26), filter bar (D26a/b) and Reviews lane; today's candidates right with counters and inline ⚠ rollover prompts. Keys: `p` pin, `u` unpin, `x` done, `d` drop, `e` edit, `/` filter, `g` group, `Tab` pane, `⏎` detail (D31), `B` → Block (Plan 5). *(Pick mockup)*
-3. **Block** (planning phase 2): Today layout with a timeline cursor. Select candidate → `Tab` → cursor to gap → `⏎` places (D24); `+/-` resize, `f` fine-tune, `m` move, `u` unblock; ⚠ on conflicts (D18); calendar freshness indicator. Commit → summary → Today. *(Block mockup; validate in use)*
+1. **Today** (home screen, D35): timeline (meetings, task blocks, free gaps, "now" line; D38) beside candidates; Reviews lane docked below. Doubles as the Block phase: placement and block keys always work here (D36); `c` commits; `L` Log, `i` Inbox. *(Today mockup)*
+2. **Log** (formerly Pick; planning phase 1 "Pick", also the everyday backlog browser, D35): backlog left with grouping (D26), filter bar (D26a/b) and Reviews lane; today's candidates right with counters and inline ⚠ rollover prompts. Keys: `p` pin, `u` unpin, `x` done, `d` drop, `e` edit, `/` filter, `g` group, `Tab` pane, `⏎` detail (D31), `B` → Today to block (D35), `esc` → Today. *(Pick mockup)*
+3. **Block** (planning phase 2): not a screen of its own; it is Today (D35) with pick-up/drop placement (D36); ⚠ on conflicts (D18) and the calendar freshness indicator come with Plan 5b. *(Block mockup; validate in use)*
 4. **Inbox**: one card at a time; priority definitions always visible; `1-3` priority, `s/m/l/x` size, `@`/`#`/`>` requester/tags/parent, `n` skip, `d` drop; auto-advance once priority + size are set (2 keystrokes). *(Inbox mockup)*
 5. **Task detail** (`⏎` on any task): header, link, and a note preview (first few lines plus size, e.g. "+38 lines"); `E` opens the full note in `$EDITOR` (D29). Lists show a small marker on tasks that have a note. For parents, also children with progress bar, done children kept with date; `a` repeating add-child input (token syntax), `J/K` reorder. *(Parent mockup)*
 6. **Quick-add**: overlay from any view (`a`), token syntax with autocomplete.
@@ -231,7 +235,7 @@ type Store interface {
 `app.Service` surface:
 - **Capture/edit**: `Add(line)`, `Update(id, patch)`, `SetParent`, `Reorder`, `Delete`.
 - **Lifecycle**: `Done(id)`, `Drop(id, reason)`, `Reopen(id)`.
-- **Planning**: `Pin`, `Unpin`, `PinSource(kind, extID)`, `Block(id, start, dur)`, `MoveBlock`, `ResizeBlock`, `Unblock`, `CommitPlan`.
+- **Planning**: `Pin`, `Unpin`, `PinSource(kind, extID)`, `Block(id, start, dur)`, `MoveBlock`, `ResizeBlock`, `SetBlockSpan(id, start, dur)` (fine-tune, D36), `Unblock`, `CommitPlan`.
 - **Day**: `StartDay(now) (DayResult, error)`: idempotent; returns recap.
 - **Integrations**: `SyncCalendar(ctx)`, `SyncSources(ctx)` (fetch + reconcile).
 - **Read**: `Snapshot()`, `Today()`, `IntegrationStatus()`.
@@ -316,7 +320,7 @@ Undo rule established in Plan 2: an undo returns `ErrConflict` when the planning
 - **Plan 3: one read for Pick.** `Plan()` discards the snapshot it loads; Pick also needs the backlog. Consider returning both from one read.
 - **Plan 3: commit summary wording.** `CommitSummary.Blocked` includes closed tasks' blocks; `Candidates` counts only open unblocked ones. Word the summary accordingly.
 - **Plan 5 (was Plan 4; the timeline lands in Plan 5): DST gaps on the timeline.** `Day.At` for wall-clock times inside a DST gap/overlap (e.g. 02:30 on 2026-03-29) is unspecified by Go; the timeline must render those rows deliberately.
-- **Plan 5: auto-close must set `UpdatedAt = now`**, or compare-and-set undo won't notice it.
+- **Plan 6 (auto-close is GitHub's): auto-close must set `UpdatedAt = now`**, or compare-and-set undo won't notice it.
 - Smaller tests to add when touched: block ending exactly at `day_start + 24h`; Unpin of a closed task; length guards before indexing slices in app planning tests.
 
 Plan 3 status: Block undo residual, day freshness (watch tick + stale-key guard), "done today" via `DayOf`, and one read for Pick (`Service.Load`) are done.
@@ -354,6 +358,20 @@ Plan 4 ships in two slices, each merged on its own.
 - **Capture** (D33): `tt add` with no line (terminal prompt / piped stdin); multi-line paste in quick-add and add-child holds lines 2+ as a note shown as `+ N lines → note`, dropped on esc. One helper `dsl.WithNoteLines(line string, rest []string) string` composes the line for both.
 - **4a carry-forwards included**: esc in the filter line restores the selected tasks; `g` saves only the latest grouping and a late startup read can't override a choice already made; filtered `l/h` leave the unfiltered expansion alone and a parent with no listed children shows no `▸`; completion works after `--` in the filter bar. Plus `tt` open/ui error-path tests (Plan 3). Hints overflow stays with the UI tweaks; the hardening-test version waits for the next migration.
 
+## Plan 5 split
+
+Plan 5 ships in two slices, each merged on its own.
+
+**Plan 5a — Today & blocking** (D34–D38, P3, P4 for blocks):
+- **D34** in `app`: `Pin` on a parent pins its open children in one transaction; `Unpin` on a parent unpins its children except those with blocks today; both return no undo when the task has children (status `· no undo`). `Unpin` of a child whose parent is pinned is refused ("unpin the parent first"). `AddChild`, `SetParent` and `Reopen` under a pinned parent pin the child. Childless pin/unpin undo unchanged.
+- **`Service.SetBlockSpan(ctx, id, start, dur)`**: start and length in one undoable step (fine-tune), same checks as `MoveBlock`/`ResizeBlock`.
+- **Config** `[timeline] start`, `end` (`HH:MM`, end after start; defaults 08:00, 19:00).
+- **Screens** (D35): Today as start screen; Pick renamed Log (`L`/`esc`/`B`); Inbox and Task detail return to the screen they were opened from; banner `⏎` routes Inbox → Log.
+- **Timeline renderer** (D38) over a list of entries (blocks only in 5a, meetings join in 5b), rows cached per load like Log's; pick-up/drop placement and block keys (D36); nudges (D37); `c` commit with the status-line summary (wording per the Plan 2 carry-forward: blocks include closed tasks', candidates are open unblocked ones).
+- **Carry-forwards included**: the shared height budget for Inbox, Log and the timeline (Plan 3); DST rows (Plan 2).
+
+**Plan 5b — Calendar**: `helpers/tt-cal` (Swift, EventKit, built with the embedded Info.plist), `CalendarSource` + `eventkit` adapter + fake, busy rules (D17a) in `domain`, migration 004 `integration_state` (fix `TestNewerSchemaIsRefused` first), the calendar poll loop (2m, 10s timeout, cached payload, D3a) and `R`, meetings on the timeline (overlaps merge into one band with a count, P4), gaps end at meetings, ⚠ conflicts with one-key re-slot (D18), the freshness indicator, and the real `tea.Program` test (Plan 3).
+
 ## Carry-forward from Plan 4a review
 
 - **Plan 4b: cursor after a filter round-trip.** `/`, a typo, `esc` restores the filter but not the task the cursor was on (live narrowing replaced `selected`). Remember the selected ids with `prev` and restore them on esc.
@@ -367,7 +385,7 @@ Plan 4 ships in two slices, each merged on its own.
 
 ## Carry-forward from Plan 4b review
 
-- **Plan 5 (from use): a pinned parent pins its children (D34).** `Pin` on a parent pins its open children in the same transaction, and `Unpin` unpins them; `Unpin` on a child of a pinned parent returns an error the TUI shows as "unpin the parent first"; `AddChild`, `SetParent` and `Reopen` under a pinned parent pin the child. `Pin`/`Unpin` of a task with children return no undo (the TUI shows e.g. `pinned "X" + 3 children · no undo, u unpins`), so no cascade undo logic is needed; childless pin/unpin undo is unchanged. StartDay's carry-over and pinned-days (D10d) apply per child as today.
+- **Plan 5a (from use): a pinned parent pins its children (D34).** `Pin` on a parent pins its open children in the same transaction, and `Unpin` unpins them except children blocked today (D34 as amended); `Unpin` on a child of a pinned parent returns an error the TUI shows as "unpin the parent first"; `AddChild`, `SetParent` and `Reopen` under a pinned parent pin the child. `Pin`/`Unpin` of a task with children return no undo (the TUI shows e.g. `pinned "X" + 3 children · no undo, u unpins`), so no cascade undo logic is needed; childless pin/unpin undo is unchanged. StartDay's carry-over and pinned-days (D10d) apply per child as today.
 
 Plan 4a's carry-forwards are done in Plan 4b, except "before migration 004" and the hints overflow (still open above).
 
@@ -421,8 +439,8 @@ Collected while using the TUI. The user wants these later, batched with other tw
 Proposed defaults (pending confirmation):
 - **P1 Edit**: `e` opens the token line prefilled with the task's current values. Notes: see D29. *(Accepted; Plan 4b.)*
 - **P2 Undo**: session-level undo stack (`ctrl+z`) built from inverse commands; not persisted.
-- **P3 Done with future blocks**: blocks stay on the timeline, shown as done; `u` frees the time.
-- **P4 Timeline**: visible hours configurable (default 08:00–19:00), 30m rows, scrolls; off-grid meetings show exact times in the label; overlapping meetings merge into one busy band with a count.
+- **P3 Done with future blocks**: blocks stay on the timeline, shown as done; `u` frees the time. *(Accepted; D38, Plan 5a.)*
+- **P4 Timeline**: visible hours configurable (default 08:00–19:00), 30m rows, scrolls; off-grid meetings show exact times in the label; overlapping meetings merge into one busy band with a count. *(Accepted for blocks as D38, Plan 5a; meetings in Plan 5b.)*
 - **P5 Help**: `?` overlay listing keys for the current view.
 - **P6 Non-working days**: no working-days config; the new-day banner plus "later" is enough.
 - **P7 Backups**: rely on Time Machine for v1.
