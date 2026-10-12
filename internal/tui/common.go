@@ -94,8 +94,11 @@ func (m *Model) closedToday(t domain.Task) bool {
 
 func (m *Model) headerView() string {
 	name := "Pick"
-	if m.screen == screenInbox {
+	switch m.screen {
+	case screenInbox:
 		name = "Inbox"
+	case screenDetail:
+		name = "Detail"
 	}
 	h := styleTitle.Render("tt · "+name) + " · " + dayLabel(m.state.Plan.Day)
 	if n := len(m.idx.inInbox); n > 0 {
@@ -133,7 +136,10 @@ func (m *Model) hintsView() string {
 		}
 		return styleDim.Render(fmt.Sprintf("1-%d priority · s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help", len(m.svc.Config().Priorities)))
 	}
-	hints := "a add · / filter · g group · p pin · u unpin · x done · d drop · tab pane · →/← expand · i inbox · ctrl+z undo · ? help · q quit"
+	if m.screen == screenDetail {
+		return styleDim.Render("j/k move · ⏎ open child · x done · d drop · p pin · u unpin · esc back · a add · ctrl+z undo · ? help")
+	}
+	hints := "⏎ open · a add · / filter · g group · p pin · u unpin · x done · d drop · tab pane · →/← expand · i inbox · ctrl+z undo · ? help · q quit"
 	if m.pick.filtered() && m.overlay == nil { // in the filter line, esc restores the previous filter
 		hints = "esc clears filter · " + hints
 	}

@@ -39,6 +39,7 @@ type screen int
 const (
 	screenPick screen = iota
 	screenInbox
+	screenDetail
 )
 
 const maxUndo = 50
@@ -75,6 +76,7 @@ type Model struct {
 	screen screen
 	pick   pickState
 	inbox  inboxState
+	detail detailState
 
 	overlay     overlay
 	banner      *app.DayResult
@@ -135,6 +137,7 @@ func (m *Model) Init() tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmd := m.update(msg)
 	m.pick.follow(m)
+	m.detail.follow(m)
 	return m, cmd
 }
 
@@ -272,8 +275,11 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 		m.setStatus("new day — refreshing")
 		return m.startDay()
 	}
-	if m.screen == screenInbox {
+	switch m.screen {
+	case screenInbox:
 		return m.inboxKey(key)
+	case screenDetail:
+		return m.detailKey(key)
 	}
 	return m.pickKey(key)
 }
@@ -344,13 +350,19 @@ func (m *Model) render() string {
 	}
 	var parts []string
 	parts = append(parts, m.headerView())
+	if h, ok := m.overlay.(helpOverlay); ok { // help takes the whole screen
+		return fitWidth(strings.Join(append(parts, h.view(m)), "\n"), m.width)
+	}
 	if m.banner != nil {
 		parts = append(parts, m.bannerView())
 	}
 	fb, filtering := m.overlay.(*filterBar)
-	if m.screen == screenInbox {
+	switch m.screen {
+	case screenInbox:
 		parts = append(parts, m.inboxView())
-	} else {
+	case screenDetail:
+		parts = append(parts, m.detailView())
+	default:
 		if filtering {
 			parts = append(parts, fb.view(m)) // the filter line sits above the backlog
 		}

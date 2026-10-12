@@ -221,7 +221,16 @@ func (helpOverlay) view(m *Model) string {
 		"R        reload · q quit · ? this help",
 	}
 	var local []string
-	if m.screen == screenInbox {
+	switch m.screen {
+	case screenDetail:
+		local = []string{
+			"j k      move between the task and its children",
+			"⏎        open the child under the cursor · esc back (child → parent → Pick)",
+			"p / u    pin to today / unpin",
+			"x        done (again: reopen)",
+			"d / D    drop with optional reason / delete",
+		}
+	case screenInbox:
 		local = []string{
 			fmt.Sprintf("1-%d      set priority", len(m.svc.Config().Priorities)),
 			"s m l x  set size (x = XL); a card with priority and size leaves the inbox",
@@ -229,8 +238,9 @@ func (helpOverlay) view(m *Model) string {
 			"d / D    drop with optional reason / delete",
 			"esc      back to Pick",
 		}
-	} else {
+	default:
 		local = []string{
+			"⏎        task detail",
 			"tab      switch backlog / today",
 			"j k      move · → ← expand / collapse a parent",
 			"p / u    pin to today / unpin",

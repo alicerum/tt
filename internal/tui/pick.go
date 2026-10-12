@@ -64,6 +64,9 @@ func (m *Model) refreshRows() {
 	m.pick.rows[paneBacklog] = m.backlogRows()
 	m.pick.rows[paneToday] = m.todayRows()
 	m.pick.clamp(m)
+	if len(m.detail.stack) > 0 {
+		m.detail.refresh(m)
+	}
 }
 
 // applyFilter makes text the backlog filter (D26a). On a parse error the
@@ -311,8 +314,9 @@ func (m *Model) pickKey(key string) tea.Cmd {
 		return nil
 	}
 	t := r.task
-	label := fmt.Sprintf("%q", t.Title)
 	switch key {
+	case "enter":
+		m.openDetail(t.ID) // D31
 	case "right", "l":
 		if p.focus == paneBacklog && r.parent {
 			p.expanded[t.ID] = true
@@ -327,37 +331,51 @@ func (m *Model) pickKey(key string) tea.Cmd {
 			p.expanded[t.ID] = false
 			m.refreshRows()
 		}
+	default:
+		cmd, _ := m.taskKey(key, t)
+		return cmd
+	}
+	return nil
+}
+
+// taskKey runs the keys that act on one task the same way wherever it is
+// shown (Pick panes, Task detail). ok is false for any other key.
+func (m *Model) taskKey(key string, t domain.Task) (cmd tea.Cmd, ok bool) {
+	svc := m.svc
+	label := fmt.Sprintf("%q", t.Title)
+	_, pinned := m.idx.cand[t.ID]
+	switch key {
 	case "p":
 		if t.Status != domain.StatusOpen {
 			m.setStatus("can't pin a closed task — x reopens it")
-			return nil
+			return nil, true
 		}
-		if r.cand != nil {
+		if pinned {
 			m.setStatus("already pinned")
-			return nil
+			return nil, true
 		}
-		return m.act("pin "+label, "pinned "+label, func(ctx context.Context) (app.Undo, error) { return svc.Pin(ctx, t.ID) })
+		return m.act("pin "+label, "pinned "+label, func(ctx context.Context) (app.Undo, error) { return svc.Pin(ctx, t.ID) }), true
 	case "u":
-		if r.cand == nil {
+		if !pinned {
 			m.setStatus("not pinned")
-			return nil
+			return nil, true
 		}
-		return m.act("unpin "+label, "unpinned "+label, func(ctx context.Context) (app.Undo, error) { return svc.Unpin(ctx, t.ID) })
+		return m.act("unpin "+label, "unpinned "+label, func(ctx context.Context) (app.Undo, error) { return svc.Unpin(ctx, t.ID) }), true
 	case "x":
 		if t.Status != domain.StatusOpen {
-			return m.act("reopen "+label, "reopened "+label, func(ctx context.Context) (app.Undo, error) { return svc.Reopen(ctx, t.ID) })
+			return m.act("reopen "+label, "reopened "+label, func(ctx context.Context) (app.Undo, error) { return svc.Reopen(ctx, t.ID) }), true
 		}
-		return m.act("done "+label, "✓ "+label, func(ctx context.Context) (app.Undo, error) { return svc.Done(ctx, t.ID) })
+		return m.act("done "+label, "✓ "+label, func(ctx context.Context) (app.Undo, error) { return svc.Done(ctx, t.ID) }), true
 	case "d":
 		if t.Status == domain.StatusDropped {
 			m.setStatus("already dropped — x reopens it") // Drop would overwrite the reason
-			return nil
+			return nil, true
 		}
-		return m.openDropPrompt(t)
+		return m.openDropPrompt(t), true
 	case "D":
-		return m.openDeleteConfirm(t)
+		return m.openDeleteConfirm(t), true
 	}
-	return nil
+	return nil, false
 }
 
 func (m *Model) pickView() string {
@@ -429,6 +447,9 @@ func (m *Model) rowLine(r row, width int, selected bool) string {
 		b.WriteString("  ")
 	}
 	b.WriteString(m.badge(t) + " " + t.Title)
+	if t.Note != "" {
+		b.WriteString(" ✎")
+	}
 	if t.Requester != "" {
 		b.WriteString(" @" + t.Requester)
 	}
