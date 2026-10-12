@@ -102,11 +102,24 @@ func (x *Tx) setTags(ctx context.Context, id int64, tags []string) error {
 	return nil
 }
 
-// LoadSnapshot reads every task with its tags.
+// LoadSnapshot reads every task with its tags in one consistent read.
 func (s *Store) LoadSnapshot(ctx context.Context) (domain.Snapshot, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+taskColumns+" FROM tasks ORDER BY id")
+	var snap domain.Snapshot
+	err := s.readTx(ctx, func(tx *sql.Tx) error {
+		tasks, err := loadTasks(ctx, tx)
+		if err != nil {
+			return err
+		}
+		snap = domain.NewSnapshot(tasks)
+		return nil
+	})
+	return snap, err
+}
+
+func loadTasks(ctx context.Context, tx *sql.Tx) ([]domain.Task, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT "+taskColumns+" FROM tasks ORDER BY id")
 	if err != nil {
-		return domain.Snapshot{}, err
+		return nil, err
 	}
 	defer rows.Close()
 	var tasks []domain.Task
@@ -114,34 +127,31 @@ func (s *Store) LoadSnapshot(ctx context.Context) (domain.Snapshot, error) {
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
-			return domain.Snapshot{}, err
+			return nil, err
 		}
 		index[t.ID] = len(tasks)
 		tasks = append(tasks, t)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.Snapshot{}, err
+		return nil, err
 	}
 
-	tagRows, err := s.db.QueryContext(ctx, "SELECT task_id, tag FROM task_tags ORDER BY task_id, tag")
+	tagRows, err := tx.QueryContext(ctx, "SELECT task_id, tag FROM task_tags ORDER BY task_id, tag")
 	if err != nil {
-		return domain.Snapshot{}, err
+		return nil, err
 	}
 	defer tagRows.Close()
 	for tagRows.Next() {
 		var id int64
 		var tag string
 		if err := tagRows.Scan(&id, &tag); err != nil {
-			return domain.Snapshot{}, err
+			return nil, err
 		}
 		if i, ok := index[id]; ok {
 			tasks[i].Tags = append(tasks[i].Tags, tag)
 		}
 	}
-	if err := tagRows.Err(); err != nil {
-		return domain.Snapshot{}, err
-	}
-	return domain.NewSnapshot(tasks), nil
+	return tasks, tagRows.Err()
 }
 
 func taskArgs(t domain.Task) []any {

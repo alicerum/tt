@@ -16,7 +16,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-var ErrNotFound = errors.New("not found")
+var (
+	ErrNotFound    = errors.New("not found")
+	ErrNewerSchema = errors.New("database was created by a newer tt; upgrade tt")
+)
 
 //go:embed migrations/*.sql
 var migrationFS embed.FS
@@ -68,17 +71,36 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	slices.Sort(names)
+	latest := 0
 	for _, name := range names {
-		base := strings.TrimPrefix(name, "migrations/")
-		version, err := strconv.Atoi(base[:strings.IndexByte(base, '_')])
+		version, err := migrationVersion(name)
 		if err != nil {
-			return fmt.Errorf("migration %s: name must start with a number", name)
+			return err
 		}
 		if err := applyMigration(ctx, db, name, version); err != nil {
 			return fmt.Errorf("migration %s: %w", name, err)
 		}
+		latest = max(latest, version)
+	}
+	var applied int
+	if err := db.QueryRowContext(ctx, "SELECT coalesce(max(version), 0) FROM schema_migrations").Scan(&applied); err != nil {
+		return err
+	}
+	if applied > latest {
+		return fmt.Errorf("schema version %d, this tt knows up to %d: %w", applied, latest, ErrNewerSchema)
 	}
 	return nil
+}
+
+// migrationVersion parses "migrations/NNN_name.sql" into NNN.
+func migrationVersion(name string) (int, error) {
+	base := strings.TrimPrefix(name, "migrations/")
+	prefix, _, ok := strings.Cut(base, "_")
+	version, err := strconv.Atoi(prefix)
+	if !ok || err != nil {
+		return 0, fmt.Errorf("migration %s: name must look like NNN_name.sql", name)
+	}
+	return version, nil
 }
 
 func applyMigration(ctx context.Context, db *sql.DB, name string, version int) error {
@@ -106,6 +128,17 @@ func applyMigration(ctx context.Context, db *sql.DB, name string, version int) e
 		return err
 	}
 	return tx.Commit()
+}
+
+// readTx runs fn in a read-only transaction: one consistent view, and it
+// never takes the write lock (modernc issues a plain BEGIN for ReadOnly).
+func (s *Store) readTx(ctx context.Context, fn func(*sql.Tx) error) error {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return fn(tx)
 }
 
 // InTx runs fn in a write transaction (BEGIN IMMEDIATE); fn's error rolls back.
