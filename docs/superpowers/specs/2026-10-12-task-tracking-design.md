@@ -85,6 +85,9 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D26 | Backlog grouping switchable: priority (default), size, created date, requester (no-requester group last; groups alphabetical). Within a group: oldest first. Last choice remembered | Different questions need different slices |
 | D26a | Filter bar reuses the token DSL: `@ana #impl !1 ~l <7d schema`; remaining words fuzzy-match title/tags/requester | One DSL for capture and retrieval |
 | D26b | Status tokens: open items by default; `is:done`, `is:dropped`, `is:all` widen. No separate Search view | Search over finished work without another screen |
+| D26c | An active filter searches **all** tasks, Inbox and pinned ones included (existing badges mark them); results keep the current grouping, non-matches disappear | Filtering is "find that task"; a stable layout keeps the eye oriented while typing |
+| D26d | Filter tokens: `@who` (repeats OR), `#tag` incl. inherited tags (repeats AND), `!n` effective priority and `~size` (repeats OR; `!n` out of range is an error), `<Nd`/`>Nd` created within / more than N days (or `w` weeks) ago, `is:…`. Any other word is fuzzy: a case-insensitive substring of title/tags/requester, or a subsequence anchored at a word start (`schm` → *schema*); every word must match. Look-alikes as in D25 stay words | One predictable rule per token; anchored subsequences forgive abbreviations without matching noise |
+| D26e | `/` opens the filter line prefilled with the current filter and narrows live; a parse error keeps the last valid results and refuses enter; `enter` keeps the filter, `esc` in the line restores the previous one, `esc` on the list clears it. Filters are never persisted. `g` cycles grouping (D26); created-date groups are age buckets: this week (<7d), this month (<30d), older (<90d), ancient. Priority grouping ends with `P?` then `unset`; size with `unsized` | Live feedback, no lost typing; a restart starts clean |
 | D27 | No separate Backlog view; Pick doubles as backlog browser/editor outside planning | One fewer view |
 | D29 | Notes are edited in the system editor: `E` suspends the TUI (Bubble Tea `ExecProcess`), opens the note as a temp markdown file in `$VISUAL` → `$EDITOR` → `vi`, and saves on exit. Unchanged file → no write; empty file → note cleared; non-zero editor exit → discard | My own editor and config beat any in-app modal; nothing to build or maintain |
 | D30 | Timezone = the system timezone (Go `time.Local`); the standard `TZ` environment variable overrides it. No config option. The zone is read at process start, so an always-open TUI picks up a changed system zone (travel) only after a restart | System-wide is what the user wants; `TZ` already covers overrides |
@@ -307,7 +310,7 @@ Undo rule established in Plan 2: an undo returns `ErrConflict` when the planning
 - **Plan 3: "done today".** Use `Service.DayOf(task.ClosedAt)` (converts stored UTC to the clock's zone) for wins and struck-through children.
 - **Plan 3: one read for Pick.** `Plan()` discards the snapshot it loads; Pick also needs the backlog. Consider returning both from one read.
 - **Plan 3: commit summary wording.** `CommitSummary.Blocked` includes closed tasks' blocks; `Candidates` counts only open unblocked ones. Word the summary accordingly.
-- **Plan 4: DST gaps on the timeline.** `Day.At` for wall-clock times inside a DST gap/overlap (e.g. 02:30 on 2026-03-29) is unspecified by Go; the timeline must render those rows deliberately.
+- **Plan 5 (was Plan 4; the timeline lands in Plan 5): DST gaps on the timeline.** `Day.At` for wall-clock times inside a DST gap/overlap (e.g. 02:30 on 2026-03-29) is unspecified by Go; the timeline must render those rows deliberately.
 - **Plan 5: auto-close must set `UpdatedAt = now`**, or compare-and-set undo won't notice it.
 - Smaller tests to add when touched: block ending exactly at `day_start + 24h`; Unpin of a closed task; length guards before indexing slices in app planning tests.
 
@@ -322,6 +325,20 @@ Plan 3 status: Block undo residual, day freshness (watch tick + stale-key guard)
 - **Plan 5: shared height budget** for Inbox, Pick and the timeline (Inbox has none; Pick's floor of 3 rows can overflow tiny terminals).
 - **Plan 5: one real `tea.Program` test** once calendar/GitHub loops add true concurrency (the harness runs commands synchronously).
 - Accepted, not planned: keys pressed before a reload lands act on the state shown (double `x` → two actions); the stale-day guard swallows one navigation key while the new day loads.
+
+## Plan 4 split
+
+Plan 4 ships in two slices, each merged on its own.
+
+**Plan 4a — find & browse** (D26–D26e):
+- `dsl.ParseFilter(line, levels) (Filter, error)`; `internal/search` (pure): `Match(filter, task, parent, now)` and grouping (`GroupOf(by, task, parent, now)`, group order and labels).
+- **One placement function** in `tui` decides where each task shows. Unfiltered: as before (triaged, open, unpinned; children under expanded parents; orphans top-level with `↳ #parent`). Filtered: a match whose parent also matches is listed under it (parent auto-expanded to its matching children); a match whose parent doesn't match is top-level with `↳ #parent`. Grouping applies to top-level rows; children follow their parent.
+- **Row cache**: both panes' rows are rebuilt on load, filter change, `g`, expand/collapse; render and keys only read them.
+- **Shared token input** for quick-add and the filter bar: `@`/`#` completion at the cursor (not inside a ` -- ` note), width follows resizes.
+- **Grouping remembered**: migration `003_ui_state.sql` (`ui_state(key PK, value)`), `Service.UIState`/`SetUIState`; not undoable; unknown values fall back to priority.
+- Leftovers: hide `0/0` progress when all children are dropped; stable scroll window; capture `svc` in pickKey closures.
+
+**Plan 4b — edit & detail**: Task detail (view 5) with children add (`a`, repeating) and `J/K` reorder (`Service.Reorder`), `e` edit line (P1), `E` note in `$EDITOR` (D29), open link (D21), `tt add` with no line reads stdin, multi-line paste maps lines 2+ to the note, `tt` open/ui error-path tests.
 
 ## UI tweaks backlog (from use; not yet scheduled)
 
