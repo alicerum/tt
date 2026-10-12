@@ -64,6 +64,18 @@ func TestTimelineRowsAndGaps(t *testing.T) {
 	if _, ok := tl.blockAt(at(10*hr + 30*mn)); ok {
 		t.Error("10:30 row is free")
 	}
+
+	// A row's keys act on the block the row names: a block carried on from
+	// an earlier row loses to one starting in it.
+	a2 := domain.Block{ID: 1, TaskID: 10, Start: 10 * hr, Duration: 40 * mn}       // 10:00–10:40
+	b2 := domain.Block{ID: 2, TaskID: 11, Start: 10*hr + 40*mn, Duration: 20 * mn} // 10:40–11:00
+	tl2 := buildTimeline([]domain.Block{a2, b2}, 8*hr, 19*hr, 8*hr, 4*hr)
+	if blk, ok := tl2.blockAt(tl2.rowOf(10*hr + 30*mn)); !ok || blk.ID != b2.ID {
+		t.Errorf("10:30 row names B (it starts at 10:40 in this row; A only carries on): got %+v %v", blk, ok)
+	}
+	if blk, ok := tl2.blockAt(tl2.rowOf(10 * hr)); !ok || blk.ID != a2.ID {
+		t.Errorf("10:00 row names A: got %+v %v", blk, ok)
+	}
 	if tl.rowOf(7*hr) != -1 {
 		t.Error("07:00 is outside the rows")
 	}

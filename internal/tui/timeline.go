@@ -65,10 +65,16 @@ func (tl *timeline) rowOf(at time.Duration) int {
 	return -1
 }
 
-// blockAt is the earliest block in row i; keys on a row act on it.
+// blockAt is the block keys on row i act on: the earliest one starting in it,
+// else the one carrying on from above (the row names it, see timelineRow).
 func (tl *timeline) blockAt(i int) (domain.Block, bool) {
 	if i < 0 || i >= len(tl.rows) || len(tl.rows[i].blocks) == 0 {
 		return domain.Block{}, false
+	}
+	for _, b := range tl.rows[i].blocks {
+		if b.Start >= tl.rows[i].start {
+			return b, true
+		}
 	}
 	return tl.rows[i].blocks[0], true
 }
