@@ -39,8 +39,8 @@ func TestReviewsLaneOnToday(t *testing.T) {
 	threeReviews(h)
 	h.mustSee("REVIEWS · 3 waiting", "#901 api  Add idempotency key", "@ana  3d", "#877 photos  Bump go", "@tom  1d", "@ion  2h")
 	s := h.screen()
-	if a, b, c := strings.Index(s, "#901"), strings.Index(s, "#877"), strings.Index(s, "#915"); !(a < b && b < c) {
-		t.Errorf("longest waiting first (D49):\n%s", s)
+	if a, b, c := strings.Index(s, "#915"), strings.Index(s, "#877"), strings.Index(s, "#901"); !(a < b && b < c) {
+		t.Errorf("the newest request first (D60):\n%s", s)
 	}
 	if l := h.lineWith("REVIEWS"); !strings.Contains(l, "│╭ REVIEWS") {
 		t.Errorf("the lane sits in the right column, under the candidates: %q", l)
@@ -51,7 +51,7 @@ func TestReviewsLaneOnToday(t *testing.T) {
 	h.mustSee("j/k move · p pin · o open PR · w back")
 	h.keys("j", "p") // #877
 	h.mustSee(`pinned "Review #877: Bump go" · P2 S`, "REVIEWS · 3 waiting", "Review #877: Bump go")
-	h.keys("j") // to #915
+	h.keys("k") // up to #915, the newest
 	if l := h.lineWith("Review #877"); !strings.Contains(l, "[P2 S]") {
 		t.Errorf("the review is a candidate with D48's defaults: %q", l)
 	}
@@ -97,7 +97,7 @@ func TestReviewsLaneInTheLog(t *testing.T) {
 		t.Errorf("in the Log the lane sits in the left column, under the backlog: %q", l)
 	}
 	h.mustSee("w reviews · ⏎ open")
-	h.keys("w", "p") // #901, the longest waiting
+	h.keys("w", "j", "j", "p") // #901, the longest waiting, is last (D60)
 	h.mustSee(`pinned "Review #901: Add idempotency key" · P2 S`)
 	if l := h.lineWith("Review #901"); !strings.Contains(l, "│") || strings.Index(l, "Review #901") < strings.Index(l, "│") {
 		t.Errorf("the pinned review is a candidate (right), not in the backlog: %q", l)
@@ -153,7 +153,7 @@ func TestReviewsLaneHeight(t *testing.T) {
 	h := newGHHarness(t, config.Default())
 	var items []domain.SourceItem
 	for n := range 7 {
-		items = append(items, h.reviewItem("acme/api", 900+n, "PR", "ana", time.Duration(10-n)*time.Hour))
+		items = append(items, h.reviewItem("acme/api", 900+n, "PR", "ana", time.Duration(n+1)*time.Hour)) // #900 newest, first
 	}
 	h.setReviews(items...)
 	h.send(tea.WindowSizeMsg{Width: 140, Height: 24})

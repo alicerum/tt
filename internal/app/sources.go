@@ -32,7 +32,7 @@ func (s *Service) SourceSetUp() bool { return s.src != nil }
 type GitHubState struct {
 	SetUp bool
 	// Reviews is the Reviews lane: every request awaiting me, with or
-	// without a task (D51), longest waiting first.
+	// without a task (D51), the newest request first (D60).
 	Reviews     []domain.SourceItem
 	LastSuccess time.Time // zero: never fetched
 	Err         string    // why the last fetch failed; "" once one succeeds
@@ -223,7 +223,7 @@ func (s *Service) githubState(ctx context.Context) (GitHubState, error) {
 		return GitHubState{}, err
 	}
 	slices.SortFunc(gs.Reviews, func(a, b domain.SourceItem) int {
-		return cmp.Or(a.WaitingSince().Compare(b.WaitingSince()), cmp.Compare(a.ExternalID, b.ExternalID))
+		return cmp.Or(b.WaitingSince().Compare(a.WaitingSince()), cmp.Compare(a.ExternalID, b.ExternalID))
 	})
 	return gs, nil
 }

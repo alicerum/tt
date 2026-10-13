@@ -105,10 +105,10 @@ func TestSyncSourcesFillsTheLane(t *testing.T) {
 		t.Errorf("nothing to close: %v", closed)
 	}
 	gs := mustLoad(t, s).GitHub
-	if got := ids(gs.Reviews); len(got) != 3 || got[0] != "acme/api#901" || got[1] != "acme/api#877" || got[2] != "acme/api#920" {
-		t.Fatalf("lane = %v; want longest waiting first, one row per PR", got)
+	if got := ids(gs.Reviews); len(got) != 3 || got[0] != "acme/api#920" || got[1] != "acme/api#877" || got[2] != "acme/api#901" {
+		t.Fatalf("lane = %v; want the newest request first, one row per PR (D60)", got)
 	}
-	if r := gs.Reviews[2]; !r.FirstSeenAt.Equal(start) || !r.WaitingSince().Equal(start) || r.Author != "ana" || r.Kind != "github" {
+	if r := gs.Reviews[0]; !r.FirstSeenAt.Equal(start) || !r.WaitingSince().Equal(start) || r.Author != "ana" || r.Kind != "github" {
 		t.Errorf("#920 = %+v", r)
 	}
 	if !gs.LastSuccess.Equal(start) || gs.Err != "" {
@@ -120,10 +120,10 @@ func TestSyncSourcesFillsTheLane(t *testing.T) {
 	src.Set([]domain.SourceItem{review(920, "Fix nil deref (v2)", time.Time{}), review(901, "Add idempotency key", start.Add(-72*time.Hour))}, nil)
 	mustSyncSources(t, s)
 	gs = mustLoad(t, s).GitHub
-	if got := ids(gs.Reviews); len(got) != 2 || got[1] != "acme/api#920" {
+	if got := ids(gs.Reviews); len(got) != 2 || got[0] != "acme/api#920" {
 		t.Fatalf("lane = %v", got)
 	}
-	if r := gs.Reviews[1]; !r.FirstSeenAt.Equal(start) || r.Title != "Fix nil deref (v2)" {
+	if r := gs.Reviews[0]; !r.FirstSeenAt.Equal(start) || r.Title != "Fix nil deref (v2)" {
 		t.Errorf("#920 after a refetch = %+v; want first seen kept, title refreshed", r)
 	}
 
