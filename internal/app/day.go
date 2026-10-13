@@ -136,11 +136,12 @@ type State struct {
 	Version  int64 // DataVersion read before loading; compare to detect later writes
 	Snapshot domain.Snapshot
 	Plan     domain.Plan
+	Calendar CalendarState
 }
 
 // Load reads the data version first, then all tasks and today's plan in one
-// read. A write that lands during the load changes the version, so the next
-// version check reloads again.
+// read, then the calendar's cache. A write that lands during the load changes
+// the version, so the next version check reloads again.
 func (s *Service) Load(ctx context.Context) (State, error) {
 	version, err := s.store.DataVersion(ctx)
 	if err != nil {
@@ -151,7 +152,11 @@ func (s *Service) Load(ctx context.Context) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	return State{Version: version, Snapshot: snap, Plan: s.buildPlan(today, snap, state)}, nil
+	cal, err := s.calendarState(ctx, today)
+	if err != nil {
+		return State{}, err
+	}
+	return State{Version: version, Snapshot: snap, Plan: s.buildPlan(today, snap, state), Calendar: cal}, nil
 }
 
 func (s *Service) buildPlan(today domain.Day, snap domain.Snapshot, state store.PlanState) domain.Plan {

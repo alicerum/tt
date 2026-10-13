@@ -26,6 +26,7 @@ type Store interface {
 	LoadPlan(ctx context.Context, day domain.Day) (domain.Snapshot, store.PlanState, error)
 	DataVersion(ctx context.Context) (int64, error)
 	UIState(ctx context.Context, key string) (string, bool, error)
+	Integration(ctx context.Context, name string) (store.Integration, bool, error)
 }
 
 // Undo reverts the command that returned it. The TUI keeps these on a
@@ -36,6 +37,7 @@ type Service struct {
 	store Store
 	clock Clock
 	cfg   config.Config
+	cal   CalendarSource // nil: no calendar set up (D40)
 }
 
 func New(st Store, clock Clock, cfg config.Config) *Service {

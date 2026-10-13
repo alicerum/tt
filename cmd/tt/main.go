@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"tt/internal/app"
+	"tt/internal/calendar"
 	"tt/internal/config"
 	"tt/internal/domain"
 	"tt/internal/dsl"
@@ -177,7 +178,11 @@ func open(ctx context.Context, getenv func(string) string) (*app.Service, func()
 	if err != nil {
 		return nil, nil, err
 	}
-	return app.New(st, app.SystemClock{}, cfg), func() { st.Close() }, nil
+	svc := app.New(st, app.SystemClock{}, cfg)
+	if len(cfg.Calendars) > 0 { // D40: no calendars, no calendar
+		svc.WithCalendar(&calendar.EventKit{Calendars: cfg.Calendars})
+	}
+	return svc, func() { st.Close() }, nil
 }
 
 func paths(getenv func(string) string) (configPath, dbPath string, err error) {

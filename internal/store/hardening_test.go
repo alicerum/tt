@@ -53,7 +53,7 @@ func TestNewerSchemaIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Drop the newest real migration's row: a refused Open must not re-apply it.
-	if _, err := s.db.Exec("DELETE FROM schema_migrations WHERE version = 3"); err != nil {
+	if _, err := s.db.Exec("DELETE FROM schema_migrations WHERE version = (SELECT max(version) FROM schema_migrations WHERE version < 999)"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

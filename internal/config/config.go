@@ -30,6 +30,11 @@ type Config struct {
 	// WorkStart and WorkEnd are the working hours (D39), as offsets from
 	// midnight: Today's timeline shows them, and blocks must fit inside them.
 	WorkStart, WorkEnd time.Duration
+	// Calendars names the calendars whose events count as busy (D40); none
+	// means no calendar: nothing is fetched.
+	Calendars []string
+	// CalendarPoll is how often the calendar is fetched (D3).
+	CalendarPoll time.Duration
 }
 
 func Default() Config {
@@ -50,6 +55,7 @@ func Default() Config {
 		RolloverAlert: 3,
 		WorkStart:     8 * time.Hour,
 		WorkEnd:       19 * time.Hour,
+		CalendarPoll:  2 * time.Minute,
 	}
 }
 
@@ -66,6 +72,10 @@ type file struct {
 		Start *string `toml:"start"`
 		End   *string `toml:"end"`
 	} `toml:"work_hours"`
+	Calendar struct {
+		Calendars []string `toml:"calendars"`
+		Poll      *string  `toml:"poll"`
+	} `toml:"calendar"`
 }
 
 // Load reads path. A missing file yields Default().
@@ -149,6 +159,19 @@ func Parse(data []byte) (Config, error) {
 		}
 	} else if cfg.WorkEnd <= cfg.WorkStart {
 		cfg.WorkEnd = min(cfg.WorkStart+time.Hour, 24*time.Hour-time.Minute)
+	}
+	for i, name := range f.Calendar.Calendars {
+		if strings.TrimSpace(name) == "" {
+			return Config{}, fmt.Errorf("calendar.calendars[%d]: name is empty (tt-cal calendars prints the names)", i)
+		}
+	}
+	cfg.Calendars = f.Calendar.Calendars
+	if p := f.Calendar.Poll; p != nil {
+		d, err := time.ParseDuration(*p)
+		if err != nil || d < 10*time.Second {
+			return Config{}, fmt.Errorf("calendar.poll: want a duration of 10s or more, like \"2m\", got %q", *p)
+		}
+		cfg.CalendarPoll = d
 	}
 	switch {
 	case cfg.WorkEnd <= cfg.WorkStart:

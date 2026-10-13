@@ -141,6 +141,39 @@ func TestNoArgsStartsTheTUI(t *testing.T) {
 	}
 }
 
+func TestCalendarComesFromTheConfig(t *testing.T) {
+	ctx := context.Background()
+	env := testEnv(t)
+	t.Setenv("PATH", t.TempDir()) // no tt-cal anywhere
+	calendarOf := func() app.CalendarState {
+		t.Helper()
+		var cs app.CalendarState
+		var out, errOut bytes.Buffer
+		code := run(ctx, nil, input{}, &out, &errOut, func(k string) string { return env[k] },
+			func(ctx context.Context, svc *app.Service) error {
+				if err := svc.SyncCalendar(ctx); err != nil {
+					return err
+				}
+				st, err := svc.Load(ctx)
+				cs = st.Calendar
+				return err
+			})
+		if code != 0 {
+			t.Fatalf("exit %d, stderr %q", code, errOut.String())
+		}
+		return cs
+	}
+	if cs := calendarOf(); cs.SetUp {
+		t.Errorf("no [calendar] calendars: %+v; want not set up (D40)", cs)
+	}
+	if err := os.WriteFile(env["TT_CONFIG"], []byte("[calendar]\ncalendars = [\"Work\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if cs := calendarOf(); !cs.SetUp || cs.Err != "tt-cal not found · run helpers/tt-cal/build.sh" {
+		t.Errorf("calendars set, no helper: %+v; want the D44 hint", cs)
+	}
+}
+
 func TestTUIErrorsExitNonZero(t *testing.T) {
 	env := testEnv(t)
 	var out, errOut bytes.Buffer
