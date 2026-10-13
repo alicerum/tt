@@ -325,8 +325,12 @@ func TestMovingAnOffGridBlockKeepsItsStart(t *testing.T) {
 	h := newHarness(t, config.Default())
 	a := h.pinned("Alpha !1 ~s")
 	h.block(a.ID, 10*time.Hour+10*time.Minute, 45*time.Minute)
+	undos := len(h.m.undo)
 	h.keys("j", "j", "m", "enter") // m ⏎ leaves it where it was
-	h.mustSee(`moved "Alpha" to 10:10–10:55`)
+	h.mustSee("unchanged")
+	if len(h.m.undo) != undos || h.m.today.carry != nil {
+		t.Fatalf("an unchanged drop calls nothing and pushes no undo: %d undos, carry %v", len(h.m.undo), h.m.today.carry)
+	}
 	h.keys("m", "j", "enter")
 	h.mustSee(`moved "Alpha" to 10:40–11:25`)
 }

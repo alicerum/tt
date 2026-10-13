@@ -45,6 +45,10 @@ type carry struct {
 // back on its row (the window may have grown or shrunk).
 func (td *todayState) refresh(m *Model) {
 	cfg, plan := m.svc.Config(), m.state.Plan
+	shown := -1 // the cursor's line in the window, kept when rows appear above it
+	if td.placed && td.cursor < len(td.tl.rows) {
+		shown = td.line(td.cursor) - td.offset
+	}
 	now := time.Duration(-1)
 	if m.svc.Today() == plan.Day {
 		now = plan.Day.Offset(m.svc.Now())
@@ -66,6 +70,9 @@ func (td *todayState) refresh(m *Model) {
 		}
 	}
 	td.at = rows[td.cursor].start
+	if shown >= 0 {
+		td.offset = max(0, td.line(td.cursor)-shown)
+	}
 	td.refreshCarry(m)
 }
 
@@ -90,13 +97,13 @@ func (td *todayState) refreshCarry(m *Model) {
 	if c.block.ID == 0 {
 		return
 	}
-	i := slices.IndexFunc(td.tl.blocks, func(b domain.Block) bool { return b.ID == c.block.ID })
-	if i < 0 {
+	b, ok := td.tl.block(c.block.ID)
+	if !ok {
 		td.carry = nil
 		m.setStatus(fmt.Sprintf("stopped moving %q: its block is gone", t.Title))
 		return
 	}
-	c.block = td.tl.blocks[i]
+	c.block = b
 }
 
 // pickUp starts placing candidate t (D36): the cursor goes to the first free
@@ -107,6 +114,39 @@ func (m *Model) pickUp(t domain.Task) {
 	td.focus = focusTimeline
 	td.cursor = td.tl.firstFree(td.tl.homeRow())
 	td.at = td.tl.rows[td.cursor].start
+}
+
+// pickUpBlock starts moving block b (D36): the cursor goes to its first row.
+func (m *Model) pickUpBlock(t domain.Task, b domain.Block) {
+	td := &m.today
+	td.carry = &carry{task: t, block: b}
+	if i := td.tl.rowOf(b.Start); i >= 0 { // a block starting before the hours has no row of its start
+		td.cursor = i
+	}
+	td.at = td.tl.rows[td.cursor].start
+}
+
+// freeSlot is the first row after block b's where b, moved there (keeping
+// its minutes within the row, like m), fits whole inside the working hours,
+// clear of every other block and of every meeting (D43).
+func (m *Model) freeSlot(b domain.Block) (int, bool) {
+	tl := &m.today.tl
+	within := b.Start - b.Start.Truncate(rowLen)
+	for i := tl.rowOf(b.Start) + 1; i < len(tl.rows); i++ {
+		nb := b
+		nb.Start = tl.rows[i].start + within
+		if tl.rows[i].outside || nb.Start < tl.start || nb.End() > tl.end {
+			continue
+		}
+		if _, clash := tl.clash(nb); clash {
+			continue
+		}
+		if _, busy := tl.conflict(nb); busy {
+			continue
+		}
+		return i, true
+	}
+	return 0, false
 }
 
 // ghost is the carried block as it would land at the cursor: a moved block
@@ -172,18 +212,24 @@ func (m *Model) conflicted(b domain.Block) bool {
 }
 
 // drop places or moves the carried block at the cursor. A clash keeps it
-// picked up, so another row can be tried.
+// picked up, so another row can be tried; so does a refusal by the service
+// (the timeline was stale), once it comes back.
 func (m *Model) drop() tea.Cmd {
 	td := &m.today
-	c, g := td.carry, m.ghost()
+	c, g, at := td.carry, m.ghost(), td.at
 	if err := m.fits(g); err != nil {
 		m.setErr(err)
 		return nil
 	}
 	td.carry = nil
+	if c.block.ID != 0 && g.Start == c.block.Start {
+		m.setStatus("unchanged")
+		return nil
+	}
+	back := func(m *Model) { m.today.carry, m.today.at, m.today.focus = c, at, focusTimeline }
 	svc, label := m.svc, fmt.Sprintf("%q", c.task.Title)
 	if c.block.ID != 0 {
-		return m.act("move "+label, "moved "+label+" to "+span(g)+m.overMeeting(g), func(ctx context.Context) (app.Undo, error) {
+		return m.actOr("move "+label, "moved "+label+" to "+span(g)+m.overMeeting(g), back, func(ctx context.Context) (app.Undo, error) {
 			return svc.MoveBlock(ctx, c.block.ID, g.Start)
 		})
 	}
@@ -191,7 +237,7 @@ func (m *Model) drop() tea.Cmd {
 	if c.task.Size == domain.SizeL || c.task.Size == domain.SizeXL {
 		status += " · big task · consider splitting" // D37
 	}
-	return m.act("block "+label, status, func(ctx context.Context) (app.Undo, error) {
+	return m.actOr("block "+label, status, back, func(ctx context.Context) (app.Undo, error) {
 		_, undo, err := svc.Block(ctx, c.task.ID, g.Start, g.Duration)
 		return undo, err
 	})
@@ -229,13 +275,14 @@ func (m *Model) reshape(old domain.Block, t domain.Task, b domain.Block) tea.Cmd
 	})
 }
 
-// openFineTune asks for a block's exact start and length (D36).
+// openFineTune asks for a block's exact start and length (D36). The block
+// is read again on enter: a reload meanwhile may have moved it.
 func (m *Model) openFineTune(b domain.Block, t domain.Task) tea.Cmd {
 	dayStart := m.svc.Config().DayStart
 	in := newInput(fmt.Sprintf("fine-tune %q › ", ansi.Truncate(t.Title, 30, "…")), "09:30 45m", m.width)
 	in.SetValue(clock(b.Start) + " " + shortDur(b.Duration))
 	in.CursorEnd()
-	nb := b
+	var nb domain.Block
 	m.overlay = &prompt{
 		input: in,
 		check: func(v string) error {
@@ -243,10 +290,26 @@ func (m *Model) openFineTune(b domain.Block, t domain.Task) tea.Cmd {
 			if err != nil {
 				return err
 			}
+			cur, ok := m.today.tl.block(b.ID)
+			if !ok {
+				return nil // onEnter says so
+			}
+			nb = cur
 			nb.Start, nb.Duration = start, dur
 			return m.fits(nb)
 		},
-		onEnter: func(string) tea.Cmd { return m.reshape(b, t, nb) },
+		onEnter: func(string) tea.Cmd {
+			cur, ok := m.today.tl.block(b.ID)
+			switch {
+			case !ok:
+				m.setStatus(fmt.Sprintf("stopped fine-tuning %q: its block is gone", t.Title))
+				return nil
+			case nb.Start == cur.Start && nb.Duration == cur.Duration:
+				m.setStatus("unchanged")
+				return nil
+			}
+			return m.reshape(cur, t, nb)
+		},
 	}
 	return nil
 }
@@ -325,7 +388,7 @@ func (td *todayState) follow(m *Model) {
 // blockKeys act on the block under the timeline cursor.
 var blockKeys = map[string]bool{
 	"enter": true, "x": true, "d": true, "D": true, "e": true, "E": true, "o": true,
-	"m": true, "+": true, "=": true, "-": true, "f": true, "u": true,
+	"m": true, "+": true, "=": true, "-": true, "f": true, "u": true, "r": true,
 }
 
 func (m *Model) todayKey(key string) tea.Cmd {
@@ -411,9 +474,19 @@ func (m *Model) todayKey(key string) tea.Cmd {
 		m.openDetail(t.ID)
 		return nil
 	case "m":
-		td.carry = &carry{task: t, block: b}
-		td.cursor = td.tl.rowOf(b.Start) // the block's first row
-		td.at = td.tl.rows[td.cursor].start
+		m.pickUpBlock(t, b)
+		return nil
+	case "r": // D43
+		if !m.conflicted(b) {
+			m.setStatus("no conflict · m moves it")
+			return nil
+		}
+		m.pickUpBlock(t, b)
+		if i, ok := m.freeSlot(b); ok {
+			td.cursor, td.at = i, td.tl.rows[i].start
+		} else {
+			m.setStatus("no free slot left today fits " + shortDur(b.Duration))
+		}
 		return nil
 	case "+", "=":
 		nb := b
@@ -628,7 +701,11 @@ func (m *Model) todayHints() string {
 	if m.today.focus == focusCandidates {
 		return "b block · ⏎ open · u unpin · x done · d drop · e edit · c commit · tab timeline · L log · i inbox · a add · ctrl+z undo · ? help · q quit"
 	}
-	return "j/k move · m move · +/- size · f fine-tune · u unblock · ⏎ open · x done · c commit · tab candidates · L log · i inbox · ctrl+z undo · ? help"
+	hints := "j/k move · m move · +/- size · f fine-tune · u unblock · ⏎ open · x done · c commit · tab candidates · L log · i inbox · ctrl+z undo · ? help"
+	if b, ok := m.today.tl.blockAt(m.today.cursor); ok && m.conflicted(b) {
+		hints = "r re-slot ⚠ · " + hints
+	}
+	return hints
 }
 
 var todayHelp = []string{
@@ -636,6 +713,7 @@ var todayHelp = []string{
 	"j k      move",
 	"b        on a candidate: pick it up; j/k choose the row, ⏎ drops it, esc cancels",
 	"m        on a block: pick it up to move it (keeps its length)",
+	"r        on a ⚠ block: pick it up on the next free slot (no block, no meeting); ⏎ drops, esc leaves it",
 	"+ / -    on a block: 30m longer / shorter (= works for +)",
 	"f        on a block: fine-tune start and length (09:30 45m)",
 	"u        on a block: unblock (stays a candidate) · on a candidate: unpin",

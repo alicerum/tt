@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"time"
 
 	"tt/internal/domain"
@@ -185,6 +186,15 @@ func (tl *timeline) firstFree(i int) int {
 		}
 	}
 	return i
+}
+
+// block is the day's block with id, as last loaded.
+func (tl *timeline) block(id int64) (domain.Block, bool) {
+	i := slices.IndexFunc(tl.blocks, func(b domain.Block) bool { return b.ID == id })
+	if i < 0 {
+		return domain.Block{}, false
+	}
+	return tl.blocks[i], true
 }
 
 // conflict is the first meeting b overlaps (D18, D42).

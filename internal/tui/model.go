@@ -383,10 +383,15 @@ func (m *Model) startDay() tea.Cmd {
 
 // act runs a service command in the background and reports it as actionMsg.
 func (m *Model) act(label, status string, fn func(context.Context) (app.Undo, error)) tea.Cmd {
+	return m.actOr(label, status, nil, fn)
+}
+
+// actOr is act with restore, which runs if the command fails.
+func (m *Model) actOr(label, status string, restore func(*Model), fn func(context.Context) (app.Undo, error)) tea.Cmd {
 	ctx := m.ctx
 	return func() tea.Msg {
 		undo, err := fn(ctx)
-		return actionMsg{label: label, status: status, undo: undo, err: err}
+		return actionMsg{label: label, status: status, undo: undo, err: err, restore: restore}
 	}
 }
 
