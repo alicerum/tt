@@ -506,6 +506,20 @@ Plan 5b merged 2026-10-13 (D40–D45). The helper's first real run (`make instal
 - **Small (code):** `plural`'s doc comment sits above `oneLine` in `internal/tui/common.go`; the ⚠ count clones the blocks each render (a counting loop is clearer); `TestTimeoutSaysWhatToDo` races a 500ms timeout against script startup (20/20 under `-race`; bump to 2s if it flakes).
 - **Tests to add when touched:** `calSyncedMsg` with a store error (loop continues, status shows it); a current-`seq` tick while a fetch runs; two meeting bands in one row; a ghost over a row with a block and a meeting; the scroll keeping the cursor when the window shrinks.
 
+## Carry-forward from Plan 6 review
+
+Plan 6 merged 2026-10-13 (D48–D50). Fix-wave rulings (in the code): text from any source (title, author, repo, URL, id) is made one clean line (`domain.OneLine`) in `SyncSources` before it is stored, so task titles from PRs never carry control characters; an empty node in gh's answer fails the fetch (`gh returned an incomplete answer`), like more than 100 results; gh's `HTTP 401` maps to `not logged in · gh auth login` (amends D50's "else the first line of gh's stderr"). The real-GitHub check (the lane against your direct requests; once, `gh api -i graphql -f query='{viewer{login}}'` for an `X-GitHub-SSO: partial-results` header, which would mean SSO hides PRs that would then auto-close) is the user's.
+
+- **On friction:**
+  - A review reopened by hand after its auto-close is closed again at the next sync (D50: every open linked task missing from the set). Fix: close only tasks whose item was stored before and is gone now.
+  - After `x`/`d` on a review task, the request sits in the lane until the next poll (GitHub usually dropped it already); fetch GitHub right after closing a source-linked task.
+  - `last: 10` review-request events: a PR with ten or more later requests for others loses mine, so its wait falls back to `first_seen_at`.
+  - Changing `[github] host` auto-closes every review task of the old host (same kind `github`).
+  - In the lane, keys outside its list fall through and drop the focus: only `h/l/←/→` act (expand/collapse in the Log backlog). Sturdier: list the screen keys that give focus back, make the rest no-ops.
+  - `w` focuses the lane when a terminal under ~9 lines hides it; refuse focus when `laneLines() <= 2`, drop it in `follow` when the lane shrinks away.
+- **Small:** `PinSource`'s reopen skips `pinChildren`/`pinnedUnderParent` (D34), which matters only once a review task has children; the `Fetch` doc comment in `internal/source/github.go` and the `OneLine` lines in `SyncSources` run past 80 columns; the lane still applies `OneLine` at render time (redundant for new data, harmless).
+- **Tests to add when touched:** undo of a dropped-then-reopened review; `PinSource` on an open, unpinned review task; `ghSyncedMsg` with a store error (beside the 5b calendar one); `ctrl+d/u` inside the lane.
+
 ## UI tweaks backlog (from use; not yet scheduled)
 
 Collected while using the TUI. The user wants these later, batched with other tweaks; don't schedule them unasked.

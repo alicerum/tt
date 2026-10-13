@@ -19,8 +19,8 @@ A staff engineer's personal planner: capture asks fast (`tt add` / quick-add), t
 | 4b Edit & detail: Task detail (children add/reorder), `e` edit line, `$EDITOR` notes, open link, `tt add` from stdin, plus the "Carry-forward from Plan 4a review" items | merged |
 | 5a Today & blocking: D34 (amended), D35 Today home + Log rename, D36 pick-up/drop placement, D37 nudges, D38 timeline, `SetBlockSpan`, shared height budget (spec "Plan 5 split") | merged |
 | 5b Calendar: `tt-cal` Swift EventKit helper (spike passed), `CalendarSource`, poll loop + cache, meetings on the timeline, ⚠ conflicts, freshness indicator, real `tea.Program` test, plus the "Carry-forward from Plan 5a review" items marked Plan 5b | merged |
-| 6 GitHub reviews lane: D48–D50, spec "Plan 6 — GitHub reviews lane" | **next** — designed 2026-10-13; plan via writing-plans |
-| 7 People view: requesters list, their tasks, rename/merge, fuzzy names (spec "Plan 7 — People view") | after 6 — partly designed; finish the design when there are more people |
+| 6 GitHub reviews lane: D48–D50, spec "Plan 6 — GitHub reviews lane" | merged 2026-10-13 (leftovers in "Carry-forward from Plan 6 review") |
+| 7 People view: requesters list, their tasks, rename/merge, fuzzy names (spec "Plan 7 — People view") | **next** — partly designed; finish the design when there are more people |
 
 Since 5a: D39 (merged) — blocks only inside working hours (`[work_hours]`, replaces `[timeline]`), Today shows only those hours. Plan 5b merged 2026-10-13 (D40–D45; leftovers in the spec's "Carry-forward from Plan 5b review"). `make install` puts `tt` and `tt-cal` side by side in `~/.local/bin`; `make config` installs `config.example.toml` (every default). The user ran the helper against the real calendar on 2026-10-13 (works); never run `tt-cal calendars`/`events` from the sandbox. Small changes since, each a reviewed commit on a branch, decision on `main`: D46 the now line sits above its row; D47 `ctrl+d`/`ctrl+u` half a page.
 
