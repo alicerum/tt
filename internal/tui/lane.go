@@ -12,8 +12,9 @@ import (
 	"tt/internal/domain"
 )
 
-// laneMaxRows is how many review requests the lane shows at once (D49).
-const laneMaxRows = 5
+// laneMinRows is how many review requests the lane can always grow to; a tall
+// screen lets it grow to a third of the body (D59).
+const laneMinRows = 5
 
 // laneState is the Reviews lane (D49): GitHub's review requests that have no
 // open task, under the candidates on Today and under the backlog in the Log.
@@ -66,10 +67,11 @@ func (l *laneState) follow(m *Model) {
 	l.offset = max(0, min(l.offset, len(m.reviews())-rows))
 }
 
-// laneLines is how many lines the lane takes in its column: its frame (or,
-// unframed, a blank line and its title) and up to laneMaxRows requests. The
-// pane above keeps its frame and three rows, so in a short column the lane
-// gives up rows first, then disappears; 0 when GitHub is off.
+// laneLines is how many lines the lane takes in its column: its frame and one
+// row per request, up to a third of the body but never fewer than laneMinRows
+// (D59). The pane above keeps its
+// frame and three rows, so in a short column the lane gives up rows first,
+// then disappears; 0 when GitHub is off.
 func (m *Model) laneLines() int {
 	if !m.state.GitHub.SetUp {
 		return 0
@@ -78,7 +80,8 @@ func (m *Model) laneLines() int {
 	if room < 0 {
 		return 0
 	}
-	return 2 + min(len(m.reviews()), laneMaxRows, room)
+	most := max(laneMinRows, m.bodyHeight()/3-2)
+	return 2 + min(len(m.reviews()), most, room)
 }
 
 // laneUnder reports whether the lane sits under pane pn on this screen.

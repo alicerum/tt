@@ -156,6 +156,7 @@ func TestReviewsLaneHeight(t *testing.T) {
 		items = append(items, h.reviewItem("acme/api", 900+n, "PR", "ana", time.Duration(10-n)*time.Hour))
 	}
 	h.setReviews(items...)
+	h.send(tea.WindowSizeMsg{Width: 140, Height: 24})
 	for n := range 6 {
 		h.add("Candidate " + string(rune('A'+n)) + " !1 ~s")
 	}
@@ -166,7 +167,7 @@ func TestReviewsLaneHeight(t *testing.T) {
 		t.Fatalf("candidates = %d", len(h.m.state.Plan.Candidates))
 	}
 	h.mustSee("#904", "REVIEWS · 7 waiting")
-	h.mustNotSee("#905") // five rows at most
+	h.mustNotSee("#905") // 24 lines: five rows (a third of the body is fewer)
 
 	h.keys("w")
 	for range 6 {
@@ -189,6 +190,29 @@ func TestReviewsLaneHeight(t *testing.T) {
 	h.send(tea.WindowSizeMsg{Width: 140, Height: 8})
 	h.mustNotSee("REVIEWS") // too short: the lane goes, the candidates stay
 	h.mustSee("Candidate A")
+}
+
+func TestReviewsLaneGrowsToAThirdOfTheBody(t *testing.T) {
+	h := newGHHarness(t, config.Default())
+	var items []domain.SourceItem
+	for n := range 30 {
+		items = append(items, h.reviewItem("acme/api", 900+n, "PR", "ana", time.Duration(40-n)*time.Hour))
+	}
+	h.setReviews(items...)
+	for _, c := range []struct{ height, rows int }{
+		{24, 5},  // body 21: a third is 7 lines, under the 5-row floor
+		{40, 10}, // body 37: 12 lines, the frame and 10 rows
+		{60, 17}, // body 57: 19 lines
+	} {
+		h.send(tea.WindowSizeMsg{Width: 140, Height: c.height})
+		if n := strings.Count(h.screen(), "@ana"); n != c.rows {
+			t.Errorf("%d lines tall: the lane shows %d rows, want %d", c.height, n, c.rows)
+		}
+	}
+	h.setReviews(items[:3]...)
+	if n := strings.Count(h.screen(), "@ana"); n != 3 {
+		t.Errorf("3 requests take 3 rows, not a third of the body: %d", n)
+	}
 }
 
 func TestReviewRowsFitTheirColumn(t *testing.T) {
