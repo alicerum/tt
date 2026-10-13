@@ -405,6 +405,9 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	if td.carry != nil {
 		return m.carryKey(key)
 	}
+	if cmd, ok := m.laneKey(key); ok {
+		return cmd
+	}
 	switch key {
 	case "c":
 		return m.commitPlan()
@@ -522,7 +525,8 @@ func (m *Model) todayView() string {
 	lw := total / 2
 	rw := total - lw
 	left := m.timelineLines(lw)
-	right := m.paneLines(paneToday, "CANDIDATES", "nothing pinned · L opens the log to pick", rw, m.today.focus == focusCandidates)
+	right := m.paneLines(paneToday, "CANDIDATES", "nothing pinned · L opens the log to pick", rw, m.today.focus == focusCandidates && !m.lane.focused)
+	right = append(right, m.laneView(rw)...)
 	return columns(left, right, lw, rw)
 }
 
@@ -572,7 +576,7 @@ func (m *Model) timelineRow(i, width int) string {
 	if r.outside {
 		b := r.blocks[0]
 		line := pad(" "+clock(r.start)+" ▓ "+m.blockText(b, true)+" · outside of working hours", width)
-		if td.focus == focusTimeline && i == td.cursor {
+		if m.timelineFocused() && i == td.cursor {
 			return styleSelected.Render(line)
 		}
 		return styleDim.Render(line)
@@ -598,11 +602,15 @@ func (m *Model) timelineRow(i, width int) string {
 	if now := td.tl.now; now >= 0 && r.start+rowLen <= now {
 		line = styleDim.Render(line) // the past
 	}
-	if td.focus == focusTimeline && i == td.cursor {
+	if m.timelineFocused() && i == td.cursor {
 		line = styleSelected.Render(line)
 	}
 	return line
 }
+
+// timelineFocused: the timeline has the focus, not its candidates or the
+// Reviews lane, so its cursor row shows.
+func (m *Model) timelineFocused() bool { return m.today.focus == focusTimeline && !m.lane.focused }
 
 // ghostRow renders a row the carried block would take, with what else is
 // there; it turns the error colour when the block doesn't fit there, the
@@ -724,4 +732,5 @@ var todayHelp = []string{
 	"e / E    edit the line / the note in $EDITOR · o open the link",
 	"c        commit the plan (again: refresh)",
 	"L        the log (backlog; pick today's work there, B comes back) · i inbox",
+	"w        the Reviews lane: p pins a review (a task Review #n), o opens the PR · w or tab back",
 }

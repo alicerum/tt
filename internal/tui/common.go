@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"tt/internal/app"
+	"tt/internal/config"
 	"tt/internal/domain"
 )
 
@@ -76,18 +77,22 @@ func byUse(counts map[string]int) []string {
 
 // badge renders "[P1 M]": the effective priority's configured name and the size.
 func (m *Model) badge(t domain.Task) string {
-	p := domain.EffectivePriority(t, m.state.Snapshot.ParentOf(t))
+	return badgeOf(m.svc.Config().Priorities, domain.EffectivePriority(t, m.state.Snapshot.ParentOf(t)), t.Size)
+}
+
+// badgeOf renders "[P1 M]" for priority level p of levels and size.
+func badgeOf(levels []config.PriorityLevel, p int, size domain.Size) string {
 	name := "—"
-	if levels := m.svc.Config().Priorities; p > 0 && p <= len(levels) {
+	if p > 0 && p <= len(levels) {
 		name = levels[p-1].Name
 	} else if p > 0 {
 		name = "P?"
 	}
-	size := "—"
-	if t.Size != domain.SizeNone {
-		size = strings.ToUpper(string(t.Size))
+	s := "—"
+	if size != domain.SizeNone {
+		s = strings.ToUpper(string(size))
 	}
-	return "[" + name + " " + size + "]"
+	return "[" + name + " " + s + "]"
 }
 
 // closedToday reports whether t was closed on the plan's day (D29 wins stay visible).
@@ -166,8 +171,16 @@ func (m *Model) statusView() string {
 }
 
 func (m *Model) hintsView() string {
+	lane := m.screen == screenToday || m.screen == screenLog
+	if lane && m.lane.focused {
+		return styleDim.Render(m.laneHints())
+	}
+	reviews := ""
+	if lane && len(m.reviews()) > 0 {
+		reviews = "w reviews · " // D49
+	}
 	if m.screen == screenToday {
-		return styleDim.Render(m.todayHints())
+		return styleDim.Render(reviews + m.todayHints())
 	}
 	if m.screen == screenInbox {
 		if t, ok := m.state.Snapshot.Get(m.inbox.current); ok && t.ParentID != 0 {
@@ -182,7 +195,7 @@ func (m *Model) hintsView() string {
 	if m.pick.filtered() && m.overlay == nil { // in the filter line, esc restores the previous filter
 		hints = "esc clears filter · " + strings.Replace(hints, " · esc today", "", 1)
 	}
-	return styleDim.Render(hints)
+	return styleDim.Render(reviews + hints)
 }
 
 func dayLabel(d domain.Day) string {

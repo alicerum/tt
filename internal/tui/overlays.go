@@ -292,6 +292,7 @@ func (helpOverlay) view(m *Model) string {
 			"/        filter: @who #tag !1 ~s <7d >30d is:done|dropped|all words (live; esc on the list clears)",
 			"g        group by priority → size → created → requester (remembered)",
 			"B        done picking: block today's candidates in Today",
+			"w        the Reviews lane: p pins a review (a task Review #n), o opens the PR · w or tab back",
 			"esc      back to Today (when no filter is set) · i inbox",
 		}
 	}

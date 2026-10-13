@@ -87,6 +87,8 @@ type Model struct {
 	inbox  inboxState
 	detail detailState
 
+	lane laneState
+
 	cal pollLoop // the calendar's
 	gh  pollLoop // GitHub's (D50)
 
@@ -170,6 +172,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.pick.follow(m)
 	m.detail.follow(m)
 	m.today.follow(m)
+	m.lane.follow(m)
 	return m, cmd
 }
 

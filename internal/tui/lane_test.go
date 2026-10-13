@@ -1,0 +1,200 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"tt/internal/app"
+	"tt/internal/config"
+	"tt/internal/domain"
+)
+
+// threeReviews fills the lane with three requests of different ages.
+func threeReviews(h *harness) {
+	h.setReviews(
+		h.reviewItem("acme/photos", 877, "Bump go", "tom", 26*time.Hour),
+		h.reviewItem("acme/api", 901, "Add idempotency key", "ana", 75*time.Hour),
+		h.reviewItem("acme/backend", 915, "Lint config", "ion", 2*time.Hour),
+	)
+}
+
+// lineWith is the screen line containing s ("" if none).
+func (h *harness) lineWith(s string) string {
+	for _, l := range strings.Split(h.screen(), "\n") {
+		if strings.Contains(l, s) {
+			return l
+		}
+	}
+	return ""
+}
+
+func TestReviewsLaneOnToday(t *testing.T) {
+	h := newGHHarness(t, config.Default())
+	h.mustSee("REVIEWS · none waiting")
+	threeReviews(h)
+	h.mustSee("REVIEWS · 3 waiting", "#901 api  Add idempotency key", "@ana  3d", "#877 photos  Bump go", "@tom  1d", "@ion  2h")
+	s := h.screen()
+	if a, b, c := strings.Index(s, "#901"), strings.Index(s, "#877"), strings.Index(s, "#915"); !(a < b && b < c) {
+		t.Errorf("longest waiting first (D49):\n%s", s)
+	}
+	if l := h.lineWith("REVIEWS"); !strings.Contains(l, "│ REVIEWS") {
+		t.Errorf("the lane sits in the right column, under the candidates: %q", l)
+	}
+	h.mustSee("w reviews · j/k move") // the hint, before the timeline's
+
+	h.keys("w")
+	h.mustSee("j/k move · p pin · o open PR · w back")
+	h.keys("j", "p") // #877
+	h.mustSee(`pinned "Review #877: Bump go" · P2 S`, "REVIEWS · 2 waiting", "Review #877: Bump go")
+	if got := h.m.lane.selected; got != "acme/backend#915" {
+		t.Errorf("the cursor stays at the same index, now on #915: %q", got)
+	}
+	if l := h.lineWith("Review #877"); !strings.Contains(l, "[P2 S]") {
+		t.Errorf("the review is a candidate with D48's defaults: %q", l)
+	}
+	h.keys("ctrl+z")
+	h.mustSee(`undid pin "Review #877: Bump go"`, "REVIEWS · 3 waiting")
+
+	h.keys("o")
+	if len(h.opened) != 1 || h.opened[0] != "https://github.com/acme/backend/pull/915" {
+		t.Errorf("o opens the PR under the cursor: %v", h.opened)
+	}
+	for _, k := range []string{"x", "enter", "b", "e", "d"} {
+		h.keys(k)
+		h.mustSee("a review request · p pins it, o opens it")
+	}
+	if n := len(h.m.state.Snapshot.Tasks()); n != 0 {
+		t.Fatalf("task keys in the lane changed something: %d tasks", n)
+	}
+
+	h.keys("tab") // back to where w came from: the timeline
+	if h.m.lane.focused || h.m.today.focus != focusTimeline {
+		t.Errorf("tab leaves the lane for the timeline: lane %v, focus %v", h.m.lane.focused, h.m.today.focus)
+	}
+	h.keys("tab") // tab stays between timeline and candidates
+	if h.m.lane.focused || h.m.today.focus != focusCandidates {
+		t.Errorf("tab: lane %v, focus %v", h.m.lane.focused, h.m.today.focus)
+	}
+	h.keys("w", "w")
+	if h.m.lane.focused || h.m.today.focus != focusCandidates {
+		t.Errorf("w twice comes back to the candidates: lane %v, focus %v", h.m.lane.focused, h.m.today.focus)
+	}
+}
+
+func TestReviewsLaneInTheLog(t *testing.T) {
+	h := newGHHarness(t, config.Default())
+	threeReviews(h)
+	h.add("Write RFC intro !2 ~m")
+	h.keys("w", "L") // a screen key leaves the lane and keeps its meaning
+	if h.m.screen != screenLog || h.m.lane.focused {
+		t.Fatalf("L from the lane: screen %d, lane focused %v", h.m.screen, h.m.lane.focused)
+	}
+	if l := h.lineWith("REVIEWS · 3 waiting"); !strings.HasPrefix(l, "REVIEWS") {
+		t.Errorf("in the Log the lane sits in the left column, under the backlog: %q", l)
+	}
+	h.mustSee("w reviews · ⏎ open")
+	h.keys("w", "p") // #901, the longest waiting
+	h.mustSee(`pinned "Review #901: Add idempotency key" · P2 S`)
+	if l := h.lineWith("Review #901"); !strings.Contains(l, "│") || strings.Index(l, "Review #901") < strings.Index(l, "│") {
+		t.Errorf("the pinned review is a candidate (right), not in the backlog: %q", l)
+	}
+	h.keys("w", "esc") // esc keeps the Log's meaning: back to Today
+	if h.m.screen != screenToday || h.m.lane.focused {
+		t.Errorf("esc from the lane: screen %d, lane focused %v", h.m.screen, h.m.lane.focused)
+	}
+
+	// Done by hand while GitHub still asks: back in the lane (D49).
+	h.keys("tab", "x")
+	h.mustSee(`✓ "Review #901: Add idempotency key"`, "REVIEWS · 3 waiting")
+	h.keys("w", "k", "p") // the cursor stayed on #877; #901 is back above it
+	if tasks := h.m.state.Snapshot.Tasks(); len(tasks) != 2 || h.task(tasks[1].ID).Status != domain.StatusOpen {
+		t.Errorf("p reopens the review's task: %+v", tasks)
+	}
+}
+
+func TestReviewsLaneEmptyAndOff(t *testing.T) {
+	h := newHarness(t, config.Default())
+	h.mustNotSee("REVIEWS", "w reviews")
+	h.keys("w")
+	h.mustSee("GitHub is off · [github] enabled in the config")
+
+	h = newGHHarness(t, config.Default())
+	h.keys("w")
+	h.mustSee("REVIEWS · none waiting", "no reviews waiting")
+	h.mustNotSee("w reviews")
+	if h.m.lane.focused {
+		t.Error("an empty lane doesn't take the focus")
+	}
+
+	h.m.state.GitHub = app.GitHubState{SetUp: true, Err: "not logged in · gh auth login"}
+	h.mustSee("REVIEWS · not fetched yet")
+
+	// The lane's last request pinned: the focus goes back.
+	h.setReviews(h.reviewItem("acme/api", 901, "Add idempotency key", "ana", time.Hour))
+	h.keys("w", "p")
+	if h.m.lane.focused {
+		t.Error("the lane emptied by p gives the focus back")
+	}
+	h.mustSee("REVIEWS · none waiting")
+}
+
+func TestReviewsLaneHeight(t *testing.T) {
+	h := newGHHarness(t, config.Default())
+	var items []domain.SourceItem
+	for n := range 7 {
+		items = append(items, h.reviewItem("acme/api", 900+n, "PR", "ana", time.Duration(10-n)*time.Hour))
+	}
+	h.setReviews(items...)
+	for n := range 6 {
+		h.add("Candidate " + string(rune('A'+n)) + " !1 ~s")
+	}
+	for range 6 {
+		h.keys("L", "p", "B", "esc") // pin the first backlog task, back to Today
+	}
+	if len(h.m.state.Plan.Candidates) != 6 {
+		t.Fatalf("candidates = %d", len(h.m.state.Plan.Candidates))
+	}
+	h.mustSee("#904", "REVIEWS · 7 waiting")
+	h.mustNotSee("#905") // five rows at most
+
+	h.keys("w")
+	for range 6 {
+		h.keys("j")
+	}
+	h.mustSee("#906", "#902")
+	h.mustNotSee("#901 ") // scrolled: the cursor stays in view
+
+	h.send(tea.WindowSizeMsg{Width: 140, Height: 12})
+	if lines := strings.Count(h.screen(), "\n") + 1; lines > 12 {
+		t.Errorf("12 lines tall: the screen has %d", lines)
+	}
+	h.mustSee("REVIEWS · 7 waiting", "#906") // the lane gave up rows, kept the cursor
+	if n := strings.Count(h.screen(), "@ana"); n != 3 {
+		t.Errorf("a short column keeps 3 lane rows: %d", n)
+	}
+	if n := strings.Count(h.screen(), "Candidate "); n != 3 {
+		t.Errorf("the candidates keep 3 rows above the lane: %d", n)
+	}
+	h.send(tea.WindowSizeMsg{Width: 140, Height: 8})
+	h.mustNotSee("REVIEWS") // too short: the lane goes, the candidates stay
+	h.mustSee("Candidate A")
+}
+
+func TestReviewRowsFitTheirColumn(t *testing.T) {
+	h := newGHHarness(t, config.Default())
+	h.setReviews(h.reviewItem("acme/api", 901, "A very long title "+strings.Repeat("that goes on ", 20)+"\x1b[31mred\ttab\nnewline", "ana", 3*24*time.Hour))
+	l := h.lineWith("#901")
+	if !strings.HasSuffix(strings.TrimRight(l, " "), "@ana  3d") || strings.ContainsAny(l, "\x1b\t") {
+		t.Errorf("a long title is cut so the author and wait stay; control characters go: %q", l)
+	}
+	if w := ansi.StringWidth(l); w > 140 {
+		t.Errorf("line is %d wide", w)
+	}
+	if got := waited(h.clock.now, h.clock.now.Add(time.Minute)); got != "now" {
+		t.Errorf("a request from the future (clock skew) waits %q", got)
+	}
+}

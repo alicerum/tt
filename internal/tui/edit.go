@@ -235,7 +235,12 @@ func (m *Model) openLink(t domain.Task) tea.Cmd {
 		m.setStatus("no link")
 		return nil
 	}
-	open, ctx, link := m.opener(), m.ctx, t.Link
+	return m.openURL(t.Link)
+}
+
+// openURL opens link in the browser.
+func (m *Model) openURL(link string) tea.Cmd {
+	open, ctx := m.opener(), m.ctx
 	return func() tea.Msg {
 		if err := open(ctx, link); err != nil {
 			return actionMsg{err: fmt.Errorf("can't open %s: %w", link, err)}

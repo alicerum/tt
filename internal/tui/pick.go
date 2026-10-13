@@ -68,6 +68,7 @@ func (m *Model) refreshRows() {
 	m.pick.rows[paneToday] = m.todayRows()
 	m.pick.clamp(m)
 	m.today.refresh(m)
+	m.lane.refresh(m)
 	if len(m.detail.stack) > 0 {
 		m.detail.refresh(m)
 	}
@@ -256,8 +257,8 @@ func (m *Model) saveGroup() tea.Cmd {
 // only when the cursor leaves it; a group heading right above the cursor
 // comes along. Called after every update.
 func (p *pickState) follow(m *Model) {
-	visible := m.visibleRows()
 	for pn, rows := range p.rows {
+		visible := m.paneVisible(pane(pn))
 		c, off := p.cursor[pn], p.offset[pn]
 		top := c
 		if top > 0 && top < len(rows) && rows[top-1].kind == rowHeader {
@@ -274,6 +275,15 @@ func (p *pickState) follow(m *Model) {
 // visibleRows is how many rows fit in a pane below its title (the Log's
 // panes, Today's candidates and timeline share this budget).
 func (m *Model) visibleRows() int { return max(m.bodyHeight()-1, 1) }
+
+// paneVisible is visibleRows for pane pn, less the Reviews lane when it
+// sits under pn on this screen (D49).
+func (m *Model) paneVisible(pn pane) int {
+	if m.laneUnder(pn) {
+		return max(m.visibleRows()-m.laneLines(), 1)
+	}
+	return m.visibleRows()
+}
 
 // steps is how far a list key moves the cursor: a row for j/k, half the
 // visible rows for ctrl+d/ctrl+u (as in vim); 0 for any other key.
@@ -316,6 +326,9 @@ func (m *Model) selectedIn(pn pane) (row, bool) {
 }
 
 func (m *Model) pickKey(key string) tea.Cmd {
+	if cmd, ok := m.laneKey(key); ok {
+		return cmd
+	}
 	p := &m.pick
 	if n := m.steps(key); n != 0 {
 		repeat(n, p.move)
@@ -478,8 +491,9 @@ func (m *Model) pickView() string {
 		title += " · " + plural(n, "match", "matches") + " · " + m.pick.filterText // the count first: truncation eats the filter text
 		empty = "no matches · esc clears"
 	}
-	left := m.paneLines(paneBacklog, title, empty, lw, m.pick.focus == paneBacklog)
-	right := m.paneLines(paneToday, "TODAY'S CANDIDATES", "nothing pinned · p on a backlog task", rw, m.pick.focus == paneToday)
+	left := m.paneLines(paneBacklog, title, empty, lw, m.pick.focus == paneBacklog && !m.lane.focused)
+	left = append(left, m.laneView(lw)...)
+	right := m.paneLines(paneToday, "TODAY'S CANDIDATES", "nothing pinned · p on a backlog task", rw, m.pick.focus == paneToday && !m.lane.focused)
 	return columns(left, right, lw, rw)
 }
 
@@ -509,7 +523,7 @@ func (m *Model) paneLines(pn pane, title, empty string, width int, focused bool)
 	if len(rows) == 0 {
 		return append(lines, styleDim.Render("  "+empty))
 	}
-	visible := m.visibleRows()
+	visible := m.paneVisible(pn)
 	cursor := m.pick.cursor[pn]
 	start := m.pick.offset[pn]
 	for i := start; i < len(rows) && i < start+visible; i++ {
