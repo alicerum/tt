@@ -251,11 +251,11 @@ func (m *Model) drop() tea.Cmd {
 // carryKey handles keys while a block is picked up.
 func (m *Model) carryKey(key string) tea.Cmd {
 	td := &m.today
+	if n := m.steps(key); n != 0 {
+		repeat(n, td.move)
+		return nil
+	}
 	switch key {
-	case "j", "down":
-		td.move(+1)
-	case "k", "up":
-		td.move(-1)
 	case "enter":
 		return m.drop()
 	case "esc":
@@ -419,12 +419,8 @@ func (m *Model) todayKey(key string) tea.Cmd {
 		return nil
 	}
 	if td.focus == focusCandidates {
-		switch key {
-		case "j", "down":
-			m.pick.moveIn(paneToday, +1)
-			return nil
-		case "k", "up":
-			m.pick.moveIn(paneToday, -1)
+		if n := m.steps(key); n != 0 {
+			repeat(n, func(delta int) { m.pick.moveIn(paneToday, delta) })
 			return nil
 		}
 		r, ok := m.selectedIn(paneToday)
@@ -454,12 +450,8 @@ func (m *Model) todayKey(key string) tea.Cmd {
 		cmd, _ := m.taskKey(key, t)
 		return cmd
 	}
-	switch key {
-	case "j", "down":
-		td.move(+1)
-		return nil
-	case "k", "up":
-		td.move(-1)
+	if n := m.steps(key); n != 0 {
+		repeat(n, td.move)
 		return nil
 	}
 	if !blockKeys[key] {

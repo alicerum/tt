@@ -275,6 +275,34 @@ func (p *pickState) follow(m *Model) {
 // panes, Today's candidates and timeline share this budget).
 func (m *Model) visibleRows() int { return max(m.bodyHeight()-1, 1) }
 
+// steps is how far a list key moves the cursor: a row for j/k, half the
+// visible rows for ctrl+d/ctrl+u (as in vim); 0 for any other key.
+func (m *Model) steps(key string) int {
+	switch key {
+	case "j", "down":
+		return 1
+	case "k", "up":
+		return -1
+	case "ctrl+d":
+		return max(m.visibleRows()/2, 1)
+	case "ctrl+u":
+		return -max(m.visibleRows()/2, 1)
+	}
+	return 0
+}
+
+// repeat moves n rows one step at a time, so headers are skipped and the
+// list's ends stop it, as with j/k.
+func repeat(n int, step func(delta int)) {
+	delta := 1
+	if n < 0 {
+		n, delta = -n, -1
+	}
+	for range n {
+		step(delta)
+	}
+}
+
 func (m *Model) selectedRow() (row, bool) { return m.selectedIn(m.pick.focus) }
 
 // selectedIn is the task row under pane pn's cursor.
@@ -289,16 +317,14 @@ func (m *Model) selectedIn(pn pane) (row, bool) {
 
 func (m *Model) pickKey(key string) tea.Cmd {
 	p := &m.pick
+	if n := m.steps(key); n != 0 {
+		repeat(n, p.move)
+		return nil
+	}
 	switch key {
 	case "tab":
 		p.focus = 1 - p.focus
 		p.clamp(m)
-		return nil
-	case "j", "down":
-		p.move(+1)
-		return nil
-	case "k", "up":
-		p.move(-1)
 		return nil
 	case "i":
 		m.openInbox()

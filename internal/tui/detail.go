@@ -103,13 +103,11 @@ func (d *detailState) follow(m *Model) {
 
 func (m *Model) detailKey(key string) tea.Cmd {
 	d := &m.detail
+	if n := m.steps(key); n != 0 {
+		repeat(n, d.move)
+		return nil
+	}
 	switch key {
-	case "j", "down":
-		d.move(+1)
-		return nil
-	case "k", "up":
-		d.move(-1)
-		return nil
 	case "esc":
 		from := d.top()
 		d.stack = d.stack[:len(d.stack)-1]
