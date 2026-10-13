@@ -86,6 +86,8 @@ type Model struct {
 	inbox  inboxState
 	detail detailState
 
+	cal calLoop
+
 	overlay     overlay
 	banner      *app.DayResult
 	undo        []undoEntry
@@ -95,6 +97,14 @@ type Model struct {
 
 func New(ctx context.Context, svc *app.Service, opts Options) *Model {
 	return &Model{svc: svc, opts: opts, ctx: ctx, width: 100, height: 30, pick: pickState{group: search.ByPriority}}
+}
+
+// calLoop is the calendar's poll loop (D3): one fetch at a time, then the
+// next tick after the configured interval. R and a new day fetch at once;
+// seq retires the tick they overtook, so there is only ever one loop.
+type calLoop struct {
+	syncing bool
+	seq     int
 }
 
 // Messages.
@@ -127,7 +137,9 @@ type (
 		group string
 		err   error
 	}
-	uiSavedMsg struct{ err error }
+	uiSavedMsg   struct{ err error }
+	calTickMsg   struct{ seq int }
+	calSyncedMsg struct{ err error }
 )
 
 func (m *Model) Init() tea.Cmd {
@@ -138,6 +150,7 @@ func (m *Model) Init() tea.Cmd {
 			return uiStateMsg{group: g, err: err}
 		},
 		m.startDay(),
+		m.syncCalendar(), // the first load shows the cache meanwhile
 		m.opts.Schedule(m.opts.WatchEvery, watchTickMsg{}),
 		m.opts.Schedule(m.opts.ClockEvery, clockTickMsg{}),
 	)
@@ -193,6 +206,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.banner = &res
 			m.today.placed = false // a new day's cursor starts on its now row
 			m.today.carry = nil
+			return tea.Batch(m.load(), m.syncCalendar()) // yesterday's meetings don't count (D44)
 		}
 		return m.load()
 	case actionMsg:
@@ -242,6 +256,17 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.pick.saveAgain = false
 			return m.saveGroup()
 		}
+	case calTickMsg:
+		if msg.seq == m.cal.seq {
+			return m.syncCalendar()
+		}
+	case calSyncedMsg:
+		m.cal.syncing = false
+		m.cal.seq++
+		if msg.err != nil && !errors.Is(msg.err, context.Canceled) {
+			m.setErr(fmt.Errorf("can't record the calendar fetch: %w", msg.err))
+		}
+		return tea.Batch(m.load(), m.opts.Schedule(m.svc.Config().CalendarPoll, calTickMsg{seq: m.cal.seq}))
 	case noteEditedMsg:
 		return m.noteEdited(msg)
 	case tea.KeyPressMsg:
@@ -298,7 +323,7 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+z":
 		return m.undoLast()
 	case "R":
-		return m.load()
+		return tea.Batch(m.load(), m.syncCalendar())
 	}
 	if m.dayIsStale() {
 		m.setStatus("new day — refreshing")
@@ -335,6 +360,17 @@ func (m *Model) checkVersion() tea.Cmd {
 		v, err := svc.DataVersion(ctx)
 		return versionMsg{version: v, err: err}
 	}
+}
+
+// syncCalendar fetches the calendar in the background, unless none is set
+// up or a fetch is already running.
+func (m *Model) syncCalendar() tea.Cmd {
+	if !m.svc.CalendarSetUp() || m.cal.syncing {
+		return nil
+	}
+	m.cal.syncing = true
+	svc, ctx := m.svc, m.ctx
+	return func() tea.Msg { return calSyncedMsg{err: svc.SyncCalendar(ctx)} }
 }
 
 func (m *Model) startDay() tea.Cmd {

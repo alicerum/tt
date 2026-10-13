@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"tt/internal/app"
+	"tt/internal/calendar"
 	"tt/internal/config"
 	"tt/internal/domain"
 	"tt/internal/store"
@@ -29,6 +30,7 @@ type harness struct {
 	m     *Model
 	svc   *app.Service
 	clock *fakeClock
+	cal   *calendar.Fake // nil: no calendar set up
 	path  string
 	quit  bool
 
@@ -41,6 +43,18 @@ type harness struct {
 
 func newHarness(t *testing.T, cfg config.Config) *harness {
 	t.Helper()
+	return startHarness(t, cfg, nil)
+}
+
+// newCalHarness is newHarness with a fake calendar (h.cal), fetched once at
+// startup like the real one; Set its events, then R fetches again.
+func newCalHarness(t *testing.T, cfg config.Config) *harness {
+	t.Helper()
+	return startHarness(t, cfg, &calendar.Fake{})
+}
+
+func startHarness(t *testing.T, cfg config.Config, cal *calendar.Fake) *harness {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "tt.db")
 	st, err := store.Open(context.Background(), path)
 	if err != nil {
@@ -49,7 +63,10 @@ func newHarness(t *testing.T, cfg config.Config) *harness {
 	t.Cleanup(func() { st.Close() })
 	clock := &fakeClock{now: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}
 	svc := app.New(st, clock, cfg)
-	h := &harness{t: t, svc: svc, clock: clock, path: path}
+	if cal != nil {
+		svc.WithCalendar(cal)
+	}
+	h := &harness{t: t, svc: svc, clock: clock, cal: cal, path: path}
 	opts := Options{WatchEvery: time.Second, ClockEvery: 30 * time.Second,
 		Schedule: func(time.Duration, tea.Msg) tea.Cmd { return nil },
 		Exec: func(c *exec.Cmd, done tea.ExecCallback) tea.Cmd {

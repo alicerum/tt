@@ -109,7 +109,23 @@ func (m *Model) headerView() string {
 	if m.state.Plan.Committed {
 		h += styleDim.Render(" · plan committed")
 	}
-	return h
+	return h + m.calendarStatus()
+}
+
+// calendarStatus is the header's calendar part (D44): nothing while fresh,
+// the age of the last success once it is older than two polls, the reason
+// after a failed fetch.
+func (m *Model) calendarStatus() string {
+	cs, now := m.state.Calendar, m.svc.Now()
+	switch {
+	case !cs.SetUp:
+		return styleDim.Render(" · cal: not set up (tt-cal calendars)") // D40
+	case cs.Err != "":
+		return styleAlert.Render(" · ⚠ cal: " + cs.Err)
+	case !cs.LastSuccess.IsZero() && now.Sub(cs.LastSuccess) > 2*m.svc.Config().CalendarPoll:
+		return styleDim.Render(" · cal " + ago(now, cs.LastSuccess))
+	}
+	return ""
 }
 
 func (m *Model) bannerView() string {
