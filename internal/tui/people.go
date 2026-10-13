@@ -168,6 +168,10 @@ func (m *Model) peopleKey(key string) tea.Cmd {
 	}
 	switch key {
 	case "tab":
+		if !p.onTasks && len(p.tasks.rows) == 0 { // D57
+			m.setStatus("nobody listed")
+			return nil
+		}
 		p.onTasks = !p.onTasks
 		return nil
 	case "/":

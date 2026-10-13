@@ -74,7 +74,8 @@ func TestReviewsLaneOnToday(t *testing.T) {
 	if h.m.lane.focused || h.m.today.focus != focusTimeline {
 		t.Errorf("tab leaves the lane for the timeline: lane %v, focus %v", h.m.lane.focused, h.m.today.focus)
 	}
-	h.keys("tab") // tab stays between timeline and candidates
+	h.pinned("A candidate !1 ~s") // tab skips an empty candidates pane (D57)
+	h.keys("tab")                 // tab stays between timeline and candidates
 	if h.m.lane.focused || h.m.today.focus != focusCandidates {
 		t.Errorf("tab: lane %v, focus %v", h.m.lane.focused, h.m.today.focus)
 	}

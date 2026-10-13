@@ -204,6 +204,17 @@ func rolloverHint(t domain.Task) row {
 
 func (m *Model) rows(p pane) []row { return m.pick.rows[p] }
 
+// emptyPane says why the Log's pane pn has nothing to focus (D57).
+func (m *Model) emptyPane(pn pane) string {
+	switch {
+	case pn == paneToday:
+		return "nothing pinned yet · p pins a task"
+	case m.pick.filtered():
+		return "no matches · esc clears"
+	}
+	return "backlog is empty"
+}
+
 // clamp keeps each pane's cursor on a selectable row (see clampRows).
 func (p *pickState) clamp(m *Model) {
 	if p.expanded == nil {
@@ -415,7 +426,12 @@ func (m *Model) pickKey(key string) tea.Cmd {
 	}
 	switch key {
 	case "tab":
-		p.focus = 1 - p.focus
+		to := 1 - p.focus
+		if len(p.rows[to]) == 0 { // D57: say why instead of focusing nothing
+			m.setStatus(m.emptyPane(to))
+			return nil
+		}
+		p.focus = to
 		p.clamp(m)
 		return nil
 	case "i":

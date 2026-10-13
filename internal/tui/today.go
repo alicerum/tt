@@ -396,6 +396,10 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	}
 	switch key {
 	case "tab":
+		if td.focus == focusTimeline && len(m.rows(paneToday)) == 0 { // D57
+			m.setStatus("nothing pinned · L opens the log to pick")
+			return nil
+		}
 		td.focus = 1 - td.focus
 		return nil
 	case "L":

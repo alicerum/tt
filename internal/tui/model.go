@@ -193,7 +193,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		m.state, m.loaded = msg.state, true
 		m.idx = buildIndex(msg.state)
+		had := m.paneSizes()
 		m.refreshRows()
+		m.refocus(had)
 		m.inbox.sync(m)
 	case watchTickMsg:
 		cmds := []tea.Cmd{m.checkVersion(), m.opts.Schedule(m.opts.WatchEvery, watchTickMsg{})}
@@ -371,6 +373,36 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.peopleKey(key)
 	}
 	return m.pickKey(key)
+}
+
+// paneSizes counts the rows of the panes a reload can empty (D57): the
+// Log's two (Today's candidates are the Log's), People's tasks.
+type paneSizes struct {
+	log   [2]int
+	tasks int
+}
+
+func (m *Model) paneSizes() paneSizes {
+	return paneSizes{log: [2]int{len(m.pick.rows[paneBacklog]), len(m.pick.rows[paneToday])}, tasks: len(m.people.tasks.rows)}
+}
+
+// refocus moves the focus off a pane of the screen on show that this
+// reload emptied (D57; had is before it), to the other pane when that one
+// has rows. Not while a filter is being typed: the narrowing list is the
+// one being looked at.
+func (m *Model) refocus(had paneSizes) {
+	p := &m.pick
+	emptied := func(pn pane) bool { return had.log[pn] > 0 && len(p.rows[pn]) == 0 }
+	_, typing := m.overlay.(*filterBar)
+	switch {
+	case m.screen == screenLog && !typing && emptied(p.focus) && len(p.rows[1-p.focus]) > 0:
+		p.focus = 1 - p.focus
+		p.clamp(m)
+	case m.screen == screenToday && m.today.focus == focusCandidates && emptied(paneToday):
+		m.today.focus = focusTimeline
+	case m.screen == screenPeople && m.people.onTasks && had.tasks > 0 && len(m.people.tasks.rows) == 0:
+		m.people.onTasks = false
+	}
 }
 
 // dayIsStale: the planning day rolled over since the last load, so the view
