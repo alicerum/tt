@@ -99,3 +99,21 @@ func TestCutHints(t *testing.T) {
 		}
 	}
 }
+
+func TestFrameAndPadKeepWidthWhenAWideCharacterLandsOnTheCut(t *testing.T) {
+	if got := ansi.Strip(pad("a📌b", 3)); got != "a… " || ansi.StringWidth(got) != 3 {
+		t.Errorf("pad over a wide cut = %q (%d cells); want %q (3 cells)", got, ansi.StringWidth(got), "a… ")
+	}
+	lines := []string{"0123456789📌中文字テスト ✎ ⏎ →", "a📌b中c", "✎📌中"}
+	for w := 4; w <= 40; w++ {
+		for _, l := range frame("T📌中", lines, w, len(lines)+2, true) {
+			s := ansi.Strip(l)
+			if ansi.StringWidth(s) != w {
+				t.Errorf("width %d: line %q is %d cells wide", w, s, ansi.StringWidth(s))
+			}
+			if !strings.HasSuffix(s, "│") && !strings.HasSuffix(s, "╮") && !strings.HasSuffix(s, "╯") {
+				t.Errorf("width %d: line %q does not end with a border", w, s)
+			}
+		}
+	}
+}

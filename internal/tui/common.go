@@ -290,11 +290,11 @@ func pad(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	if w := ansi.StringWidth(s); w > width {
-		return ansi.Truncate(s, width, "…")
-	} else {
-		return s + strings.Repeat(" ", width-w)
+	if ansi.StringWidth(s) > width {
+		s = ansi.Truncate(s, width, "…")
 	}
+	// a wide character on the cut can leave the cut one cell short
+	return s + strings.Repeat(" ", max(width-ansi.StringWidth(s), 0))
 }
 
 // fitWidth truncates every line of s to width cells.
