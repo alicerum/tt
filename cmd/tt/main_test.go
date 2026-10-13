@@ -174,6 +174,39 @@ func TestCalendarComesFromTheConfig(t *testing.T) {
 	}
 }
 
+func TestGitHubComesFromTheConfig(t *testing.T) {
+	ctx := context.Background()
+	env := testEnv(t)
+	t.Setenv("PATH", t.TempDir()) // no gh anywhere: nothing reaches GitHub
+	githubOf := func() app.GitHubState {
+		t.Helper()
+		var gs app.GitHubState
+		var out, errOut bytes.Buffer
+		code := run(ctx, nil, input{}, &out, &errOut, func(k string) string { return env[k] },
+			func(ctx context.Context, svc *app.Service) error {
+				if _, err := svc.SyncSources(ctx); err != nil {
+					return err
+				}
+				st, err := svc.Load(ctx)
+				gs = st.GitHub
+				return err
+			})
+		if code != 0 {
+			t.Fatalf("exit %d, stderr %q", code, errOut.String())
+		}
+		return gs
+	}
+	if gs := githubOf(); !gs.SetUp || gs.Err != "gh not found · brew install gh" {
+		t.Errorf("GitHub is on by default (D50): %+v; want set up, with the hint", gs)
+	}
+	if err := os.WriteFile(env["TT_CONFIG"], []byte("[github]\nenabled = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if gs := githubOf(); gs.SetUp {
+		t.Errorf("enabled = false: %+v; want not set up", gs)
+	}
+}
+
 func TestTUIErrorsExitNonZero(t *testing.T) {
 	env := testEnv(t)
 	var out, errOut bytes.Buffer

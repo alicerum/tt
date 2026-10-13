@@ -18,6 +18,7 @@ import (
 	"tt/internal/config"
 	"tt/internal/domain"
 	"tt/internal/dsl"
+	"tt/internal/source"
 	"tt/internal/store"
 	"tt/internal/tui"
 )
@@ -181,6 +182,9 @@ func open(ctx context.Context, getenv func(string) string) (*app.Service, func()
 	svc := app.New(st, app.SystemClock{}, cfg)
 	if len(cfg.Calendars) > 0 { // D40: no calendars, no calendar
 		svc.WithCalendar(&calendar.EventKit{Calendars: cfg.Calendars})
+	}
+	if cfg.GitHub { // D50
+		svc.WithSource(&source.GitHub{Host: cfg.GitHubHost})
 	}
 	return svc, func() { st.Close() }, nil
 }

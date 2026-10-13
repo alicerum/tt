@@ -43,3 +43,12 @@ end = "19:00"
 calendars = []
 # calendars = ["Work"]
 poll = "2m" # how often the calendar is fetched; 10s or more
+
+# PR reviews waiting on me, through the gh CLI (D50): open PRs that request
+# my review directly. gh must be logged in (`gh auth login`).
+[github]
+enabled = true  # false: no fetch, no Reviews lane
+host = ""       # a GitHub Enterprise host; empty: gh's default (github.com)
+poll = "5m"     # how often GitHub is fetched; 30s or more
+priority = "P2" # a pinned review's priority: one of the [[priorities]] names
+size = "s"      # a pinned review's size: s, m, l, xl, or "" for unsized (D48)

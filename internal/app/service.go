@@ -27,6 +27,7 @@ type Store interface {
 	DataVersion(ctx context.Context) (int64, error)
 	UIState(ctx context.Context, key string) (string, bool, error)
 	Integration(ctx context.Context, name string) (store.Integration, bool, error)
+	SourceItems(ctx context.Context, kind string) ([]domain.SourceItem, error)
 }
 
 // Undo reverts the command that returned it. The TUI keeps these on a
@@ -38,6 +39,7 @@ type Service struct {
 	clock Clock
 	cfg   config.Config
 	cal   CalendarSource // nil: no calendar set up (D40)
+	src   Source         // nil: GitHub isn't set up (D50)
 }
 
 func New(st Store, clock Clock, cfg config.Config) *Service {

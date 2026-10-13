@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -35,6 +36,16 @@ type Config struct {
 	Calendars []string
 	// CalendarPoll is how often the calendar is fetched (D3).
 	CalendarPoll time.Duration
+	// GitHub turns on the Reviews lane: review requests are fetched through
+	// gh (D50). GitHubHost is a GitHub Enterprise host; "" is gh's default.
+	GitHub     bool
+	GitHubHost string
+	// GitHubPoll is how often GitHub is fetched (D3).
+	GitHubPoll time.Duration
+	// ReviewPriority (a level index) and ReviewSize are what the task of a
+	// pinned review request starts with (D48).
+	ReviewPriority int
+	ReviewSize     domain.Size
 }
 
 func Default() Config {
@@ -51,11 +62,15 @@ func Default() Config {
 			domain.SizeL:  8 * time.Hour,
 			domain.SizeXL: 40 * time.Hour,
 		},
-		UnsizedBlock:  30 * time.Minute,
-		RolloverAlert: 3,
-		WorkStart:     8 * time.Hour,
-		WorkEnd:       19 * time.Hour,
-		CalendarPoll:  2 * time.Minute,
+		UnsizedBlock:   30 * time.Minute,
+		RolloverAlert:  3,
+		WorkStart:      8 * time.Hour,
+		WorkEnd:        19 * time.Hour,
+		CalendarPoll:   2 * time.Minute,
+		GitHub:         true,
+		GitHubPoll:     5 * time.Minute,
+		ReviewPriority: 2,
+		ReviewSize:     domain.SizeS,
 	}
 }
 
@@ -76,6 +91,13 @@ type file struct {
 		Calendars []string `toml:"calendars"`
 		Poll      *string  `toml:"poll"`
 	} `toml:"calendar"`
+	GitHub struct {
+		Enabled  *bool   `toml:"enabled"`
+		Host     *string `toml:"host"`
+		Poll     *string `toml:"poll"`
+		Priority *string `toml:"priority"`
+		Size     *string `toml:"size"`
+	} `toml:"github"`
 }
 
 // Load reads path. A missing file yields Default().
@@ -173,6 +195,9 @@ func Parse(data []byte) (Config, error) {
 		}
 		cfg.CalendarPoll = d
 	}
+	if err := parseGitHub(f, &cfg); err != nil {
+		return Config{}, err
+	}
 	switch {
 	case cfg.WorkEnd <= cfg.WorkStart:
 		return Config{}, fmt.Errorf("work_hours.end must be after work_hours.start")
@@ -180,6 +205,45 @@ func Parse(data []byte) (Config, error) {
 		return Config{}, fmt.Errorf("work_hours.start must not be before day_start (rows before it belong to the previous day)")
 	}
 	return cfg, nil
+}
+
+// parseGitHub applies [github] (D48, D50). Without a priority the reviews
+// get the level named P2, else the last level, so configuring other
+// priorities never fails over a key that was never set.
+func parseGitHub(f file, cfg *Config) error {
+	g := f.GitHub
+	if g.Enabled != nil {
+		cfg.GitHub = *g.Enabled
+	}
+	if g.Host != nil {
+		cfg.GitHubHost = strings.TrimSpace(*g.Host)
+	}
+	if p := g.Poll; p != nil {
+		d, err := time.ParseDuration(*p)
+		if err != nil || d < 30*time.Second {
+			return fmt.Errorf("github.poll: want a duration of 30s or more, like \"5m\", got %q", *p)
+		}
+		cfg.GitHubPoll = d
+	}
+	name := "P2"
+	if g.Priority != nil {
+		name = strings.TrimSpace(*g.Priority)
+	}
+	cfg.ReviewPriority = slices.IndexFunc(cfg.Priorities, func(l PriorityLevel) bool { return strings.EqualFold(l.Name, name) }) + 1
+	if cfg.ReviewPriority == 0 {
+		if g.Priority != nil {
+			return fmt.Errorf("github.priority: no priority level named %q", name)
+		}
+		cfg.ReviewPriority = len(cfg.Priorities)
+	}
+	if p := g.Size; p != nil {
+		size, ok := domain.ParseSize(*p)
+		if *p != "" && (!ok || string(size) != strings.ToLower(*p)) {
+			return fmt.Errorf("github.size: want s, m, l, xl, or \"\" for unsized, got %q", *p)
+		}
+		cfg.ReviewSize = size
+	}
+	return nil
 }
 
 // parseClock parses "HH:MM" (00:00 to 23:59) into an offset from midnight.

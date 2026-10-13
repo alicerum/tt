@@ -137,10 +137,11 @@ type State struct {
 	Snapshot domain.Snapshot
 	Plan     domain.Plan
 	Calendar CalendarState
+	GitHub   GitHubState
 }
 
 // Load reads the data version first, then all tasks and today's plan in one
-// read, then the calendar's cache. A write that lands during the load changes
+// read, then the calendar's cache and GitHub's review requests. A write that lands during the load changes
 // the version, so the next version check reloads again.
 func (s *Service) Load(ctx context.Context) (State, error) {
 	version, err := s.store.DataVersion(ctx)
@@ -156,7 +157,11 @@ func (s *Service) Load(ctx context.Context) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	return State{Version: version, Snapshot: snap, Plan: s.buildPlan(today, snap, state), Calendar: cal}, nil
+	gh, err := s.githubState(ctx, snap)
+	if err != nil {
+		return State{}, err
+	}
+	return State{Version: version, Snapshot: snap, Plan: s.buildPlan(today, snap, state), Calendar: cal, GitHub: gh}, nil
 }
 
 func (s *Service) buildPlan(today domain.Day, snap domain.Snapshot, state store.PlanState) domain.Plan {
