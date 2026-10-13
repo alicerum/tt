@@ -65,6 +65,9 @@ func (e *EventKit) Events(ctx context.Context, from, to time.Time) ([]domain.Eve
 	case ctx.Err() != nil:
 		return nil, ctx.Err() // tt is quitting
 	case run.Err() != nil:
+		if line := firstLine(stderr.String()); line != "" {
+			return nil, errors.New(line) // e.g. waiting for the permission prompt
+		}
 		return nil, fmt.Errorf("tt-cal timed out after %s", timeout)
 	case errors.As(err, &exit) && exit.ExitCode() == 2:
 		return nil, ErrNoAccess

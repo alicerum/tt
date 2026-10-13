@@ -82,6 +82,20 @@ func TestEventsFailures(t *testing.T) {
 	}
 }
 
+func TestTimeoutSaysWhatToDo(t *testing.T) {
+	// The macOS permission prompt waiting for a click is the likeliest timeout.
+	const line = "waiting for calendar access · answer the macOS prompt"
+	ek := &EventKit{Path: helper(t, t.TempDir(), "echo '"+line+"' >&2; sleep 10"), Timeout: 500 * time.Millisecond}
+	began := time.Now()
+	_, err := ek.Events(context.Background(), from, to)
+	if err == nil || err.Error() != line {
+		t.Errorf("err = %v; want %q", err, line)
+	}
+	if took := time.Since(began); took > 3*time.Second {
+		t.Errorf("Events took %v after a timeout", took)
+	}
+}
+
 func TestEventsTimesOut(t *testing.T) {
 	// The sleep is a child of the shell: killing the shell leaves it holding
 	// the output pipe, which must not keep Events waiting either.

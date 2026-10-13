@@ -55,7 +55,8 @@ func (td *todayState) refresh(m *Model) {
 	}
 	var meetings []meeting
 	for _, e := range m.state.Calendar.Meetings {
-		meetings = append(meetings, meeting{title: e.Title, start: plan.Day.Offset(e.Start), end: plan.Day.Offset(e.End)})
+		// a title is a third party's text: no newline or escape reaches the screen
+		meetings = append(meetings, meeting{title: oneLine(e.Title), start: plan.Day.Offset(e.Start), end: plan.Day.Offset(e.End)})
 	}
 	td.tl = buildTimeline(plan.Blocks, meetings, cfg.WorkStart, cfg.WorkEnd, now)
 	rows := td.tl.rows
@@ -126,13 +127,17 @@ func (m *Model) pickUpBlock(t domain.Task, b domain.Block) {
 	td.at = td.tl.rows[td.cursor].start
 }
 
-// freeSlot is the first row after block b's where b, moved there (keeping
+// freeSlot is the first row after block b's, and not before now, where b, moved there (keeping
 // its minutes within the row, like m), fits whole inside the working hours,
 // clear of every other block and of every meeting (D43).
 func (m *Model) freeSlot(b domain.Block) (int, bool) {
 	tl := &m.today.tl
 	within := b.Start - b.Start.Truncate(rowLen)
-	for i := tl.rowOf(b.Start) + 1; i < len(tl.rows); i++ {
+	first := tl.rowOf(b.Start) + 1
+	if tl.nowRow >= 0 {
+		first = max(first, tl.nowRow) // not into the past; j/k still reach it (D36)
+	}
+	for i := first; i < len(tl.rows); i++ {
 		nb := b
 		nb.Start = tl.rows[i].start + within
 		if tl.rows[i].outside || nb.Start < tl.start || nb.End() > tl.end {

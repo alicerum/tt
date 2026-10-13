@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,33 @@ func TestMeetingsOnToday(t *testing.T) {
 	h.keys("j", "j", "j", "j", "j", "x") // 12:00: the block's task
 	h.mustSee(`✓ "Fix CI"`)
 	h.mustNotSee("⚠") // a closed task's block is history: no conflict
+}
+
+func TestMeetingTitlesAreOneCleanLine(t *testing.T) {
+	h := newCalHarness(t, config.Default())
+	h.meetings(ev("Stand\nup\t\x1b]52;c;aGk=\x07", 10*time.Hour, 11*time.Hour))
+	h.mustSee(" 10:00 ■ Stand up ]52;c;aGk=")
+	raw := h.m.render()
+	if strings.Contains(raw, "\x1b]52") || strings.Contains(raw, "\x07") {
+		t.Errorf("a meeting title reached the terminal raw: %q", raw)
+	}
+	if lines := strings.Count(raw, "\n") + 1; lines > 40 {
+		t.Errorf("the screen has %d lines on a 40-line terminal", lines)
+	}
+}
+
+func TestOneLine(t *testing.T) {
+	for in, want := range map[string]string{
+		"Standup":           "Standup",
+		"  a \n\n b\t\tc  ": "a b c",
+		"x\x1b[31my\u009bz": "x [31my z",
+		"\x07\x1b":          "",
+		"Café ■ 日本":         "Café ■ 日本",
+	} {
+		if got := oneLine(in); got != want {
+			t.Errorf("oneLine(%q) = %q; want %q", in, got, want)
+		}
+	}
 }
 
 func TestPlacementAroundMeetings(t *testing.T) {

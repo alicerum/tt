@@ -25,6 +25,8 @@ func requestAccess(_ store: EKEventStore) {
     case .fullAccess:
         return
     case .notDetermined:
+        // If the prompt stays unanswered, tt times out and shows this line.
+        FileHandle.standardError.write(Data("waiting for calendar access · answer the macOS prompt\n".utf8))
         let answered = DispatchSemaphore(value: 0)
         nonisolated(unsafe) var granted = false
         store.requestFullAccessToEvents { ok, _ in

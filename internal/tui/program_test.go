@@ -55,6 +55,13 @@ func TestRealProgram(t *testing.T) {
 		done <- err
 	}()
 
+	deadline := time.Now().Add(10 * time.Second)
+	for !(sawMeeting.Load() && cal.Calls() >= 3) { // up and polling, with no task yet
+		if time.Now().After(deadline) {
+			t.Fatalf("after 10s: meeting seen %v, %d calendar fetches", sawMeeting.Load(), cal.Calls())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	other, err := store.Open(ctx, path) // e.g. `tt add` in another pane
 	if err != nil {
 		t.Fatal(err)
@@ -63,16 +70,14 @@ func TestRealProgram(t *testing.T) {
 	if _, _, err := app.New(other, clock, cfg).Add(ctx, "From another shell !1 ~s"); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(10 * time.Second)
-	for !(sawTask.Load() && sawMeeting.Load() && cal.Calls() >= 3) {
+	for !sawTask.Load() { // only the watch loop can bring it in
 		if time.Now().After(deadline) {
-			t.Fatalf("after 10s: task seen %v, meeting seen %v, %d calendar fetches", sawTask.Load(), sawMeeting.Load(), cal.Calls())
+			t.Fatal("after 10s: the task another process added was never seen")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if _, err := typing.Write([]byte("q")); err != nil {
-		t.Fatal(err)
-	}
+	go func() { _, _ = typing.Write([]byte("q")) }() // a program that stopped reading mustn't hang the test
+	t.Cleanup(func() { typing.Close() })
 	select {
 	case err := <-done:
 		if err != nil {

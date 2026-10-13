@@ -47,6 +47,20 @@ func TestReslotAConflictedBlock(t *testing.T) {
 	}
 }
 
+func TestReslotStartsFromNow(t *testing.T) {
+	h := newCalHarness(t, config.Default())
+	h.meetings(ev("Review", 10*time.Hour, 11*time.Hour))
+	a := h.pinned("Alpha !1 ~s")
+	h.block(a.ID, 10*time.Hour, time.Hour)
+	h.clock.now = h.clock.now.Add(6 * time.Hour) // 15:00
+	h.keys("R")
+	h.m.today.cursor = h.m.today.tl.rowOf(10 * time.Hour) // the Alpha row, in the past
+	h.m.today.at = h.m.today.tl.rows[h.m.today.cursor].start
+	h.keys("r")
+	// D43 and now: not 10:30, which is in the past
+	h.mustSee(`moving "Alpha"`, " 15:00 ░ Alpha 1h")
+}
+
 func TestReslotWithNoFreeSlot(t *testing.T) {
 	h := newCalHarness(t, config.Default())
 	h.meetings(ev("All hands", 14*time.Hour, 14*time.Hour+30*time.Minute))

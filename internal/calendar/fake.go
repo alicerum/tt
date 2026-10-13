@@ -22,9 +22,11 @@ type Fake struct {
 func (f *Fake) Set(events []domain.Event, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.events, f.err = events, err
+	f.events, f.err = append([]domain.Event(nil), events...), err
 }
 
+// Events returns a copy of what Set gave it (or its error), and records the
+// call and its range.
 func (f *Fake) Events(_ context.Context, from, to time.Time) ([]domain.Event, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
