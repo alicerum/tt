@@ -468,9 +468,9 @@ func (m *Model) render() string {
 		return fitWidth("loading…\n"+m.statusView(), m.width)
 	}
 	var parts []string
-	parts = append(parts, m.headerView())
-	if h, ok := m.overlay.(helpOverlay); ok { // help takes the whole screen
-		return fitWidth(strings.Join(append(parts, h.view(m)), "\n"), m.width)
+	parts = append(parts, within(styleHeader, pad(m.headerView(), m.width))) // the header bar (D55)
+	if h, ok := m.overlay.(helpOverlay); ok {                                // help takes the whole screen
+		return fitWidth(clipLines(strings.Join(append(parts, h.view(m)), "\n"), m.height), m.width)
 	}
 	if m.banner != nil {
 		parts = append(parts, m.bannerView())
@@ -480,9 +480,10 @@ func (m *Model) render() string {
 	case screenToday:
 		parts = append(parts, m.todayView())
 	case screenInbox:
-		parts = append(parts, clipLines(m.inboxView(), m.bodyHeight()))
+		title, lines := m.inboxView()
+		parts = append(parts, strings.Join(m.box(title, lines, m.width, m.bodyHeight(), true), "\n"))
 	case screenDetail:
-		parts = append(parts, clipLines(m.detailView(), m.bodyHeight()))
+		parts = append(parts, strings.Join(m.box("TASK", m.detailView(), m.width, m.bodyHeight(), true), "\n"))
 	case screenPeople:
 		parts = append(parts, m.peopleView())
 	default:
@@ -495,5 +496,5 @@ func (m *Model) render() string {
 		parts = append(parts, m.overlay.view(m))
 	}
 	parts = append(parts, m.statusView(), m.hintsView())
-	return fitWidth(strings.Join(parts, "\n"), m.width)
+	return fitWidth(clipLines(strings.Join(parts, "\n"), m.height), m.width) // never taller than the terminal
 }

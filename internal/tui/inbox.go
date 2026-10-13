@@ -98,16 +98,17 @@ func (m *Model) inboxKey(key string) tea.Cmd {
 	return nil
 }
 
-func (m *Model) inboxView() string {
+// inboxView is the Inbox's frame title and the current card's lines.
+func (m *Model) inboxView() (string, []string) {
 	order := m.inbox.order(m)
 	if len(order) == 0 {
-		return styleTitle.Render("INBOX") + "\n\n  Inbox zero ✓  " + styleDim.Render("esc to go back")
+		return "INBOX", []string{"", "  Inbox zero ✓  " + styleDim.Render("esc to go back")}
 	}
 	pos := slices.IndexFunc(order, func(t domain.Task) bool { return t.ID == m.inbox.current })
 	t := order[max(pos, 0)]
 	cfg := m.svc.Config()
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n\n", styleTitle.Render(fmt.Sprintf("INBOX · %d of %d", pos+1, len(order))))
+	title := fmt.Sprintf("INBOX · %d of %d", pos+1, len(order))
 	fmt.Fprintf(&b, "  %s\n", styleTitle.Render(t.Title))
 	if t.Link != "" {
 		fmt.Fprintf(&b, "  %s\n", styleDim.Render(t.Link))
@@ -160,5 +161,5 @@ func (m *Model) inboxView() string {
 		sizes = append(sizes, item)
 	}
 	fmt.Fprintf(&b, "  size       %s", strings.Join(sizes, "  "))
-	return b.String()
+	return title, strings.Split(b.String(), "\n")
 }

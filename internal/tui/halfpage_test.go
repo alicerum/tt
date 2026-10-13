@@ -10,9 +10,9 @@ import (
 	"tt/internal/config"
 )
 
-// In a 16-line terminal the body has 13 lines and a list shows 12 rows, so
-// half a page is 6.
-const shortHeight = 16
+// In a 17-line terminal the body has 14 lines and a framed list shows 12
+// rows, so half a page is 6.
+const shortHeight = 17
 
 func TestHalfPageInTheLog(t *testing.T) {
 	h := newLogHarness(t, config.Default())

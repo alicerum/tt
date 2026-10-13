@@ -189,28 +189,28 @@ func (m *Model) peopleKey(key string) tea.Cmd {
 }
 
 func (m *Model) peopleView() string {
-	total := max(m.width-3, 20)
-	lw := total / 3
-	rw := total - lw
+	lw := m.width / 3
+	rw := m.width - lw
 	p := &m.people
-	title, empty := fmt.Sprintf("PEOPLE · %d", len(m.idx.people)), "nobody yet · @who on a task names who asked"
+	title, empty := fmt.Sprintf("PEOPLE · %d", len(m.idx.people)), "nobody yet · @who names who asked"
 	if p.filter != "" {
 		title = "PEOPLE · " + plural(len(p.names), "match", "matches") + " · " + p.filter
 		empty = "no matches · esc clears"
 	}
-	left := []string{styleTitle.Render(title)}
+	var names []string
 	if len(p.names) == 0 {
-		left = append(left, styleDim.Render("  "+empty))
+		names = append(names, styleDim.Render("  "+empty))
 	}
 	visible := m.visibleRows()
 	for i := p.offset; i < len(p.names) && i < p.offset+visible; i++ {
-		left = append(left, m.personLine(p.names[i], lw, i == p.cursor))
+		names = append(names, m.personLine(p.names[i], m.inner(lw), i == p.cursor))
 	}
-	right := m.listLines(p.tasks, visible, "@"+p.selected, "", rw, p.onTasks)
-	if p.selected == "" {
-		right = nil
+	left := m.box(title, names, lw, m.bodyHeight(), !p.onTasks)
+	tasksTitle, tasks := "TASKS", []string(nil)
+	if p.selected != "" {
+		tasksTitle, tasks = "@"+p.selected, m.listLines(p.tasks, visible, "", m.inner(rw), p.onTasks)
 	}
-	return columns(left, right, lw, rw)
+	return beside(left, m.box(tasksTitle, tasks, rw, m.bodyHeight(), p.onTasks))
 }
 
 // openRename asks for a person's new name (D53), prefilled with the old one.

@@ -331,9 +331,9 @@ func scroll(top, c, off, visible, n int) int {
 	return max(0, min(off, n-visible))
 }
 
-// visibleRows is how many rows fit in a pane below its title (the Log's
-// panes, Today's candidates and timeline share this budget).
-func (m *Model) visibleRows() int { return max(m.bodyHeight()-1, 1) }
+// visibleRows is how many rows fit in a pane inside its frame (the Log's
+// panes, Today's candidates and timeline, People's panes share this budget).
+func (m *Model) visibleRows() int { return max(m.bodyHeight()-m.chrome(), 1) }
 
 // paneVisible is visibleRows for pane pn, less the Reviews lane when it
 // sits under pn on this screen (D49).
@@ -539,9 +539,8 @@ func (m *Model) taskKey(key string, t domain.Task) (cmd tea.Cmd, ok bool) {
 }
 
 func (m *Model) pickView() string {
-	total := max(m.width-3, 20)
-	lw := total * 55 / 100
-	rw := total - lw
+	lw := m.width * 55 / 100
+	rw := m.width - lw
 	title, empty := "BACKLOG · by "+string(m.pick.group), "nothing triaged yet · a to add · i to triage"
 	if m.pick.filtered() {
 		n := 0
@@ -553,41 +552,28 @@ func (m *Model) pickView() string {
 		title += " · " + plural(n, "match", "matches") + " · " + m.pick.filterText // the count first: truncation eats the filter text
 		empty = "no matches · esc clears"
 	}
-	left := m.paneLines(paneBacklog, title, empty, lw, m.pick.focus == paneBacklog && !m.lane.focused)
+	left := m.paneBox(paneBacklog, title, empty, lw, m.pick.focus == paneBacklog && !m.lane.focused)
 	left = append(left, m.laneView(lw)...)
-	right := m.paneLines(paneToday, "TODAY'S CANDIDATES", "nothing pinned · p on a backlog task", rw, m.pick.focus == paneToday && !m.lane.focused)
-	return columns(left, right, lw, rw)
+	right := m.paneBox(paneToday, "TODAY'S CANDIDATES", "nothing pinned · p on a backlog task", rw, m.pick.focus == paneToday && !m.lane.focused)
+	return beside(left, right)
 }
 
-// columns renders two panes side by side, lw and rw cells wide.
-func columns(left, right []string, lw, rw int) string {
-	var b strings.Builder
-	for i := range max(len(left), len(right)) {
-		l, r := "", ""
-		if i < len(left) {
-			l = left[i]
-		}
-		if i < len(right) {
-			r = right[i]
-		}
-		if i > 0 {
-			b.WriteByte('\n')
-		}
-		b.WriteString(pad(l, lw) + " │ " + pad(r, rw))
-	}
-	return b.String()
-}
-
-// paneLines renders pane pn's title and visible rows; focused shows its cursor.
-func (m *Model) paneLines(pn pane, title, empty string, width int, focused bool) []string {
+// paneBox renders pane pn as a box width cells wide, its rows in its
+// window; focused shows its cursor. The Reviews lane under it on this screen
+// takes the rest of the column.
+func (m *Model) paneBox(pn pane, title, empty string, width int, focused bool) []string {
 	l := rowList{rows: m.rows(pn), cursor: m.pick.cursor[pn], offset: m.pick.offset[pn]}
-	return m.listLines(l, m.paneVisible(pn), title, empty, width, focused)
+	height := m.bodyHeight()
+	if m.laneUnder(pn) {
+		height -= m.laneLines()
+	}
+	return m.box(title, m.listLines(l, m.paneVisible(pn), empty, m.inner(width), focused), width, height, focused)
 }
 
-// listLines renders a list's title and the rows in its window of visible
-// rows; focused shows its cursor.
-func (m *Model) listLines(l rowList, visible int, title, empty string, width int, focused bool) []string {
-	lines := []string{styleTitle.Render(title)}
+// listLines renders the rows in a list's window of visible rows, rows
+// width cells wide; focused shows its cursor.
+func (m *Model) listLines(l rowList, visible int, empty string, width int, focused bool) []string {
+	var lines []string
 	if len(l.rows) == 0 {
 		return append(lines, styleDim.Render("  "+empty))
 	}

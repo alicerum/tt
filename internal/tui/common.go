@@ -185,35 +185,39 @@ func (m *Model) statusView() string {
 	return styleDim.Render(m.status)
 }
 
-func (m *Model) hintsView() string {
+// hintsView is the footer's hints line, cut to the width with ? help kept (D55).
+func (m *Model) hintsView() string { return styleDim.Render(cutHints(m.hintsText(), m.width)) }
+
+// hintsText is the current screen's key hints, before cutHints fits them.
+func (m *Model) hintsText() string {
 	lane := m.screen == screenToday || m.screen == screenLog
 	if lane && m.lane.focused {
-		return styleDim.Render(m.laneHints())
+		return m.laneHints()
 	}
 	reviews := ""
 	if lane && len(m.reviews()) > 0 {
 		reviews = "w reviews · " // D49
 	}
 	if m.screen == screenToday {
-		return styleDim.Render(reviews + m.todayHints())
+		return reviews + m.todayHints()
 	}
 	if m.screen == screenInbox {
 		if t, ok := m.state.Snapshot.Get(m.inbox.current); ok && t.ParentID != 0 {
-			return styleDim.Render("s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help")
+			return "s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help"
 		}
-		return styleDim.Render(fmt.Sprintf("1-%d priority · s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help", len(m.svc.Config().Priorities)))
+		return fmt.Sprintf("1-%d priority · s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help", len(m.svc.Config().Priorities))
 	}
 	if m.screen == screenPeople {
-		return styleDim.Render(m.peopleHints())
+		return m.peopleHints()
 	}
 	if m.screen == screenDetail {
-		return styleDim.Render("j/k move · ⏎ open child · a add child · J/K reorder · e edit · E note · o link · x done · d drop · p pin · esc back · ? help")
+		return "j/k move · ⏎ open child · a add child · J/K reorder · e edit · E note · o link · x done · d drop · p pin · u unpin · D delete · esc back · ctrl+z undo · ? help"
 	}
-	hints := "⏎ open · e edit · a add · / filter · g group · p pin · u unpin · x done · d drop · tab pane · →/← expand · B block today · esc today · i inbox · P people · ctrl+z undo · ? help · q quit"
+	hints := "⏎ open · e edit · E note · o link · a add · / filter · g group · p pin · u unpin · x done · d drop · tab pane · →/← expand · B block today · esc today · i inbox · P people · ctrl+z undo · ? help · q quit"
 	if m.pick.filtered() && m.overlay == nil { // in the filter line, esc restores the previous filter
 		hints = "esc clears filter · " + strings.Replace(hints, " · esc today", "", 1)
 	}
-	return styleDim.Render(reviews + hints)
+	return reviews + hints
 }
 
 func dayLabel(d domain.Day) string {
@@ -250,7 +254,7 @@ func (m *Model) bodyHeight() int {
 	if _, help := m.overlay.(helpOverlay); m.overlay != nil && !help {
 		used += strings.Count(m.overlay.view(m), "\n") + 1
 	}
-	return max(m.height-used, 2)
+	return max(m.height-used, 1)
 }
 
 // clipLines keeps the first n lines of s.

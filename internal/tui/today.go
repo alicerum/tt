@@ -508,17 +508,16 @@ func (m *Model) hasOpenChildren(t domain.Task) bool {
 }
 
 func (m *Model) todayView() string {
-	total := max(m.width-3, 20)
-	lw := total / 2
-	rw := total - lw
-	left := m.timelineLines(lw)
-	right := m.paneLines(paneToday, "CANDIDATES", "nothing pinned · L opens the log to pick", rw, m.today.focus == focusCandidates && !m.lane.focused)
+	lw := m.width / 2
+	rw := m.width - lw
+	left := m.box(m.timelineTitle(), m.timelineLines(m.inner(lw)), lw, m.bodyHeight(), m.timelineFocused())
+	right := m.paneBox(paneToday, "CANDIDATES", "nothing pinned · L opens the log to pick", rw, m.today.focus == focusCandidates && !m.lane.focused)
 	right = append(right, m.laneView(rw)...)
-	return columns(left, right, lw, rw)
+	return beside(left, right)
 }
 
-// timelineLines renders the timeline's title and the lines in its window.
-func (m *Model) timelineLines(width int) []string {
+// timelineTitle is `TIMELINE · 2/5 done · ⚠ 1`.
+func (m *Model) timelineTitle() string {
 	td := &m.today
 	title := "TIMELINE"
 	if n := len(td.tl.blocks); n > 0 {
@@ -536,6 +535,12 @@ func (m *Model) timelineLines(width int) []string {
 	if td.tl.outsideNow() {
 		title += " · outside of working hours"
 	}
+	return title
+}
+
+// timelineLines renders the lines in the timeline's window, width cells wide.
+func (m *Model) timelineLines(width int) []string {
+	td := &m.today
 	var all []string
 	for i := range td.tl.rows {
 		if i == td.tl.nowRow {
@@ -545,7 +550,7 @@ func (m *Model) timelineLines(width int) []string {
 		all = append(all, m.timelineRow(i, width))
 	}
 	end := min(len(all), td.offset+m.visibleRows())
-	return append([]string{styleTitle.Render(title)}, all[min(td.offset, end):end]...)
+	return all[min(td.offset, end):end]
 }
 
 // timelineRow renders row i: its time, then the blocks starting in it
@@ -697,7 +702,7 @@ func (m *Model) todayHints() string {
 	if m.today.focus == focusCandidates {
 		return "b block · ⏎ open · u unpin · x done · d drop · e edit · tab timeline · L log · P people · i inbox · a add · ctrl+z undo · ? help · q quit"
 	}
-	hints := "j/k move · m move · +/- size · f fine-tune · u unblock · ⏎ open · x done · tab candidates · L log · P people · i inbox · ctrl+z undo · ? help"
+	hints := "j/k move · m move · +/- size · f fine-tune · u unblock · ⏎ open · x done · tab candidates · L log · P people · i inbox · a add · ctrl+z undo · ? help · q quit"
 	if b, ok := m.today.tl.blockAt(m.today.cursor); ok && m.conflicted(b) {
 		hints = "r re-slot ⚠ · " + hints
 	}

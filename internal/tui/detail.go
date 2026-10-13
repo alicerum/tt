@@ -83,9 +83,9 @@ func (d *detailState) move(delta int) {
 	d.selected = d.rows[d.cursor].ID
 }
 
-// childRows is how many children fit below the task's own lines and a
-// "… N more" line.
-func (m *Model) childRows() int { return max(m.bodyHeight()-1-len(m.detailHead()), 1) }
+// childRows is how many children fit in the frame below the task's own
+// lines and a "… N more" line.
+func (m *Model) childRows() int { return max(m.bodyHeight()-m.chrome()-1-len(m.detailHead()), 1) }
 
 // follow keeps the cursor's child inside the scroll window (see pickState.follow).
 func (d *detailState) follow(m *Model) {
@@ -234,14 +234,15 @@ func (m *Model) progress(t domain.Task) string {
 	return fmt.Sprintf(" %s%s %d/%d", strings.Repeat("█", filled), strings.Repeat("░", cells-filled), done, total)
 }
 
-func (m *Model) detailView() string {
+// detailView is Task detail's lines inside its frame.
+func (m *Model) detailView() []string {
 	d := &m.detail
 	head := m.detailHead()
 	if len(head) == 0 {
-		return ""
+		return nil
 	}
 	if d.cursor == 0 {
-		head[0] = styleSelected.Render(pad(head[0], m.width))
+		head[0] = styleSelected.Render(pad(head[0], m.inner(m.width)))
 	}
 	lines := head
 	if d.rows[0].ParentID == 0 {
@@ -257,7 +258,7 @@ func (m *Model) detailView() string {
 			lines = append(lines, styleDim.Render(fmt.Sprintf("  … %d more", more)))
 		}
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 func (m *Model) childLine(c domain.Task, selected bool) string {
@@ -274,7 +275,7 @@ func (m *Model) childLine(c domain.Task, selected bool) string {
 	case domain.StatusDropped:
 		line += " ✗ " + dayLabel(m.svc.DayOf(c.ClosedAt))
 	}
-	line = pad(line, m.width)
+	line = pad(line, m.inner(m.width))
 	if c.Status != domain.StatusOpen {
 		line = styleClosed.Render(line)
 	}

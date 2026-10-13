@@ -88,3 +88,59 @@ func cutHints(hints string, width int) string {
 	}
 	return left + strings.Repeat(" ", max(width-ansi.StringWidth(left)-len(help), 1)) + help
 }
+
+// framed reports whether panes get frames: not when the body is too short
+// to hold a frame and a row, so a short terminal loses frames first (D55).
+func (m *Model) framed() bool { return m.bodyHeight() >= 3 }
+
+// chrome is how many lines a pane spends outside its rows: the frame's two
+// borders, or the title line when unframed.
+func (m *Model) chrome() int {
+	if m.framed() {
+		return 2
+	}
+	return 1
+}
+
+// inner is the width a pane width cells wide leaves its rows.
+func (m *Model) inner(width int) int {
+	if m.framed() {
+		return width - 3
+	}
+	return width
+}
+
+// box renders one pane width cells wide and height lines tall: its lines in
+// a frame titled title, or, when the screen is too short for frames, the
+// title above the lines.
+func (m *Model) box(title string, lines []string, width, height int, focused bool) []string {
+	if m.framed() {
+		return frame(title, lines, width, height, focused)
+	}
+	out := []string{pad(styleTitle.Render(title), width)}
+	for i := range height - 1 {
+		l := ""
+		if i < len(lines) {
+			l = lines[i]
+		}
+		out = append(out, pad(l, width))
+	}
+	return out[:min(len(out), max(height, 0))]
+}
+
+// beside joins two columns of panes line by line.
+func beside(left, right []string) string {
+	var b strings.Builder
+	for i := range max(len(left), len(right)) {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		if i < len(left) {
+			b.WriteString(left[i])
+		}
+		if i < len(right) {
+			b.WriteString(right[i])
+		}
+	}
+	return b.String()
+}

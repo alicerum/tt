@@ -42,7 +42,7 @@ func TestReviewsLaneOnToday(t *testing.T) {
 	if a, b, c := strings.Index(s, "#901"), strings.Index(s, "#877"), strings.Index(s, "#915"); !(a < b && b < c) {
 		t.Errorf("longest waiting first (D49):\n%s", s)
 	}
-	if l := h.lineWith("REVIEWS"); !strings.Contains(l, "│ REVIEWS") {
+	if l := h.lineWith("REVIEWS"); !strings.Contains(l, "│╭ REVIEWS") {
 		t.Errorf("the lane sits in the right column, under the candidates: %q", l)
 	}
 	h.mustSee("w reviews · j/k move") // the hint, before the timeline's
@@ -92,7 +92,7 @@ func TestReviewsLaneInTheLog(t *testing.T) {
 	if h.m.screen != screenLog || h.m.lane.focused {
 		t.Fatalf("L from the lane: screen %d, lane focused %v", h.m.screen, h.m.lane.focused)
 	}
-	if l := h.lineWith("REVIEWS · 3 waiting"); !strings.HasPrefix(l, "REVIEWS") {
+	if l := h.lineWith("REVIEWS · 3 waiting"); !strings.HasPrefix(l, "╭ REVIEWS") {
 		t.Errorf("in the Log the lane sits in the left column, under the backlog: %q", l)
 	}
 	h.mustSee("w reviews · ⏎ open")
@@ -174,9 +174,9 @@ func TestReviewsLaneHeight(t *testing.T) {
 	h.mustSee("#906", "#902")
 	h.mustNotSee("#901 ") // scrolled: the cursor stays in view
 
-	h.send(tea.WindowSizeMsg{Width: 140, Height: 12})
-	if lines := strings.Count(h.screen(), "\n") + 1; lines > 12 {
-		t.Errorf("12 lines tall: the screen has %d", lines)
+	h.send(tea.WindowSizeMsg{Width: 140, Height: 13})
+	if lines := strings.Count(h.screen(), "\n") + 1; lines > 13 {
+		t.Errorf("13 lines tall: the screen has %d", lines)
 	}
 	h.mustSee("REVIEWS · 7 waiting", "#906") // the lane gave up rows, kept the cursor
 	if n := strings.Count(h.screen(), "@ana"); n != 3 {
@@ -194,7 +194,7 @@ func TestReviewRowsFitTheirColumn(t *testing.T) {
 	h := newGHHarness(t, config.Default())
 	h.setReviews(h.reviewItem("acme/api", 901, "A very long title "+strings.Repeat("that goes on ", 20)+"\x1b[31mred\ttab\nnewline", "ana", 3*24*time.Hour))
 	l := h.lineWith("#901")
-	if !strings.HasSuffix(strings.TrimRight(l, " "), "@ana  3d") || strings.ContainsAny(l, "\x1b\t") {
+	if !strings.HasSuffix(strings.TrimRight(l, " │"), "@ana  3d") || strings.ContainsAny(l, "\x1b\t") {
 		t.Errorf("a long title is cut so the author and wait stay; control characters go: %q", l)
 	}
 	if w := ansi.StringWidth(l); w > 140 {
@@ -210,7 +210,7 @@ func TestReviewsWithATaskAreMarked(t *testing.T) {
 	threeReviews(h)
 	h.keys("w", "j", "p")                                                    // #877
 	h.mustSee(`pinned "Review #877: Bump go" · P2 S`, "REVIEWS · 3 waiting") // it stays in the lane (D51)
-	if l := h.lineWith("#877 photos"); !strings.HasSuffix(strings.TrimRight(l, " "), "@tom  1d · #1") {
+	if l := h.lineWith("#877 photos"); !strings.HasSuffix(strings.TrimRight(l, " │"), "@tom  1d · #1") {
 		t.Errorf("a review with a task names it: %q", l)
 	}
 	if h.m.lane.selected != "acme/photos#877" {

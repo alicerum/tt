@@ -19,13 +19,13 @@ func TestGroupingCyclesAndIsRemembered(t *testing.T) {
 	h.mustSee("BACKLOG · by priority", "P1 · someone is blocked", "P2 ·")
 
 	h.keys("g")
-	h.mustSee("grouped by size", "BACKLOG · by size", "\nS ", "[P1 S] Small one", "\nM ")
+	h.mustSee("grouped by size", "BACKLOG · by size", "\n│ S ", "[P1 S] Small one", "\n│ M ")
 	h.mustNotSee("P1 · someone is blocked")
 	h.keys("g")
 	h.mustSee("BACKLOG · by created", "this week")
 	h.keys("g")
 	h.mustSee("BACKLOG · by requester", "@ana", "no requester")
-	if s := h.screen(); strings.Index(s, "@ana\n") > strings.Index(s, "no requester") {
+	if s := h.screen(); strings.Index(s, "\n│ @ana ") > strings.Index(s, "no requester") {
 		t.Errorf("no-requester group comes last:\n%s", s)
 	}
 
@@ -136,7 +136,7 @@ func TestScrollWindowMovesOnlyWhenTheCursorLeavesIt(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		h.add(fmt.Sprintf("Task %02d !1 ~s", i))
 	}
-	h.send(tea.WindowSizeMsg{Width: 140, Height: 10}) // 6 rows per pane
+	h.send(tea.WindowSizeMsg{Width: 140, Height: 11}) // 6 rows per framed pane
 	for range 9 {
 		h.keys("j")
 	}

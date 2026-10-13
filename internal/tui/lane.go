@@ -66,15 +66,15 @@ func (l *laneState) follow(m *Model) {
 	l.offset = max(0, min(l.offset, len(m.reviews())-rows))
 }
 
-// laneLines is how many lines the lane takes in its column: a blank line, its
-// title and up to laneMaxRows requests. The pane above keeps its title and
-// three rows, so in a short column the lane gives up rows first, then
-// disappears; 0 when GitHub is off.
+// laneLines is how many lines the lane takes in its column: its frame (or,
+// unframed, a blank line and its title) and up to laneMaxRows requests. The
+// pane above keeps its frame and three rows, so in a short column the lane
+// gives up rows first, then disappears; 0 when GitHub is off.
 func (m *Model) laneLines() int {
 	if !m.state.GitHub.SetUp {
 		return 0
 	}
-	room := m.bodyHeight() - 4 - 2
+	room := m.bodyHeight() - m.chrome() - 3 - 2
 	if room < 0 {
 		return 0
 	}
@@ -102,11 +102,14 @@ func (m *Model) laneView(width int) []string {
 	default:
 		title += " · none waiting"
 	}
-	lines := []string{"", styleTitle.Render(title)}
-	for i := m.lane.offset; i < len(gs.Reviews) && len(lines) < n; i++ {
-		lines = append(lines, m.reviewLine(gs.Reviews[i], width, m.lane.focused && i == m.lane.cursor))
+	var rows []string
+	for i := m.lane.offset; i < len(gs.Reviews) && len(rows) < n-2; i++ {
+		rows = append(rows, m.reviewLine(gs.Reviews[i], m.inner(width), m.lane.focused && i == m.lane.cursor))
 	}
-	return lines
+	if !m.framed() {
+		return append([]string{"", styleTitle.Render(title)}, rows...)
+	}
+	return frame(title, rows, width, n, m.lane.focused)
 }
 
 // reviewLine renders `#901 api  Add idempotency key… @ana  3d`: the repo

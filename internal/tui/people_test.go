@@ -247,7 +247,7 @@ func TestPeopleWithNobody(t *testing.T) {
 	h := newHarness(t, config.Default())
 	h.add("Nobody asked !1 ~s")
 	h.keys("P")
-	h.mustSee("PEOPLE · 0", "nobody yet · @who on a task names who asked")
+	h.mustSee("PEOPLE · 0", "nobody yet · @who names who asked")
 	h.keys("tab", "x", "enter", "j") // nothing to act on
 	h.mustNotSee("✓")
 }

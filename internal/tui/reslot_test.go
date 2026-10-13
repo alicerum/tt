@@ -140,7 +140,7 @@ func TestScrollKeepsTheCursorWhenRowsAppearAbove(t *testing.T) {
 	}
 	h.keys("k", "k", "k") // 12:30, inside the window
 	line := func() int {
-		return slices.IndexFunc(strings.Split(h.screen(), "\n"), func(l string) bool { return strings.HasPrefix(l, " 12:30") })
+		return slices.IndexFunc(strings.Split(h.screen(), "\n"), func(l string) bool { return strings.HasPrefix(l, "│  12:30") })
 	}
 	before := line()
 	if before < 0 || h.m.today.offset == 0 {

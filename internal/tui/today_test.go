@@ -238,8 +238,8 @@ func TestNowLineSitsAboveItsRow(t *testing.T) {
 	above := func(row string) {
 		t.Helper()
 		lines := strings.Split(h.screen(), "\n")
-		i := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, "━━ now ") })
-		if i < 0 || i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], " "+row+" ") {
+		i := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, "│ ━━ now ") })
+		if i < 0 || i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "│  "+row+" ") {
 			t.Fatalf("the now line should sit right above the %s row:\n%s", row, h.screen())
 		}
 	}
