@@ -8,7 +8,7 @@ A staff engineer's personal planner: capture asks fast (`tt add` / quick-add), t
 - **Plans:** `docs/superpowers/plans/` (one per delivered slice; each has Global Constraints and Review Focus).
 - **Code:** `internal/domain` (pure types/rules), `internal/dsl` (token parser), `internal/config` (TOML), `internal/store` (SQLite, migrations in `internal/store/migrations/NNN_name.sql`), `internal/app` (Service: the only code that mutates state), `internal/tui` (Bubble Tea v2), `cmd/tt`.
 
-## Status (2026-10-12)
+## Status (2026-10-13)
 
 | Plan | State |
 |------|-------|
@@ -18,8 +18,10 @@ A staff engineer's personal planner: capture asks fast (`tt add` / quick-add), t
 | 4a Find & browse: filter DSL + fuzzy search, switchable grouping, placement rule, row cache (spec "Plan 4 split") | merged |
 | 4b Edit & detail: Task detail (children add/reorder), `e` edit line, `$EDITOR` notes, open link, `tt add` from stdin, plus the "Carry-forward from Plan 4a review" items | merged |
 | 5a Today & blocking: D34 (amended), D35 Today home + Log rename, D36 pick-up/drop placement, D37 nudges, D38 timeline, `SetBlockSpan`, shared height budget (spec "Plan 5 split") | merged |
-| 5b Calendar: `tt-cal` Swift EventKit helper (spike passed), `CalendarSource`, poll loop + cache, meetings on the timeline, ⚠ conflicts, freshness indicator, real `tea.Program` test, plus the "Carry-forward from Plan 5a review" items marked Plan 5b | **next** — designed (D40–D44, spec "Plan 5 split"), plan not written yet |
+| 5b Calendar: `tt-cal` Swift EventKit helper (spike passed), `CalendarSource`, poll loop + cache, meetings on the timeline, ⚠ conflicts, freshness indicator, real `tea.Program` test, plus the "Carry-forward from Plan 5a review" items marked Plan 5b | **next** — designed (D40–D44, spec "Plan 5 split" → Plan 5b); written spec awaiting the user's review, then writing-plans → SDD |
 | 6 GitHub reviews lane (direct requests only, `requested_at`, auto-close) | later |
+
+Since 5a: D39 (merged) — blocks only inside working hours (`[work_hours]`, replaces `[timeline]`), Today shows only those hours. Plan 5b handoff: the user will review D40–D44 at the start of the next session; then write the verified plan. The Swift helper can only be compiled in the scratchpad (no EventKit prompt there); its first real run and a check against the real calendar are the user's, done together after the helper task.
 
 The UI tweaks backlog in the spec (tab skips empty pane, framed/polished panes) is wanted **later, batched** — don't schedule it unasked.
 
@@ -33,8 +35,10 @@ The UI tweaks backlog in the spec (tab skips empty pane, framed/polished panes) 
 - **Execution models:** implementers on haiku (plans contain complete code), task reviewers on sonnet (opus for risky tasks), final whole-branch review on opus. One fix wave after the final review; park residuals as spec carry-forwards.
 - **Sandbox quirks:** `git apply <<'PATCH'` heredocs and `git -C`/`cd && git` compounds are often refused inside a worktree session — save patches to a file and `git apply <file>`, and run plain separate git commands. Inside a worktree session, compound shell commands (pipes with `$VAR`s, heredocs feeding python) are refused too: write helper scripts to the scratchpad with the Write tool and run them with literal paths.
 - **Worktree setup that works:** `git worktree add -q .claude/worktrees/plan-N -b plan-N main`, then `EnterWorktree` with that `path`; to merge, `ExitWorktree` (keep), `git merge --ff-only plan-N`, run tests, `git worktree remove …`, `git branch -d plan-N`.
-- **Plan tooling (rebuild in the scratchpad each session):** a generator that turns the verified scratch commits (`main..HEAD`) into the plan doc (new files in full, `git diff` per modified file, test files in Step 1, single-quoted commit messages), a replay script that applies the doc's blocks task by task on a fresh clone (gofmt/vet/test + commit each) and diffs the result against the scratch tree, and a `git apply --check` script to confirm later briefs still apply after a fix round. Commit messages in plans use single quotes (a `$EDITOR` in a double-quoted message got expanded).
+- **Plan tooling (in `docs/superpowers/tooling/`, see its README; copy into the scratchpad and run with literal paths):** a generator that turns the verified scratch commits (`main..HEAD`) into the plan doc (new files in full, `git diff` per modified file, test files in Step 1, single-quoted commit messages), a replay script that applies the doc's blocks task by task on a fresh clone (gofmt/vet/test + commit each) and diffs the result against the scratch tree, and a `git apply --check` script to confirm later briefs still apply after a fix round. Commit messages in plans use single quotes (a `$EDITOR` in a double-quoted message got expanded).
 - **SDD dispatch shape that worked:** one shared `reviewer-instructions.md` in the plan workspace (method, global constraints, output format) so each review dispatch only names the brief, report, diff and task-specific spec text; fix rounds as a findings file + SendMessage to the original implementer; scoped re-review on sonnet.
+- **Sandbox can't read the real DB** (`~/Library/Application Support/tt/`): a real-data check is the user's; say so instead of asking to bypass the sandbox.
+- **Rulings the user accepted in 5a:** recommended options are usually picked fast; design reversals after trying come as quick "fix this now" requests (D39) — fold them in as a small reviewed commit on a branch, spec decision committed to `main` after the merge.
 - **TUI checks beyond tests:** the test harness runs commands synchronously; for real-terminal behavior, build the binary into the scratchpad and drive it through a Python `pty` script (start, keys, bracketed paste, quit) checking the stripped output and the database. The renderer repaints only changed cells, so match short substrings; send each `esc` as its own write (two in one write read as alt+esc); use `EDITOR=<script>` for `E`, and never trigger `o` (it opens a real browser). To check nothing is left on the terminal for the shell, run `sh -c '"$TT" add; read -t 1 rest …'` under the pty.
 
 ## Commands
