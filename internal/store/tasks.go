@@ -120,6 +120,28 @@ func (x *Tx) Children(ctx context.Context, parentID int64) ([]domain.Task, error
 	return kids, nil
 }
 
+// TasksWithRequester returns the ids of every task whose requester is name,
+// open or closed, children included (D53).
+func (x *Tx) TasksWithRequester(ctx context.Context, name string) ([]int64, error) {
+	rows, err := x.tx.QueryContext(ctx, "SELECT id FROM tasks WHERE requester = ? ORDER BY id", name)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // NextChildPosition returns the position after parentID's last child.
 func (x *Tx) NextChildPosition(ctx context.Context, parentID int64) (int, error) {
 	var n int
