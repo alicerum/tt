@@ -48,7 +48,7 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D6 | One level of nesting: parent → children | Big efforts need a home; deeper trees bring back grooming debt |
 | D7 | Size is an ordinal, non-linear scale with configurable durations (default S 1h · M ½d = 4h · L 1d = 8h · XL 1w = 40h) | Granular sizing doesn't work for staff work; rough buckets grow like story points |
 | D7a | No hard size cap; anything can go in any time slot | Working 2h on an XL is legitimate |
-| D7b | PR reviews are unsized | Every review differs |
+| D7b | ~~PR reviews are unsized~~ Amended by D48: reviews get a configurable default size (S) | Every review differs |
 | D8 | **Free-form tags**, any number per item, optional (don't keep an item in Inbox). Tag input autocompletes from existing tags | Purpose is finding and filtering (project, type of work), not classification. Autocomplete limits sprawl |
 | D8a | **Fuzzy search** over title, tags and requester is core, in-memory (no index); search can include done/dropped items | "Find that task someone mentioned last month" mostly hits titles; personal scale makes in-memory matching instant |
 | D9 | Carry-over: all unfinished Today items (blocked or candidate) stay pinned as the next planning day's candidates; quick "already done" during Pick | Nothing silently disappears; leftovers are reviewed, not auto-scheduled |
@@ -75,7 +75,7 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D19 | Configurable day-start time (default 04:00; 00:00 = midnight). At the boundary, rollover runs and a banner offers "New day: plan now? (Enter / later)". On "later", the timeline shows meetings only; planning can be started manually any time | Late-night work stays "today"; never force the ritual, never show yesterday's plan as current |
 | D20 | **Source adapters** produce read-only **source items** (v1: GitHub PRs awaiting my review). Pinning one materializes a thin **task** with a `source_ref` and `link` | Synced, ephemeral data stays separate from my tasks; future sources plug into the same shape |
 | D20a | Source-linked tasks auto-close ("✓ via GitHub") when the source says they're resolved (for PRs: I'm no longer a requested reviewer). Auto-closes never count as rollover. Re-request → reappears in the Reviews lane | No manual bookkeeping for what GitHub already knows |
-| D20b | Wrapper defaults: title `Review #<n>: <PR title>`, link = PR URL, no size, **requester left empty**. The PR author is shown in the Reviews lane (source item data) but never copied into `requester`; I can set it manually | GitHub handles differ from how I name people; auto-filling would create duplicate requesters |
+| D20b | Wrapper defaults: title `Review #<n>: <PR title>`, link = PR URL, default priority and size from config (D48; was "no size"), **requester left empty**. The PR author is shown in the Reviews lane (source item data) but never copied into `requester`; I can set it manually | GitHub handles differ from how I name people; auto-filling would create duplicate requesters |
 | D21 | Every task has at most one `link`; one key opens it | Context is one keystroke away |
 | D22 | Re-planning is free: Pick/Block can be re-entered any time; rollover is evaluated at day end on whatever is blocked then. "Commit plan" is a finish-line moment (summary) that exits planning mode | Mid-day reprioritization is normal; rollover is an indicator, not an audit |
 | D23 | Tasks end as **done** or **dropped**. Dropping asks for an optional one-line reason (Enter skips). Both stay searchable; only done counts as a win. Hard delete exists for mistakes | Reason captures "handed to @Marko" without a new state |
@@ -109,6 +109,9 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D45 | **Plan 5b rulings** (made during execution, kept after review): ⚠ and the `· ⚠ N` count are for open tasks' blocks only (a closed task's block is history; amends D42's "any block"); `r` searches from the later of the row after the block's start and the now row, so it may overlap the block's own old span but never lands in the past (amends D43; `j/k` still reach the past, D36); `CalendarSource` is defined in `app` (consumer side; `app` never imports `internal/calendar` outside tests); `[calendar] poll` is at least 10s; without calendars the header says `cal: not set up (tt-cal calendars)`; `tt-cal calendars` prints unique names only; meeting titles are made one clean line (control characters become spaces) before rendering; while the permission prompt waits, the helper says `waiting for calendar access · answer the macOS prompt` on stderr, which a timeout reports (D44) | Use first; each is a one-line reversal if it chafes |
 | D46 | **The now line sits above the row holding now** (amends D38): the row now falls in comes right after the line, and the line moves down only once that 30-minute row has passed; scrolling onto the now row brings the line into view with it | Reads as "now, then what's next"; from use |
 | D47 | **`ctrl+d` / `ctrl+u` move half a page** (half the visible rows, at least 1) wherever `j`/`k` move a cursor: the Log's panes, Today's timeline and candidates, a picked-up block, Task detail. Repeats the one-row move, so group headers are skipped and the ends stop it; text inputs keep their own keys | Long lists (vim muscle memory); from use |
+| D48 | **Review defaults** (amends D7b, D20b): `[github] priority = "P2"` (a `[[priorities]]` name, checked at load; unset and no level named P2 → the last level) and `size = "s"` (`s/m/l/xl`, or `""` for unsized). Applied when pinning a review creates its task; a reopened task keeps its own values; `e` changes them per task. A review block's default length follows (S = 1h, D24) | From the user: most reviews are small and mid-priority; skipping per-review triage is D4's point |
+| D49 | **Reviews lane** (D4). Today: under the candidates (right column); Log: under the backlog (left column). Shows review requests with no open linked task, longest waiting first; a row is `#901 api  Add idempotency… @ana  3d` (repo without owner; wait from `requested_at`, else `first_seen_at`). At most 5 rows plus its title and a blank line above; in a short column the lane gives up rows first, down to its title. Title: `REVIEWS · 4 waiting`, `REVIEWS · none waiting`, or `REVIEWS · not fetched yet` (no successful fetch and no cache). **`w` focuses the lane**; `w` or `tab` returns to the pane it came from; `tab` keeps switching only between the two main panes (timeline ↔ candidates, backlog ↔ candidates); `esc` keeps its screen meaning; `w` on an empty lane says `no reviews waiting`. Keys: `p` pins (status `pinned "Review #901: …" · P2 S`; undoable), `o` opens the PR, `j/k`, `ctrl+d/u`; other task keys say `a review request · p pins it, o opens it`. Hints: `p pin · o open PR · w back`; elsewhere `w reviews` while the lane has rows. A pinned review leaves the lane while its task is open; when that task is closed (by me or by GitHub) and the PR still requests me, it is back in the lane, and `p` reopens the same task (unique source ref; keeps its history). No hide or snooze: to decline, remove myself as reviewer on GitHub. The Log filter doesn't apply to the lane. When a sync auto-closes tasks the status says `✓ via GitHub: "Review #877: …"` (or `✓ via GitHub: 2 reviews`); Task detail shows `done ✓ via GitHub · Tue 13 Oct` | GitHub is the only truth for "awaiting me"; one item, one place; tab stays the two-pane switch from use |
+| D50 | **GitHub adapter and sync.** The adapter runs `gh api graphql` (`gh` handles login, SSO, `GH_TOKEN`/`GITHUB_TOKEN`, and `--hostname` for Enterprise), 20s timeout. One search, first 100: `is:open is:pr user-review-requested:@me archived:false` with `issueCount`, `viewer.login`, and per PR number, title, URL, author, repo and the last 10 `ReviewRequestedEvent`s; `requested_at` = the newest event naming the viewer. **`issueCount` over 100 is a failed fetch**, so a truncated set never auto-closes anything. Errors (header, D44 style with `gh`): `gh not found · brew install gh`, `not logged in · gh auth login` (gh exit 4), `over 100 review requests`, else the first line of gh's stderr (also on timeout or bad JSON); nothing while fresh, dim `gh 12m ago` after two missed polls. Config `[github] enabled = true` (false: no fetch, no lane, no header text), `host = ""`, `poll = "5m"` (at least 30s). Sync on success, one tx: replace `source_items` (new ones get `first_seen_at = now`, existing keep it), auto-close each open linked task missing from the set (done, `closed_by = source`, `closed_at = updated_at = now`; pin and blocks stay, so Today shows it struck through until StartDay clears it), no auto-reopen. `R` fetches calendar and GitHub; a new day fetches only the calendar. The `Source` interface lives in `app` (as D45). Measured 2026-10-13: a fetch costs 1 point of the 5000/h GraphQL budget | `gh` already holds the login; one full-set query keeps disappearance as the auto-close signal (D20a) |
 | D28 | Stack: **Go + Bubble Tea/Lip Gloss**, pure-Go SQLite, plus a small **Swift helper** for EventKit | Strong TUI ecosystem, single fast binary, good typing for refactors; EventKit isolated behind `CalendarSource` |
 
 ## Item model
@@ -149,8 +152,8 @@ Plus, outside the task itself: **pins** (task is a Today candidate since day X �
 
 ## Views
 
-1. **Today** (home screen, D35): timeline (meetings, task blocks, free gaps, "now" line; D38) beside candidates; Reviews lane docked below. Doubles as the Block phase: placement and block keys always work here (D36); `c` commits; `L` Log, `i` Inbox. *(Today mockup)*
-2. **Log** (formerly Pick; planning phase 1 "Pick", also the everyday backlog browser, D35): backlog left with grouping (D26), filter bar (D26a/b) and Reviews lane; today's candidates right with counters and inline ⚠ rollover prompts. Keys: `p` pin, `u` unpin, `x` done, `d` drop, `e` edit, `/` filter, `g` group, `Tab` pane, `⏎` detail (D31), `B` → Today to block (D35), `esc` → Today. *(Pick mockup)*
+1. **Today** (home screen, D35): timeline (meetings, task blocks, free gaps, "now" line; D38) beside candidates; Reviews lane under the candidates (D49, `w`). Doubles as the Block phase: placement and block keys always work here (D36); `c` commits; `L` Log, `i` Inbox. *(Today mockup)*
+2. **Log** (formerly Pick; planning phase 1 "Pick", also the everyday backlog browser, D35): backlog left with grouping (D26), filter bar (D26a/b) and the Reviews lane under it (D49, `w`); today's candidates right with counters and inline ⚠ rollover prompts. Keys: `p` pin, `u` unpin, `x` done, `d` drop, `e` edit, `/` filter, `g` group, `Tab` pane, `⏎` detail (D31), `B` → Today to block (D35), `esc` → Today. *(Pick mockup)*
 3. **Block** (planning phase 2): not a screen of its own; it is Today (D35) with pick-up/drop placement (D36); ⚠ on conflicts (D18, D42) and the calendar status (D44) came with Plan 5b. *(Block mockup; validate in use)*
 4. **Inbox**: one card at a time; priority definitions always visible; `1-3` priority, `s/m/l/x` size, `@`/`#`/`>` requester/tags/parent, `n` skip, `d` drop; auto-advance once priority + size are set (2 keystrokes). *(Inbox mockup)*
 5. **Task detail** (`⏎` on any task): header, link, and a note preview (first few lines plus size, e.g. "+38 lines"); `E` opens the full note in `$EDITOR` (D29). Lists show a small marker on tasks that have a note. For parents, also children with progress bar, done children kept with date; `a` repeating add-child input (token syntax), `J/K` reorder. *(Parent mockup)*
@@ -194,7 +197,7 @@ Plus, outside the task itself: **pins** (task is a Today candidate since day X �
 | `internal/search` | Filter evaluation + fuzzy matching over an in-memory snapshot; grouping/sorting | domain, dsl |
 | `internal/store` | `Store` interface, SQLite implementation, versioned migrations | domain |
 | `internal/calendar` | `CalendarSource` interface; `eventkit` adapter (runs Swift helper); fake | domain |
-| `internal/source` | `Source` interface; `github` adapter; fake | domain |
+| `internal/source` | `github` adapter (runs `gh`, D50); the `Source` interface lives in `app` | domain |
 | `internal/config` | Load TOML, apply defaults, validate | domain |
 | `internal/app` | `Service`: commands, queries, day rollover, source reconciliation, integration state. Owns transactions | domain, store, calendar, source (interfaces only) |
 | `internal/tui` | Bubble Tea root model, views, shared components (token input + autocomplete, timeline renderer) | app, search, dsl |
@@ -212,7 +215,7 @@ Rule: only `app` mutates state; `tui` and `cmd` call `app`. Adapters never impor
 | `pins` | task_id (PK), pinned_on (day) | Current candidates. Pinned-days = planning days in `days` since `pinned_on` (derived, not stored) |
 | `blocks` | id, task_id, day, start_min, duration_min | History kept for stats |
 | `days` | day (PK), started_at, committed_at | A row = a planning day happened |
-| `source_items` | kind, external_id, title, url, author, context (e.g. repo), requested_at, updated_at, first_seen_at, last_seen_at | Mirrors the full "awaiting me" set from the last successful fetch; missing items are deleted. `requested_at` = when I was (last) requested, from GitHub, and drives "waiting 2d". `first_seen_at` is the fallback if GitHub returns no request event |
+| `source_items` | kind, external_id (`owner/repo#123`), number, title, url, author, repo, requested_at (nullable), first_seen_at; PK (kind, external_id) | Mirrors the full "awaiting me" set from the last successful fetch; missing items are deleted. `requested_at` = when I was (last) requested, from GitHub, and drives "waiting 2d". `first_seen_at` is the fallback if GitHub returns no request event |
 | `integration_state` | name (PK), last_success_at, last_error, last_error_at, payload (JSON) | Calendar cache lives in `payload` |
 | `ui_state` | key (PK), value | Remembered grouping, etc. |
 | `schema_migrations` | version, applied_at | From day one: the impact × urgency split will need one |
@@ -229,7 +232,7 @@ type CalendarSource interface {
 }
 
 type Source interface {
-    Kind() string                                           // "github"
+    Kind() string                                           // "github"; defined in app (D50)
     Fetch(ctx context.Context) ([]domain.SourceItem, error) // items currently awaiting me
 }
 
@@ -259,7 +262,7 @@ Bubble Tea gives one update loop; everything else is a `tea.Cmd` that returns a 
 | DB watch | 1s | `DataVersion` changed (e.g. `tt add` from another shell) → reload snapshot | `SnapshotMsg` |
 | Clock | 30s | Move "now" line; on day boundary → `StartDay` | `TickMsg`, `NewDayMsg` |
 | Calendar | 2m (config) | `SyncCalendar`: run helper (10s timeout), cache on success, record error otherwise | `CalendarMsg` |
-| GitHub | 5m (config) | `SyncSources`: fetch, and **only on success** reconcile in one tx (replace source items, auto-close linked tasks no longer awaiting me) | `SourcesMsg` |
+| GitHub | 5m (config) | `SyncSources`: fetch, and **only on success** reconcile in one tx (replace source items, auto-close linked tasks no longer awaiting me, D50); same loop shape as the calendar's (one fetch at a time, `seq`) | `SourcesMsg` |
 | Manual | `R` key | Triggers calendar + GitHub immediately | as above |
 
 Startup: load config → open DB, migrate → `StartDay(now)` → initial snapshot → start loops.
@@ -278,7 +281,7 @@ Startup: load config → open DB, migrate → `StartDay(now)` → initial snapsh
 ## Adapters
 
 - **EventKit (`tt-cal`)**: `tt-cal events --from <iso> --to <iso> [--calendars …]` and `tt-cal calendars`. Prints raw events as JSON (title, start, end, all-day, availability, participation status, calendar). Busy rules (D17a) apply in Go, so the helper stays dumb. Embedded Info.plist with calendar usage description (required since macOS 14). Exit codes: 0 ok, 2 permission denied, 3 unknown calendar name (the name on stderr); anything else is a generic failure (D44).
-- **GitHub**: token from `gh auth token`, fallback `GITHUB_TOKEN`. Host configurable (GitHub Enterprise). **Full-set fetch every poll**: one search (GraphQL) for `is:open is:pr user-review-requested:@me archived:false`, returning title, number, repo, author, URL, plus the latest `ReviewRequestedEvent` targeting me from each PR's timeline (same query) for `requested_at`. Direct requests only; team requests are excluded. No incremental "only new" fetching: the question is "what's awaiting me *now*", and disappearance from the set is the auto-close signal (D20a), which an incremental fetch can't see without re-checking every known PR anyway. Volume is one request per 5m for a few dozen items, well under rate limits. The DB copy (`source_items`) serves offline display, linking, and "waiting since".
+- **GitHub** (D50): runs `gh api graphql`, so tt never handles a token; host configurable (GitHub Enterprise). **Full-set fetch every poll**: one search for `is:open is:pr user-review-requested:@me archived:false`, returning title, number, repo, author, URL, plus the latest `ReviewRequestedEvent` targeting me from each PR's timeline (same query) for `requested_at`. Direct requests only; team requests are excluded (2026-10-13: 5 direct vs 149 including teams). No incremental "only new" fetching: the question is "what's awaiting me *now*", and disappearance from the set is the auto-close signal (D20a), which an incremental fetch can't see without re-checking every known PR anyway. More than 100 results fail the fetch rather than reconcile a partial set. One request per poll costs 1 GraphQL point (of 5000/h). The DB copy (`source_items`) serves offline display, linking, and "waiting since". Adapter tests drive a fake `gh` script.
 
 ## Error handling
 
@@ -387,6 +390,21 @@ Plan 5 ships in two slices, each merged on its own.
 - Config `[calendar] calendars`, `poll`; the TUI poll loop (background command, `R` fetches now, startup shows the cache first).
 - Today: meetings (D41), busy placement and ⚠ (D42), `r` (D43), header status (D44).
 - The real `tea.Program` test with `-race` (Plan 3), and the "Carry-forward from Plan 5a review" items marked Plan 5b.
+
+## Plan 6 — GitHub reviews lane (designed 2026-10-13)
+
+One slice (D48–D50):
+- Migration 005 `source_items`; store reads/writes in a tx; `domain.SourceItem`.
+- `app`: the `Source` interface; `SyncSources(ctx)` (D50 reconcile, auto-close with `UpdatedAt = now`, the Plan 2 carry-forward); `PinSource(kind, extID)`: no task → create (`Review #n: <title>`, link, source ref, D48 priority/size, no requester) and pin, undo deletes it; closed task → reopen and pin, undo closes it again as it was; open task → pin. `Load` returns the lane (items without an open linked task, longest waiting first) and the GitHub status.
+- `internal/source`: the `gh` adapter (D50), tests with a fake `gh`.
+- Config `[github]` (D48, D50) in `config.example.toml`.
+- TUI: `ghLoop` (copy of `calLoop`), `R` fetches both, header status, the lane on Today and Log (D49), `w` focus, `p`/`o`, auto-close status, `✓ via GitHub` in Task detail.
+- Checks: `app` scenarios with a fake source (create/reopen/undo, auto-close then undo conflicts, no reconcile on error or over 100, `first_seen_at` kept, re-request back in the lane); TUI harness tests; a pty run of the real binary with a fake `gh` on `PATH` (the sandbox never calls real GitHub in tests).
+
+On friction (not built):
+- GitHub search is eventually consistent: a PR wrongly missing from one result auto-closes its task; it shows again in the lane next poll and `p` reopens it. A guard (missing in two fetches in a row) needs extra state.
+- A materialized task's title is a snapshot from pin time; PR renames don't follow.
+- A repo rename reads as "request gone" plus a new request (external id `owner/repo#n`).
 
 ## Plan 7 — People view (partly designed 2026-10-13; after Plan 6)
 
