@@ -530,6 +530,17 @@ Plan 6 merged 2026-10-13 (D48–D50). Fix-wave rulings (in the code): text from 
 - **Small:** `PinSource`'s reopen skips `pinChildren`/`pinnedUnderParent` (D34), which matters only once a review task has children; the `Fetch` doc comment in `internal/source/github.go` and the `OneLine` lines in `SyncSources` run past 80 columns; the lane still applies `OneLine` at render time (redundant for new data, harmless).
 - **Tests to add when touched:** undo of a dropped-then-reopened review; `PinSource` on an open, unpinned review task; `ghSyncedMsg` with a store error (beside the 5b calendar one); `ctrl+d/u` inside the lane.
 
+## Carry-forward from Plan 7 review
+
+Plan 7 merged 2026-10-13 (D52, D53; drafting rulings in "Plan 7 — People view"). The real-data check (`P` on your own names, merging a duplicate pair with `r`) is the user's.
+
+- **On friction:**
+  - `x` in People's tasks pane keeps the cursor on the task, so it jumps into the `closed` section; going down a person's list before a 1:1 takes a `k` after each `x`. Fix: when the selected task went from open to closed, fall back to the old index.
+  - The cursor-follow after `r` can lose a race: a load that started before the rename's commit lands first and resets the selection to the old name, so the cursor ends on the nearest row instead of the new name (milliseconds; nothing damaged). Fix: a pending name that `refresh` honours until the action's message arrives.
+  - A failed rename (the name vanished in another shell) puts the cursor back on the old name but not a filter the rename cleared.
+- **Small:** the gone-name error reads `no task has @raf any more: not found` (the `ErrNotFound` text); with nobody listed, the focus can stay on the empty tasks pane (its hints show, every key is a no-op); unhandled keys in the tasks pane fall through to `taskKey` (no-ops); `RenameRequester` expects a stored name as `from` and doesn't normalize it (a doc line would say so).
+- **Tests to add when touched:** a merge into a name the filter hides (asks first: `idx.people` ignores the filter); the short-terminal test with the filter line open or the banner showing; the "cursor stays on ana after undo" check in `TestMergeIntoAnotherPerson` belongs right after its `ctrl+z`.
+
 ## UI tweaks backlog (from use; not yet scheduled)
 
 Collected while using the TUI. The user wants these later, batched with other tweaks; don't schedule them unasked.
