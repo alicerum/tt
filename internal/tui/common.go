@@ -251,7 +251,8 @@ func (m *Model) bodyHeight() int {
 	if m.banner != nil {
 		used++
 	}
-	if _, help := m.overlay.(helpOverlay); m.overlay != nil && !help {
+	_, help := m.overlay.(helpOverlay)
+	if _, inPane := m.overlay.(paneOverlay); m.overlay != nil && !help && !inPane {
 		used += strings.Count(m.overlay.view(m), "\n") + 1
 	}
 	return max(m.height-used, 1)

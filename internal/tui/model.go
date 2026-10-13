@@ -475,7 +475,6 @@ func (m *Model) render() string {
 	if m.banner != nil {
 		parts = append(parts, m.bannerView())
 	}
-	fb, filtering := m.overlay.(*filterBar)
 	switch m.screen {
 	case screenToday:
 		parts = append(parts, m.todayView())
@@ -487,12 +486,9 @@ func (m *Model) render() string {
 	case screenPeople:
 		parts = append(parts, m.peopleView())
 	default:
-		if filtering {
-			parts = append(parts, fb.view(m)) // the filter line sits above the backlog
-		}
 		parts = append(parts, m.pickView())
 	}
-	if m.overlay != nil && !filtering {
+	if _, inPane := m.overlay.(paneOverlay); m.overlay != nil && !inPane {
 		parts = append(parts, m.overlay.view(m))
 	}
 	parts = append(parts, m.statusView(), m.hintsView())

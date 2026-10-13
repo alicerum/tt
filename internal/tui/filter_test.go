@@ -19,15 +19,15 @@ func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
 	h.add("Deploy fix !2 ~m")
 
 	h.keys("/")
-	if s := h.screen(); strings.Index(s, "filter ›") > strings.Index(s, "BACKLOG") {
-		t.Errorf("the filter line sits above the backlog:\n%s", s)
+	if l := strings.Split(h.screen(), "\n"); !strings.HasPrefix(l[1], "╭ BACKLOG") || !strings.HasPrefix(l[2], "│ filter ›") {
+		t.Errorf("the filter line is the first row inside the backlog's frame (D56):\n%s", h.screen())
 	}
 	h.typeText("sch")
-	h.mustSee("BACKLOG · by priority · 1 match · sch", "Schema review")
+	h.mustSee("BACKLOG · by priority · 1 match ─", "filter › sch", "Schema review")
 	h.mustNotSee("Deploy fix")
 
 	h.typeText(" !9")
-	h.mustSee("✗ priority !9 out of range", "BACKLOG · by priority · 1 match · sch !", "Schema review") // the last valid filter ("sch !") stays
+	h.mustSee("✗ priority !9 out of range", "BACKLOG · by priority · 1 match", "Schema review") // the last valid filter ("sch !") stays
 	h.keys("enter")
 	if _, ok := h.m.overlay.(*filterBar); !ok {
 		t.Fatal("enter on a bad filter must keep the line open")
@@ -39,25 +39,25 @@ func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
 	if h.m.overlay != nil {
 		t.Fatal("enter closes the filter line")
 	}
-	h.mustSee("1 match · sch", "esc clears filter")
+	h.mustSee("1 match", "filter › sch · esc clears", "esc clears filter")
 
 	// esc in the line restores the filter from before `/`.
 	h.keys("/")
 	h.mustSee("filter › sch")
 	h.typeText("zzz")
-	h.mustSee("0 matches · sch zzz", "no matches · esc clears")
+	h.mustSee("0 matches", "filter › sch zzz", "no matches")
 	h.keys("esc")
-	h.mustSee("1 match · sch")
+	h.mustSee("1 match", "filter › sch · esc clears")
 
 	// esc on the list clears it; filters are never remembered.
 	h.keys("esc")
 	h.mustSee("filter cleared", "Deploy fix")
-	h.mustNotSee("match")
+	h.mustNotSee("match", "filter ›")
 
 	// Pasting into the line filters too.
 	h.keys("/")
 	h.send(tea.PasteMsg{Content: "@ana"})
-	h.mustSee("1 match · @ana", "Schema review")
+	h.mustSee("1 match", "filter › @ana", "Schema review")
 }
 
 func TestReloadWhileFilteringKeepsTheFilter(t *testing.T) {
@@ -74,7 +74,7 @@ func TestReloadWhileFilteringKeepsTheFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.send(watchTickMsg{})
-	h.mustSee("filter › schema", "2 matches · schema", "[P1 S] Schema follow-up")
+	h.mustSee("filter › schema", "2 matches", "[P1 S] Schema follow-up")
 }
 
 func TestTokenInputCompletesAtTheCursor(t *testing.T) {
@@ -99,7 +99,7 @@ func TestTokenInputCompletesAtTheCursor(t *testing.T) {
 	h.typeText("@and")
 	h.mustSee("tab → @andrei")
 	h.keys("tab")
-	h.mustSee("filter › @andrei", "1 match · @andrei", "two")
+	h.mustSee("filter › @andrei", "1 match", "two")
 }
 
 func TestOverlayInputFollowsResize(t *testing.T) {
@@ -111,7 +111,7 @@ func TestOverlayInputFollowsResize(t *testing.T) {
 	}
 	h.keys("esc", "/")
 	h.send(tea.WindowSizeMsg{Width: 80, Height: 40})
-	if w, want := h.m.overlay.(*filterBar).in.input.Width(), 80-ansi.StringWidth("filter › ")-2; w != want {
+	if w, want := h.m.overlay.(*filterBar).in.input.Width(), backlogWidth(80)-3-ansi.StringWidth("filter › ")-2; w != want { // inside the backlog frame (D56)
 		t.Errorf("filter input width after resize = %d; want %d", w, want)
 	}
 }

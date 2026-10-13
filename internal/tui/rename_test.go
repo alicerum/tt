@@ -101,12 +101,12 @@ func TestRenameWhileFiltered(t *testing.T) {
 	h.keys("P", "/")
 	h.typeText("ra")
 	h.keys("enter")
-	h.mustSee("PEOPLE · 1 match · ra")
+	h.mustSee("PEOPLE · 1 match", "filter › ra · esc clears")
 
 	h.keys("r", "ctrl+u")
 	h.typeText("raff")
 	h.keys("enter")
-	h.mustSee("renamed raf → raff · 1 task", "PEOPLE · 1 match · ra", "@raff") // still matches: the filter stays
+	h.mustSee("renamed raf → raff · 1 task", "PEOPLE · 1 match", "filter › ra · esc clears", "@raff") // still matches: the filter stays
 
 	h.keys("r", "ctrl+u")
 	h.typeText("bob")

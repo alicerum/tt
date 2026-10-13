@@ -86,10 +86,27 @@ func (p *peopleState) move(m *Model, delta int) {
 
 // follow keeps both cursors inside their windows. Called after every update.
 func (p *peopleState) follow(m *Model) {
-	visible := m.visibleRows()
-	p.offset = scroll(p.cursor, p.cursor, p.offset, visible, len(p.names))
-	p.tasks.follow(visible)
+	p.offset = scroll(p.cursor, p.cursor, p.offset, m.namesVisible(), len(p.names))
+	p.tasks.follow(m.visibleRows())
 }
+
+// namesVisible is how many names fit below the names frame's filter lines.
+func (m *Model) namesVisible() int { return max(m.visibleRows()-len(m.peopleFilterLines()), 1) }
+
+// peopleFilterLines is what the names frame shows above the names (D56):
+// the filter being typed, or the applied one, dim; nothing without one.
+func (m *Model) peopleFilterLines() []string {
+	if f, ok := m.overlay.(*peopleFilter); ok {
+		return []string{f.view(m)}
+	}
+	if m.people.filter != "" {
+		return []string{styleDim.Render("filter › " + m.people.filter + " · esc clears")}
+	}
+	return nil
+}
+
+// namesWidth is People's left column for a terminal width cells wide.
+func namesWidth(width int) int { return width / 3 }
 
 // personRows lists name's tasks (D52): the open ones grouped by priority
 // like the backlog, pinned ones too, oldest first within a group; then a
@@ -189,20 +206,20 @@ func (m *Model) peopleKey(key string) tea.Cmd {
 }
 
 func (m *Model) peopleView() string {
-	lw := m.width / 3
+	lw := namesWidth(m.width)
 	rw := m.width - lw
 	p := &m.people
 	title, empty := fmt.Sprintf("PEOPLE · %d", len(m.idx.people)), "nobody yet · @who names who asked"
 	if p.filter != "" {
-		title = "PEOPLE · " + plural(len(p.names), "match", "matches") + " · " + p.filter
-		empty = "no matches · esc clears"
+		title = "PEOPLE · " + plural(len(p.names), "match", "matches") // the filter has its own line (D56)
+		empty = "no matches"
 	}
-	var names []string
+	names := m.peopleFilterLines()
 	if len(p.names) == 0 {
 		names = append(names, styleDim.Render("  "+empty))
 	}
 	visible := m.visibleRows()
-	for i := p.offset; i < len(p.names) && i < p.offset+visible; i++ {
+	for i := p.offset; i < len(p.names) && i < p.offset+m.namesVisible(); i++ {
 		names = append(names, m.personLine(p.names[i], m.inner(lw), i == p.cursor))
 	}
 	left := m.box(title, names, lw, m.bodyHeight(), !p.onTasks)
@@ -298,8 +315,10 @@ var peopleHelp = []string{
 // filter, esc clears it.
 type peopleFilter struct{ input textinput.Model }
 
+func (*peopleFilter) inPane() {}
+
 func (m *Model) openPeopleFilter() tea.Cmd {
-	in := newInput("people › ", "name", m.width)
+	in := newInput("filter › ", "name", namesWidth(m.width)-3)
 	in.SetValue(m.people.filter)
 	in.CursorEnd()
 	m.people.onTasks = false
@@ -330,6 +349,6 @@ func (f *peopleFilter) paste(m *Model, msg tea.PasteMsg) tea.Cmd {
 	return cmd
 }
 
-func (f *peopleFilter) resize(width int) { fitInput(&f.input, width) }
+func (f *peopleFilter) resize(width int) { fitInput(&f.input, namesWidth(width)-3) }
 
 func (f *peopleFilter) view(*Model) string { return f.input.View() }

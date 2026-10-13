@@ -511,7 +511,7 @@ func (m *Model) todayView() string {
 	lw := m.width / 2
 	rw := m.width - lw
 	left := m.box(m.timelineTitle(), m.timelineLines(m.inner(lw)), lw, m.bodyHeight(), m.timelineFocused())
-	right := m.paneBox(paneToday, "CANDIDATES", "nothing pinned · L opens the log to pick", rw, m.today.focus == focusCandidates && !m.lane.focused)
+	right := m.paneBox(paneToday, "CANDIDATES", "nothing pinned · L opens the log to pick", nil, rw, m.today.focus == focusCandidates && !m.lane.focused)
 	right = append(right, m.laneView(rw)...)
 	return beside(left, right)
 }

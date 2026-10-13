@@ -336,13 +336,33 @@ func scroll(top, c, off, visible, n int) int {
 func (m *Model) visibleRows() int { return max(m.bodyHeight()-m.chrome(), 1) }
 
 // paneVisible is visibleRows for pane pn, less the Reviews lane when it
-// sits under pn on this screen (D49).
+// sits under pn on this screen (D49) and the backlog's filter lines (D56).
 func (m *Model) paneVisible(pn pane) int {
+	n := m.visibleRows()
 	if m.laneUnder(pn) {
-		return max(m.visibleRows()-m.laneLines(), 1)
+		n -= m.laneLines()
 	}
-	return m.visibleRows()
+	if m.screen == screenLog && pn == paneBacklog {
+		n -= len(m.filterLines())
+	}
+	return max(n, 1)
 }
+
+// filterLines is what the backlog's frame shows above its rows (D56): the
+// filter being typed (with its error and suggestions), or the applied
+// filter, dim; nothing without a filter.
+func (m *Model) filterLines() []string {
+	if fb, ok := m.overlay.(*filterBar); ok {
+		return strings.Split(fb.view(m), "\n")
+	}
+	if m.pick.filtered() {
+		return []string{styleDim.Render("filter › " + m.pick.filterText + " · esc clears")}
+	}
+	return nil
+}
+
+// backlogWidth is the Log's left column for a terminal width cells wide.
+func backlogWidth(width int) int { return width * 55 / 100 }
 
 // steps is how far a list key moves the cursor: a row for j/k, half the
 // visible rows for ctrl+d/ctrl+u (as in vim); 0 for any other key.
@@ -539,7 +559,7 @@ func (m *Model) taskKey(key string, t domain.Task) (cmd tea.Cmd, ok bool) {
 }
 
 func (m *Model) pickView() string {
-	lw := m.width * 55 / 100
+	lw := backlogWidth(m.width)
 	rw := m.width - lw
 	title, empty := "BACKLOG · by "+string(m.pick.group), "nothing triaged yet · a to add · i to triage"
 	if m.pick.filtered() {
@@ -549,25 +569,26 @@ func (m *Model) pickView() string {
 				n++
 			}
 		}
-		title += " · " + plural(n, "match", "matches") + " · " + m.pick.filterText // the count first: truncation eats the filter text
-		empty = "no matches · esc clears"
+		title += " · " + plural(n, "match", "matches") // the filter itself has its own line (D56)
+		empty = "no matches"
 	}
-	left := m.paneBox(paneBacklog, title, empty, lw, m.pick.focus == paneBacklog && !m.lane.focused)
+	left := m.paneBox(paneBacklog, title, empty, m.filterLines(), lw, m.pick.focus == paneBacklog && !m.lane.focused)
 	left = append(left, m.laneView(lw)...)
-	right := m.paneBox(paneToday, "TODAY'S CANDIDATES", "nothing pinned · p on a backlog task", rw, m.pick.focus == paneToday && !m.lane.focused)
+	right := m.paneBox(paneToday, "TODAY'S CANDIDATES", "nothing pinned · p on a backlog task", nil, rw, m.pick.focus == paneToday && !m.lane.focused)
 	return beside(left, right)
 }
 
-// paneBox renders pane pn as a box width cells wide, its rows in its
-// window; focused shows its cursor. The Reviews lane under it on this screen
-// takes the rest of the column.
-func (m *Model) paneBox(pn pane, title, empty string, width int, focused bool) []string {
+// paneBox renders pane pn as a box width cells wide: the lines above (the
+// filter's, D56), then its rows in its window; focused shows its cursor.
+// The Reviews lane under it on this screen takes the rest of the column.
+func (m *Model) paneBox(pn pane, title, empty string, above []string, width int, focused bool) []string {
 	l := rowList{rows: m.rows(pn), cursor: m.pick.cursor[pn], offset: m.pick.offset[pn]}
 	height := m.bodyHeight()
 	if m.laneUnder(pn) {
 		height -= m.laneLines()
 	}
-	return m.box(title, m.listLines(l, m.paneVisible(pn), empty, m.inner(width), focused), width, height, focused)
+	lines := append(above, m.listLines(l, m.paneVisible(pn), empty, m.inner(width), focused)...)
+	return m.box(title, lines, width, height, focused)
 }
 
 // listLines renders the rows in a list's window of visible rows, rows

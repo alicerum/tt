@@ -88,8 +88,14 @@ type filterBar struct {
 	err     error    // the line doesn't parse; the last valid filter stays applied
 }
 
+// paneOverlay is an overlay drawn inside a pane instead of under the
+// screen's body, so it takes no height from the body: the filter lines (D56).
+type paneOverlay interface{ inPane() }
+
+func (*filterBar) inPane() {}
+
 func (m *Model) openFilter() tea.Cmd {
-	in := newTokenInput("filter › ", "@who #tag !1 ~s <7d >30d is:done words", m.width)
+	in := newTokenInput("filter › ", "@who #tag !1 ~s <7d >30d is:done words", backlogWidth(m.width)-3)
 	in.plain = true // no " -- " note in a filter: complete everywhere
 	if text := m.pick.filterText; text != "" {
 		in.input.SetValue(text + " ")
@@ -132,7 +138,7 @@ func (f *filterBar) paste(m *Model, msg tea.PasteMsg) tea.Cmd {
 	return cmd
 }
 
-func (f *filterBar) resize(width int) { f.in.resize(width) }
+func (f *filterBar) resize(width int) { f.in.resize(backlogWidth(width) - 3) }
 
 func (f *filterBar) view(m *Model) string { return f.in.view(m, f.err) }
 

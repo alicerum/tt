@@ -156,7 +156,7 @@ func TestPeopleFilter(t *testing.T) {
 	}
 	h.keys("P", "/")
 	h.typeText("an")
-	h.mustSee("PEOPLE · 2 matches · an", "ana · 1 open", "anabel · 1 open")
+	h.mustSee("PEOPLE · 2 matches", "filter › an", "ana · 1 open", "anabel · 1 open")
 	h.mustNotSee("raff · ", "bob · ")
 	h.keys("esc") // esc in the filter clears it
 	h.mustSee("PEOPLE · 4", "raff · 1 open")
@@ -164,7 +164,7 @@ func TestPeopleFilter(t *testing.T) {
 	h.keys("/")
 	h.typeText("@rf")
 	h.keys("enter")
-	h.mustSee("PEOPLE · 1 match · @rf", "@raff", "Ask from raff", "esc clears filter")
+	h.mustSee("PEOPLE · 1 match", "filter › @rf · esc clears", "@raff", "Ask from raff", "esc clears filter")
 	h.keys("esc")
 	h.mustSee("filter cleared", "PEOPLE · 4")
 	if h.m.screen != screenPeople || h.m.people.selected != "raff" {
@@ -173,10 +173,10 @@ func TestPeopleFilter(t *testing.T) {
 
 	h.keys("/")
 	h.typeText("zz")
-	h.mustSee("PEOPLE · 0 matches · zz", "no matches · esc clears")
+	h.mustSee("PEOPLE · 0 matches", "filter › zz", "no matches")
 	h.mustNotSee("Ask from")
 	h.keys("x") // still typing: a letter, not a task key
-	h.mustSee("0 matches · zzx")
+	h.mustSee("filter › zzx")
 	h.keys("enter", "esc", "esc")
 	if h.m.screen != screenToday {
 		t.Errorf("esc, esc: filter cleared, then back to Today: screen %d", h.m.screen)

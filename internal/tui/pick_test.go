@@ -80,7 +80,7 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	if err := h.m.applyFilter("schema"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("BACKLOG · by priority · 1 match · schema", "[P3 M] Schema backlog")
+	h.mustSee("BACKLOG · by priority · 1 match", "filter › schema · esc clears", "[P3 M] Schema backlog")
 	h.mustNotSee("Schema idea", "Schema shipped", "unset")
 
 	// is: widens it to closed backlog tasks (D26b).
@@ -110,12 +110,12 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	if err := h.m.applyFilter("!9"); err == nil {
 		t.Fatal("!9 must be refused")
 	}
-	h.mustSee("1 match · #auth spike")
+	h.mustSee("1 match", "filter › #auth spike · esc clears")
 
 	if err := h.m.applyFilter("zzz"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("0 matches · zzz", "no matches · esc clears")
+	h.mustSee("0 matches", "filter › zzz · esc clears", "no matches")
 	h.keys("esc")
 	h.mustSee("filter cleared", "▸ [P1 XL] Auth migration 0/2")
 	h.mustNotSee("matches", "Schema idea")
@@ -128,7 +128,7 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	if err := h.m.applyFilter("rollback"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("0 matches · rollback", "    [P1 S] Rollback plan")
+	h.mustSee("0 matches", "filter › rollback · esc clears", "    [P1 S] Rollback plan")
 }
 
 func TestScrollWindowMovesOnlyWhenTheCursorLeavesIt(t *testing.T) {

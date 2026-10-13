@@ -17,7 +17,7 @@ func TestFilterEscRestoresTheSelection(t *testing.T) {
 	h.keys("j", "j")
 	h.keys("/")
 	h.typeText("alp") // live narrowing moves the cursor to Alpha
-	h.mustSee("1 match · alp")
+	h.mustSee("1 match", "filter › alp")
 	h.keys("esc")
 	if r, _ := h.m.selectedRow(); r.task.ID != gamma.ID {
 		t.Errorf("after esc the cursor is on %q; want Gamma, where it was before /", r.task.Title)
