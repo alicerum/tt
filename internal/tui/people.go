@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"tt/internal/domain"
+	"tt/internal/dsl"
 	"tt/internal/search"
 )
 
@@ -154,6 +155,12 @@ func (m *Model) peopleKey(key string) tea.Cmd {
 		return nil
 	case "/":
 		return m.openPeopleFilter()
+	case "r":
+		if p.selected == "" {
+			m.setStatus("nobody to rename")
+			return nil
+		}
+		return m.openRename(p.selected)
 	case "esc":
 		if p.filter != "" {
 			p.setFilter(m, "")
@@ -206,6 +213,50 @@ func (m *Model) peopleView() string {
 	return columns(left, right, lw, rw)
 }
 
+// openRename asks for a person's new name (D53), prefilled with the old one.
+// A name someone else already has asks first, then merges the two.
+func (m *Model) openRename(from string) tea.Cmd {
+	in := newInput("rename @"+from+" › ", "new name", m.width)
+	in.SetValue(from)
+	in.CursorEnd()
+	m.overlay = &prompt{
+		input: in,
+		check: func(v string) error { _, err := dsl.ParseRequester(v); return err },
+		onEnter: func(v string) tea.Cmd {
+			to, _ := dsl.ParseRequester(v) // check passed
+			switch {
+			case to == from:
+				m.setStatus("unchanged")
+				return nil
+			case slices.ContainsFunc(m.idx.people, func(pr person) bool { return pr.name == to }):
+				m.overlay = &nudge{
+					question: fmt.Sprintf("%q already exists · ⏎ merge into them · esc", to),
+					onEnter:  func() tea.Cmd { return m.rename(from, to, "merge", "merged") },
+				}
+				return nil
+			}
+			return m.rename(from, to, "rename", "renamed")
+		},
+	}
+	return nil
+}
+
+// rename gives from's tasks the name to. The cursor follows the new name,
+// so a filter that would hide it is cleared; on an error it stays on from.
+func (m *Model) rename(from, to, verb, done string) tea.Cmd {
+	p := &m.people
+	p.selected = to
+	if !search.MatchName(p.filter, to) {
+		p.filter = ""
+	}
+	svc, ctx, label := m.svc, m.ctx, verb+" "+from+" → "+to
+	return func() tea.Msg {
+		n, undo, err := svc.RenameRequester(ctx, from, to)
+		return actionMsg{label: label, status: fmt.Sprintf("%s %s → %s · %s", done, from, to, plural(n, "task", "tasks")),
+			undo: undo, err: err, restore: func(m *Model) { m.people.selected = from }}
+	}
+}
+
 // personLine renders `ana · 3 open`; a person with nothing open is dimmed.
 // The cursor's person stays marked while the tasks pane has the focus.
 func (m *Model) personLine(pr person, width int, cursor bool) string {
@@ -227,14 +278,15 @@ func (m *Model) peopleHints() string {
 		back = "esc clears filter"
 	}
 	if m.people.onTasks {
-		return "⏎ open · e edit · p pin · u unpin · x done · d drop · tab people · " + back + " · a add · ctrl+z undo · ? help"
+		return "⏎ open · e edit · p pin · u unpin · x done · d drop · r rename person · tab people · " + back + " · a add · ctrl+z undo · ? help"
 	}
-	return "j/k move · ⏎/tab tasks · / filter · " + back + " · a add · ctrl+z undo · ? help · q quit"
+	return "j/k move · ⏎/tab tasks · / filter · r rename or merge · " + back + " · a add · ctrl+z undo · ? help · q quit"
 }
 
 var peopleHelp = []string{
 	"j k      move · tab switches people / tasks · ⏎ on a person: their tasks",
 	"/        filter the names as you type (esc in the line or on the list clears it)",
+	"r        rename the person, on every task that names them; a name someone already has merges the two (⏎ confirms)",
 	"⏎        task detail · e / E edit the line / the note in $EDITOR · o open the link",
 	"p / u    pin to today / unpin",
 	"x        done (again: reopen)",
