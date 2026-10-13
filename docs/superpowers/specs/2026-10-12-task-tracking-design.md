@@ -388,6 +388,17 @@ Plan 5 ships in two slices, each merged on its own.
 - Today: meetings (D41), busy placement and ⚠ (D42), `r` (D43), header status (D44).
 - The real `tea.Program` test with `-race` (Plan 3), and the "Carry-forward from Plan 5a review" items marked Plan 5b.
 
+## Plan 7 — People view (partly designed 2026-10-13; after Plan 6)
+
+From the user; wanted once there are more requesters. Purpose: **(a)** "what do I owe this person?" (open commitments, e.g. before a 1:1) and **(b)** cleaning up names (rename, merge duplicates such as `ana` / `Ana`). Stats per person (who asks most, whose asks get dropped) are **out of scope** (Deferred: statistics / retro).
+
+Decided in brainstorming (not yet a reviewed spec; numbers come when it is):
+- **Left pane:** every requester in the database, alphabetical, case-insensitive (so `raff`, `Raff`, `Raff K.` sit together and duplicates are easy to spot). `/` fuzzy-filters the names.
+- **Right pane:** the selected person's tasks: open ones first, grouped by priority like the Log; then closed ones, dimmed, with their close date.
+- **Rename:** `r` opens a prompt prefilled with the name; it renames the requester on all their tasks (open and closed) in one transaction. If the new name already exists (case-insensitive), confirm first: `"Ana" already exists · ⏎ merge into them · esc`. Undo restores each task's old name with compare-and-set; it refuses if any of them changed since (integrity over undo).
+
+Open for the design session: the entry key (`P` from Today and the Log?), which task keys work in the right pane (likely the Log's: `⏎ p u x d e`), whether tasks without a requester appear at all (probably not), what a row in the left pane shows (name + open count?).
+
 ## Carry-forward from Plan 4a review
 
 - **Plan 4b: cursor after a filter round-trip.** `/`, a typo, `esc` restores the filter but not the task the cursor was on (live narrowing replaced `selected`). Remember the selected ids with `prev` and restore them on esc.
