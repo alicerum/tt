@@ -166,10 +166,12 @@ func (m *Model) detailHead() []string {
 			head += fmt.Sprint(c.PinnedDays)
 		}
 	}
-	switch t.Status {
-	case domain.StatusDone:
+	switch {
+	case t.Status == domain.StatusDone && t.ClosedBy == domain.ClosedBySource:
+		head += " ✓ via GitHub · " + dayLabel(m.svc.DayOf(t.ClosedAt)) // D20a
+	case t.Status == domain.StatusDone:
 		head += " ✓ " + dayLabel(m.svc.DayOf(t.ClosedAt))
-	case domain.StatusDropped:
+	case t.Status == domain.StatusDropped:
 		head += " ✗ " + dayLabel(m.svc.DayOf(t.ClosedAt))
 	}
 	lines := []string{head}

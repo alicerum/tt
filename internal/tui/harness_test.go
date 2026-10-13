@@ -15,6 +15,7 @@ import (
 	"tt/internal/calendar"
 	"tt/internal/config"
 	"tt/internal/domain"
+	"tt/internal/source"
 	"tt/internal/store"
 )
 
@@ -31,6 +32,7 @@ type harness struct {
 	svc   *app.Service
 	clock *fakeClock
 	cal   *calendar.Fake // nil: no calendar set up
+	src   *source.Fake   // nil: GitHub isn't set up
 	path  string
 	quit  bool
 
@@ -43,17 +45,24 @@ type harness struct {
 
 func newHarness(t *testing.T, cfg config.Config) *harness {
 	t.Helper()
-	return startHarness(t, cfg, nil)
+	return startHarness(t, cfg, nil, nil)
 }
 
 // newCalHarness is newHarness with a fake calendar (h.cal), fetched once at
 // startup like the real one; Set its events, then R fetches again.
 func newCalHarness(t *testing.T, cfg config.Config) *harness {
 	t.Helper()
-	return startHarness(t, cfg, &calendar.Fake{})
+	return startHarness(t, cfg, &calendar.Fake{}, nil)
 }
 
-func startHarness(t *testing.T, cfg config.Config, cal *calendar.Fake) *harness {
+// newGHHarness is newHarness with a fake GitHub (h.src), fetched once at
+// startup like the real one; Set its review requests, then R fetches again.
+func newGHHarness(t *testing.T, cfg config.Config) *harness {
+	t.Helper()
+	return startHarness(t, cfg, nil, &source.Fake{})
+}
+
+func startHarness(t *testing.T, cfg config.Config, cal *calendar.Fake, src *source.Fake) *harness {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "tt.db")
 	st, err := store.Open(context.Background(), path)
@@ -66,7 +75,10 @@ func startHarness(t *testing.T, cfg config.Config, cal *calendar.Fake) *harness 
 	if cal != nil {
 		svc.WithCalendar(cal)
 	}
-	h := &harness{t: t, svc: svc, clock: clock, cal: cal, path: path}
+	if src != nil {
+		svc.WithSource(src)
+	}
+	h := &harness{t: t, svc: svc, clock: clock, cal: cal, src: src, path: path}
 	opts := Options{WatchEvery: time.Second, ClockEvery: 30 * time.Second,
 		Schedule: func(time.Duration, tea.Msg) tea.Cmd { return nil },
 		Exec: func(c *exec.Cmd, done tea.ExecCallback) tea.Cmd {

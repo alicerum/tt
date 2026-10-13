@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"tt/internal/app"
+	"tt/internal/domain"
 	"tt/internal/search"
 )
 
@@ -86,7 +87,8 @@ type Model struct {
 	inbox  inboxState
 	detail detailState
 
-	cal calLoop
+	cal pollLoop // the calendar's
+	gh  pollLoop // GitHub's (D50)
 
 	overlay     overlay
 	banner      *app.DayResult
@@ -99,10 +101,11 @@ func New(ctx context.Context, svc *app.Service, opts Options) *Model {
 	return &Model{svc: svc, opts: opts, ctx: ctx, width: 100, height: 30, pick: pickState{group: search.ByPriority}}
 }
 
-// calLoop is the calendar's poll loop (D3): one fetch at a time, then the
-// next tick after the configured interval. R and a new day fetch at once;
-// seq retires the tick they overtook, so there is only ever one loop.
-type calLoop struct {
+// pollLoop is an integration's poll loop (D3): one fetch at a time, then the
+// next tick after the configured interval. R (and, for the calendar, a new
+// day) fetches at once; seq retires the tick it overtook, so there is only
+// ever one loop.
+type pollLoop struct {
 	syncing bool
 	seq     int
 }
@@ -140,6 +143,11 @@ type (
 	uiSavedMsg   struct{ err error }
 	calTickMsg   struct{ seq int }
 	calSyncedMsg struct{ err error }
+	ghTickMsg    struct{ seq int }
+	ghSyncedMsg  struct {
+		closed []domain.Task // tasks the fetch closed (D20a)
+		err    error
+	}
 )
 
 func (m *Model) Init() tea.Cmd {
@@ -151,6 +159,7 @@ func (m *Model) Init() tea.Cmd {
 		},
 		m.startDay(),
 		m.syncCalendar(), // the first load shows the cache meanwhile
+		m.syncGitHub(),
 		m.opts.Schedule(m.opts.WatchEvery, watchTickMsg{}),
 		m.opts.Schedule(m.opts.ClockEvery, clockTickMsg{}),
 	)
@@ -267,6 +276,22 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.setErr(fmt.Errorf("can't record the calendar fetch: %w", msg.err))
 		}
 		return tea.Batch(m.load(), m.opts.Schedule(m.svc.Config().CalendarPoll, calTickMsg{seq: m.cal.seq}))
+	case ghTickMsg:
+		if msg.seq == m.gh.seq {
+			return m.syncGitHub()
+		}
+	case ghSyncedMsg:
+		m.gh.syncing = false
+		m.gh.seq++
+		switch {
+		case msg.err != nil && !errors.Is(msg.err, context.Canceled):
+			m.setErr(fmt.Errorf("can't record the GitHub fetch: %w", msg.err))
+		case len(msg.closed) == 1:
+			m.setStatus(fmt.Sprintf("✓ via GitHub: %q", msg.closed[0].Title)) // D49
+		case len(msg.closed) > 1:
+			m.setStatus("✓ via GitHub: " + plural(len(msg.closed), "review", "reviews"))
+		}
+		return tea.Batch(m.load(), m.opts.Schedule(m.svc.Config().GitHubPoll, ghTickMsg{seq: m.gh.seq}))
 	case noteEditedMsg:
 		return m.noteEdited(msg)
 	case tea.KeyPressMsg:
@@ -323,7 +348,7 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+z":
 		return m.undoLast()
 	case "R":
-		return tea.Batch(m.load(), m.syncCalendar())
+		return tea.Batch(m.load(), m.syncCalendar(), m.syncGitHub())
 	}
 	if m.dayIsStale() {
 		m.setStatus("new day — refreshing")
@@ -371,6 +396,20 @@ func (m *Model) syncCalendar() tea.Cmd {
 	m.cal.syncing = true
 	svc, ctx := m.svc, m.ctx
 	return func() tea.Msg { return calSyncedMsg{err: svc.SyncCalendar(ctx)} }
+}
+
+// syncGitHub fetches the review requests in the background, unless GitHub
+// isn't set up or a fetch is already running.
+func (m *Model) syncGitHub() tea.Cmd {
+	if !m.svc.SourceSetUp() || m.gh.syncing {
+		return nil
+	}
+	m.gh.syncing = true
+	svc, ctx := m.svc, m.ctx
+	return func() tea.Msg {
+		closed, err := svc.SyncSources(ctx)
+		return ghSyncedMsg{closed: closed, err: err}
+	}
 }
 
 func (m *Model) startDay() tea.Cmd {

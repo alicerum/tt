@@ -112,7 +112,7 @@ func (m *Model) headerView() string {
 	if m.state.Plan.Committed {
 		h += styleDim.Render(" · plan committed")
 	}
-	return h + m.calendarStatus()
+	return h + m.calendarStatus() + m.githubStatus()
 }
 
 // calendarStatus is the header's calendar part (D44): nothing while fresh,
@@ -127,6 +127,21 @@ func (m *Model) calendarStatus() string {
 		return styleAlert.Render(" · ⚠ cal: " + cs.Err)
 	case !cs.LastSuccess.IsZero() && now.Sub(cs.LastSuccess) > 2*m.svc.Config().CalendarPoll:
 		return styleDim.Render(" · cal " + ago(now, cs.LastSuccess))
+	}
+	return ""
+}
+
+// githubStatus is the header's GitHub part (D50), worded like the
+// calendar's: nothing while fresh or when GitHub is off.
+func (m *Model) githubStatus() string {
+	gs, now := m.state.GitHub, m.svc.Now()
+	switch {
+	case !gs.SetUp:
+		return ""
+	case gs.Err != "":
+		return styleAlert.Render(" · ⚠ gh: " + gs.Err)
+	case !gs.LastSuccess.IsZero() && now.Sub(gs.LastSuccess) > 2*m.svc.Config().GitHubPoll:
+		return styleDim.Render(" · gh " + ago(now, gs.LastSuccess))
 	}
 	return ""
 }

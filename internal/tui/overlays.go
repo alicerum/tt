@@ -254,7 +254,7 @@ func (helpOverlay) view(m *Model) string {
 		"a        quick-add: title @who #tag !1 ~s link -- note (tab completes @/#)",
 		"ctrl+z   undo (refuses if the task changed since)",
 		"ctrl+d / ctrl+u   half a page down / up",
-		"R        reload and fetch the calendar now · q quit · ? this help",
+		"R        reload, and fetch the calendar and GitHub now · q quit · ? this help",
 	}
 	var local []string
 	switch m.screen {
