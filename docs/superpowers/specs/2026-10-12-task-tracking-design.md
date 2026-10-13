@@ -425,6 +425,14 @@ One slice (D52, D53). Purpose and scope from the user: **(a)** "what do I owe th
 - `tui`: `screenPeople` (`P` from Today/Log, `esc` back to the screen it came from); a people list derived from the snapshot (names, open counts, alphabetical); the left pane with the `/` filter (the Log's fuzzy matcher in `internal/search`, exported for names); the right pane rows (the Log's row renderer and priority grouping, then the closed section); the task keys via the existing `taskKey`; the rename prompt and merge confirmation (overlays like the drop prompt); hints, `?` help, the shared height budget.
 - Tests: `app` rename/merge/undo/refusals (closed tasks and children renamed too; a merge's undo leaves the target's own tasks alone; undo refused after one task was edited); TUI harness flows (entry/exit from both screens, counts and dimming, filter, grouping and closed section, task keys in the right pane, rename, merge confirmation, `unchanged`, cursor follows the new name, `ctrl+z`, a short terminal); a pty run of the real binary (`P`, `r`, rename, `q`) checking the database.
 
+Rulings while drafting the plan (in the code; one-line reversals):
+- Renaming also drops trailing punctuation (`Ana,` → `ana`), because the `@who` token does (one rule, `dsl.ParseRequester`).
+- `⏎` on a person moves the focus to their tasks; task keys in the names pane do nothing.
+- A child is its own row in its requester's list (`↳ #parent`); a parent shows its progress but doesn't expand. Untriaged (Inbox) tasks count as open.
+- The name filter stays while tt runs, like the Log's; a leading `@` in it is ignored; `esc` on a filtered list clears the filter before leaving.
+- A rename to a name the filter would hide clears the filter, so the cursor can follow. After an undo the cursor stays where it is (the nearest row if that name is gone).
+- The merge question is the D37 nudge: any key but `⏎` says `cancelled`. A rename of a name no task has any more fails with `no task has @raf any more`.
+
 ## Carry-forward from Plan 4a review
 
 - **Plan 4b: cursor after a filter round-trip.** `/`, a typo, `esc` restores the filter but not the task the cursor was on (live narrowing replaced `selected`). Remember the selected ids with `prev` and restore them on esc.
