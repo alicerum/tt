@@ -54,8 +54,7 @@ func TestReslotStartsFromNow(t *testing.T) {
 	h.block(a.ID, 10*time.Hour, time.Hour)
 	h.clock.now = h.clock.now.Add(6 * time.Hour) // 15:00
 	h.keys("R")
-	h.m.today.cursor = h.m.today.tl.rowOf(10 * time.Hour) // the Alpha row, in the past
-	h.m.today.at = h.m.today.tl.rows[h.m.today.cursor].start
+	h.keys("j", "j") // the cursor stayed on the 09:00 row: 10:00 is Alpha, in the past
 	h.keys("r")
 	// D43 and now: not 10:30, which is in the past
 	h.mustSee(`moving "Alpha"`, " 15:00 ░ Alpha 1h")
