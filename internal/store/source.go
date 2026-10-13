@@ -20,6 +20,7 @@ func (s *Store) SourceItems(ctx context.Context, kind string) (items []domain.So
 	return items, err
 }
 
+// SourceItems is Store.SourceItems inside the transaction.
 func (x *Tx) SourceItems(ctx context.Context, kind string) ([]domain.SourceItem, error) {
 	return querySourceItems(ctx, x.tx, kind)
 }

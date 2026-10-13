@@ -141,8 +141,9 @@ type State struct {
 }
 
 // Load reads the data version first, then all tasks and today's plan in one
-// read, then the calendar's cache and GitHub's review requests. A write that lands during the load changes
-// the version, so the next version check reloads again.
+// read, then the calendar's cache and GitHub's review requests. A write that
+// lands during the load changes the version, so the next version check
+// reloads again.
 func (s *Service) Load(ctx context.Context) (State, error) {
 	version, err := s.store.DataVersion(ctx)
 	if err != nil {

@@ -31,7 +31,6 @@ const answer = `{"data":{"viewer":{"login":"Me"},"search":{"issueCount":3,"nodes
    {"createdAt":"2026-10-10T08:00:00Z","requestedReviewer":{"login":"me"}},
    {"createdAt":"2026-10-11T08:00:00Z","requestedReviewer":{"login":"tom"}},
    {"createdAt":"2026-10-11T09:00:00Z","requestedReviewer":null}]}},
- {},
  {"number":877,"title":"Bump go","url":"https://github.com/acme/photos/pull/877","author":null,
   "repository":{"nameWithOwner":"acme/photos"},"timelineItems":{"nodes":[]}}]}}}`
 
@@ -82,7 +81,10 @@ func TestFetchFailures(t *testing.T) {
 		want       string
 	}{
 		{"not logged in", "echo 'To get started with GitHub CLI, please run:  gh auth login' >&2; exit 4", ErrNotLoggedIn.Error()},
-		{"bad token", "echo 'gh: Bad credentials (HTTP 401)' >&2; exit 1", "Bad credentials (HTTP 401)"},
+		{"bad token", "echo 'gh: Bad credentials (HTTP 401)' >&2; exit 1", ErrNotLoggedIn.Error()},
+		{"bad token, other wording", "echo 'gh: HTTP 401: Bad credentials (https://api.github.com/graphql)' >&2; exit 1", ErrNotLoggedIn.Error()},
+		{"incomplete answer", `echo '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"nodes":[{"number":5,"title":"t","repository":{"nameWithOwner":"a/b"}},{}]}}}'`,
+			"gh returned an incomplete answer"},
 		{"silent", "exit 3", "gh failed: exit status 3"},
 		{"bad JSON", "echo '{not json'", "gh printed bad JSON: "},
 		{"GraphQL error", `echo '{"errors":[{"message":"Resource protected by organization SAML enforcement."}]}'`,

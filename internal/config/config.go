@@ -236,10 +236,11 @@ func parseGitHub(f file, cfg *Config) error {
 		}
 		cfg.ReviewPriority = len(cfg.Priorities)
 	}
-	if p := g.Size; p != nil {
-		size, ok := domain.ParseSize(*p)
-		if *p != "" && (!ok || string(size) != strings.ToLower(*p)) {
-			return fmt.Errorf("github.size: want s, m, l, xl, or \"\" for unsized, got %q", *p)
+	if g.Size != nil {
+		p := strings.TrimSpace(*g.Size)
+		size, ok := domain.ParseSize(p)
+		if p != "" && (!ok || string(size) != strings.ToLower(p)) {
+			return fmt.Errorf("github.size: want s, m, l, xl, or \"\" for unsized, got %q", p)
 		}
 		cfg.ReviewSize = size
 	}

@@ -24,6 +24,9 @@ func TestParseGitHub(t *testing.T) {
 	if cfg, err := Parse([]byte("[github]\nsize = \"xl\"\n")); err != nil || cfg.ReviewSize != domain.SizeXL {
 		t.Errorf("size xl: %q, %v", cfg.ReviewSize, err)
 	}
+	if cfg, err := Parse([]byte("[github]\nsize = \" m \"\n")); err != nil || cfg.ReviewSize != domain.SizeM {
+		t.Errorf("size \" m \": %q, %v", cfg.ReviewSize, err)
+	}
 
 	// Other priority levels: the default follows the level named P2, else the last.
 	two := "[[priorities]]\nname = \"Now\"\n[[priorities]]\nname = \"P2\"\n[[priorities]]\nname = \"Later\"\n[[priorities]]\nname = \"Never\"\n"

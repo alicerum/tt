@@ -63,7 +63,7 @@ type GitHub struct {
 func (g *GitHub) Kind() string { return domain.SourceGitHub }
 
 // Fetch returns every open PR that requests my review. Errors are short and
-// say what to do: ErrGHNotFound, ErrNotLoggedIn (gh exit 4), ErrTooMany, a
+// say what to do: ErrGHNotFound, ErrNotLoggedIn (gh exit 4, or HTTP 401), ErrTooMany, a
 // timeout, bad JSON, else the first line of gh's stderr.
 func (g *GitHub) Fetch(ctx context.Context) ([]domain.SourceItem, error) {
 	timeout := cmp.Or(g.Timeout, DefaultTimeout)
@@ -90,6 +90,9 @@ func (g *GitHub) Fetch(ctx context.Context) ([]domain.SourceItem, error) {
 	case run.Err() != nil:
 		return nil, fmt.Errorf("gh timed out after %s", timeout)
 	case errors.As(err, &exit) && exit.ExitCode() == 4:
+		return nil, ErrNotLoggedIn
+	}
+	if strings.Contains(stderr.String(), "HTTP 401") { // an expired or revoked token
 		return nil, ErrNotLoggedIn
 	}
 	if line := firstLine(stderr.String()); line != "" {
@@ -147,7 +150,9 @@ func parse(data []byte) ([]domain.SourceItem, error) {
 	items := make([]domain.SourceItem, 0, len(r.Data.Search.Nodes))
 	for _, n := range r.Data.Search.Nodes {
 		if n.Number == 0 {
-			continue // not a pull request
+			// The search is is:pr, so an empty node is data withheld:
+			// reconciling the rest would auto-close what it left out.
+			return nil, errors.New("gh returned an incomplete answer")
 		}
 		i := domain.SourceItem{
 			Kind:       domain.SourceGitHub,
