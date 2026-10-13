@@ -49,7 +49,11 @@ func (td *todayState) refresh(m *Model) {
 	if m.svc.Today() == plan.Day {
 		now = plan.Day.Offset(m.svc.Now())
 	}
-	td.tl = buildTimeline(plan.Blocks, cfg.WorkStart, cfg.WorkEnd, now)
+	var meetings []meeting
+	for _, e := range m.state.Calendar.Meetings {
+		meetings = append(meetings, meeting{title: e.Title, start: plan.Day.Offset(e.Start), end: plan.Day.Offset(e.End)})
+	}
+	td.tl = buildTimeline(plan.Blocks, meetings, cfg.WorkStart, cfg.WorkEnd, now)
 	rows := td.tl.rows
 	if !td.placed {
 		td.at, td.placed = rows[td.tl.homeRow()].start, true
@@ -107,7 +111,7 @@ func (m *Model) pickUp(t domain.Task) {
 
 // ghost is the carried block as it would land at the cursor: a moved block
 // keeps its length; a candidate gets its D24 length, min(size, the free time
-// from the cursor to the next block or the planning day's end).
+// from the cursor to the next block or meeting, or the hours' end; D42).
 func (m *Model) ghost() domain.Block {
 	td := &m.today
 	c := td.carry
@@ -146,6 +150,27 @@ func (m *Model) blockName(b domain.Block) string {
 
 func span(b domain.Block) string { return clock(b.Start) + "–" + clock(b.End()) }
 
+// overMeeting is the status note for a block placed over a meeting (D42):
+// allowed, since a meeting is sometimes skipped, but said.
+func (m *Model) overMeeting(b domain.Block) string {
+	mt, ok := m.today.tl.conflict(b)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf(" · ⚠ overlaps meeting %q %s–%s", mt.title, clock(mt.start), clock(mt.end))
+}
+
+// conflicted reports a block that shows ⚠ (D18, D42): an open task's block
+// overlapping a meeting. A closed task's block is history.
+func (m *Model) conflicted(b domain.Block) bool {
+	t, ok := m.state.Snapshot.Get(b.TaskID)
+	if !ok || t.Status != domain.StatusOpen {
+		return false
+	}
+	_, ok = m.today.tl.conflict(b)
+	return ok
+}
+
 // drop places or moves the carried block at the cursor. A clash keeps it
 // picked up, so another row can be tried.
 func (m *Model) drop() tea.Cmd {
@@ -158,11 +183,11 @@ func (m *Model) drop() tea.Cmd {
 	td.carry = nil
 	svc, label := m.svc, fmt.Sprintf("%q", c.task.Title)
 	if c.block.ID != 0 {
-		return m.act("move "+label, "moved "+label+" to "+span(g), func(ctx context.Context) (app.Undo, error) {
+		return m.act("move "+label, "moved "+label+" to "+span(g)+m.overMeeting(g), func(ctx context.Context) (app.Undo, error) {
 			return svc.MoveBlock(ctx, c.block.ID, g.Start)
 		})
 	}
-	status := "blocked " + label + " " + span(g)
+	status := "blocked " + label + " " + span(g) + m.overMeeting(g)
 	if c.task.Size == domain.SizeL || c.task.Size == domain.SizeXL {
 		status += " · big task · consider splitting" // D37
 	}
@@ -196,7 +221,7 @@ func (m *Model) reshape(old domain.Block, t domain.Task, b domain.Block) tea.Cmd
 		return nil
 	}
 	svc, label := m.svc, fmt.Sprintf("%q", t.Title)
-	return m.act("change "+label, label+" now "+span(b), func(ctx context.Context) (app.Undo, error) {
+	return m.act("change "+label, label+" now "+span(b)+m.overMeeting(b), func(ctx context.Context) (app.Undo, error) {
 		if b.Start == old.Start {
 			return svc.ResizeBlock(ctx, b.ID, b.Duration)
 		}
@@ -370,6 +395,10 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	}
 	b, ok := td.tl.blockAt(td.cursor)
 	if !ok {
+		if len(td.tl.rows[td.cursor].bands) > 0 {
+			m.setStatus("meeting · read-only") // D41
+			return nil
+		}
 		m.setStatus("nothing blocked here · tab to the candidates")
 		return nil
 	}
@@ -436,6 +465,9 @@ func (m *Model) timelineLines(width int) []string {
 		}
 		title += fmt.Sprintf(" · %d/%d done", done, n)
 	}
+	if n := len(slices.DeleteFunc(slices.Clone(td.tl.blocks), func(b domain.Block) bool { return !m.conflicted(b) })); n > 0 {
+		title += fmt.Sprintf(" · ⚠ %d", n) // D42
+	}
 	if td.tl.outsideNow() {
 		title += " · outside of working hours"
 	}
@@ -452,8 +484,9 @@ func (m *Model) timelineLines(width int) []string {
 }
 
 // timelineRow renders row i: its time, then the blocks starting in it
-// (▓ title [P S]), or ▓ where a block carries on from an earlier row. A
-// picked-up block shows as a ░ ghost over the rows it would take.
+// (▓ title [P S]), or ▓ where a block carries on from an earlier row, then
+// its meetings (D41). A picked-up block shows as a ░ ghost over the rows it
+// would take.
 func (m *Model) timelineRow(i, width int) string {
 	td := &m.today
 	r := td.tl.rows[i]
@@ -479,14 +512,15 @@ func (m *Model) timelineRow(i, width int) string {
 			carried = true
 		}
 	}
-	text := " " + clock(r.start) + " "
+	var parts []string
 	switch {
 	case len(labels) > 0:
-		text += "▓ " + strings.Join(labels, " · ")
+		parts = append(parts, "▓ "+strings.Join(labels, " · "))
 	case carried:
-		text += "▓"
+		parts = append(parts, "▓")
 	}
-	line := pad(text, width)
+	parts = append(parts, m.meetingParts(r)...)
+	line := pad(" "+clock(r.start)+" "+strings.Join(parts, " · "), width)
 	if now := td.tl.now; now >= 0 && r.start+rowLen <= now {
 		line = styleDim.Render(line) // the past
 	}
@@ -496,23 +530,57 @@ func (m *Model) timelineRow(i, width int) string {
 	return line
 }
 
-// ghostRow renders a row the carried block would take; it turns the alert
-// colour when the block doesn't fit there.
+// ghostRow renders a row the carried block would take, with what else is
+// there; it turns the error colour when the block doesn't fit there, the
+// alert colour (and ⚠) when it would overlap a meeting (D42).
 func (m *Model) ghostRow(r tlRow, g domain.Block, width int) string {
+	_, overMeeting := m.today.tl.conflict(g)
 	text := " " + clock(r.start) + " ░"
 	if r.start <= g.Start {
 		text += fmt.Sprintf(" %s %s", m.today.carry.task.Title, shortDur(g.Duration))
+		if overMeeting {
+			text += " ⚠"
+		}
 	}
 	for _, b := range r.blocks {
 		if b.ID != g.ID {
 			text += " · " + m.blockLabel(b)
 		}
 	}
+	for _, p := range m.meetingParts(r) {
+		text += " · " + p
+	}
 	line := pad(text, width)
-	if m.fits(g) != nil {
+	switch {
+	case m.fits(g) != nil:
 		return styleError.Render(line)
+	case overMeeting:
+		return styleGhostAlert.Render(line)
 	}
 	return styleSelected.Render(line)
+}
+
+// meetingParts renders row r's meetings (D41): ■ and the title of a band
+// that starts in the row (exact times when off the half-hour grid, +N for
+// the meetings merged into it), or ■ where one carries on from above.
+func (m *Model) meetingParts(r tlRow) []string {
+	var out []string
+	for _, bd := range r.bands {
+		if max(bd.start, m.today.tl.start) < r.start {
+			out = append(out, "■")
+			continue
+		}
+		s := "■ "
+		if bd.start%rowLen != 0 || bd.end%rowLen != 0 {
+			s += clock(bd.start) + "–" + clock(bd.end) + " "
+		}
+		s += bd.title
+		if bd.more > 0 {
+			s += fmt.Sprintf(" +%d", bd.more)
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // blockLabel is a block's text on its first row: exact times when it is off
@@ -530,6 +598,9 @@ func (m *Model) blockText(b domain.Block, times bool) string {
 	s := t.Title + " " + m.badge(t)
 	if times {
 		s = span(b) + " " + s
+	}
+	if m.conflicted(b) {
+		s += " ⚠" // D18, D42: r re-slots it
 	}
 	switch t.Status {
 	case domain.StatusDone:
@@ -569,6 +640,7 @@ var todayHelp = []string{
 	"f        on a block: fine-tune start and length (09:30 45m)",
 	"u        on a block: unblock (stays a candidate) · on a candidate: unpin",
 	"⏎        task detail (the block's task on the timeline)",
+	"■        a meeting (read-only); a block over one shows ⚠, and placing over one is allowed",
 	"x d D    done (again: reopen) / drop / delete",
 	"e / E    edit the line / the note in $EDITOR · o open the link",
 	"c        commit the plan (again: refresh)",

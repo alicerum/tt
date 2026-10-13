@@ -20,8 +20,10 @@ var (
 	styleSelected = lipgloss.NewStyle().Reverse(true)
 	styleError    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	styleAlert    = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	styleClosed   = lipgloss.NewStyle().Strikethrough(true).Faint(true)
-	styleBanner   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
+	// styleGhostAlert is a ghost block over a meeting (D42): selected, in the alert colour.
+	styleGhostAlert = lipgloss.NewStyle().Reverse(true).Foreground(lipgloss.Color("3"))
+	styleClosed     = lipgloss.NewStyle().Strikethrough(true).Faint(true)
+	styleBanner     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
 )
 
 // index holds lookups derived from one loaded state.

@@ -13,7 +13,22 @@ const rowLen = 30 * time.Minute
 type tlRow struct {
 	start   time.Duration  // wall-clock offset from midnight of the plan's day
 	blocks  []domain.Block // the blocks that overlap the row, by start
+	bands   []band         // the meeting bands that overlap the row, by start (D41)
 	outside bool           // a row of its own for a block outside the working hours (D39)
+}
+
+// meeting is a busy calendar event (D17a) as offsets on the plan's day.
+type meeting struct {
+	title      string
+	start, end time.Duration
+}
+
+// band is overlapping meetings merged into one (P4): the first one's
+// title, how many more, and the span they cover together.
+type band struct {
+	title      string
+	more       int
+	start, end time.Duration
 }
 
 // timeline is Today's grid (D38): the working hours in rows (D39), rebuilt
@@ -25,15 +40,30 @@ type tlRow struct {
 type timeline struct {
 	rows       []tlRow
 	blocks     []domain.Block // the day's blocks, by start
+	meetings   []meeting      // the meetings within the working hours, by start (D41)
 	now        time.Duration  // now's wall-clock offset; -1 when there is no now
 	nowRow     int            // the row holding now; -1 when now is outside the hours or there is none
 	start, end time.Duration  // the working hours
 }
 
-// buildTimeline lays out the working hours from–to in rows. now < 0 means
-// no now (the shown day isn't today).
-func buildTimeline(blocks []domain.Block, from, to, now time.Duration) timeline {
+// buildTimeline lays out the working hours from–to in rows, with the
+// meetings that touch them; meetings fully outside them aren't shown (D41).
+// now < 0 means no now (the shown day isn't today).
+func buildTimeline(blocks []domain.Block, meetings []meeting, from, to, now time.Duration) timeline {
 	tl := timeline{blocks: blocks, now: max(now, -1), nowRow: -1, start: from, end: to}
+	var bands []band
+	for _, mt := range meetings {
+		if mt.end <= from || mt.start >= to {
+			continue
+		}
+		tl.meetings = append(tl.meetings, mt)
+		if n := len(bands); n > 0 && mt.start < bands[n-1].end {
+			bands[n-1].more++
+			bands[n-1].end = max(bands[n-1].end, mt.end)
+			continue
+		}
+		bands = append(bands, band{title: mt.title, start: mt.start, end: mt.end})
+	}
 	var before, after []tlRow
 	for _, b := range blocks {
 		switch {
@@ -51,6 +81,11 @@ func buildTimeline(blocks []domain.Block, from, to, now time.Duration) timeline 
 			// grid mustn't also list a block that has an outside row.
 			if b.Start < min(s+rowLen, to) && max(s, from) < b.End() {
 				r.blocks = append(r.blocks, b)
+			}
+		}
+		for _, bd := range bands {
+			if bd.start < min(s+rowLen, to) && max(s, from) < bd.end {
+				r.bands = append(r.bands, bd)
 			}
 		}
 		if now >= max(s, from) && now < min(s+rowLen, to) {
@@ -111,26 +146,38 @@ func (tl *timeline) blockAt(i int) (domain.Block, bool) {
 	return tl.rows[i].blocks[0], true
 }
 
-// gapFrom is the free time from offset at until the next block starts or
-// the working hours end; 0 when a block covers at or at is outside the hours.
+// gapFrom is the free time from offset at until the next block or meeting
+// starts or the working hours end (D42); 0 when a block or a meeting covers
+// at, or at is outside the hours.
 func (tl *timeline) gapFrom(at time.Duration) time.Duration {
 	if at < tl.start || at >= tl.end {
 		return 0
 	}
 	end := tl.end
+	busy := func(start, stop time.Duration) bool {
+		if start <= at && at < stop {
+			return true
+		}
+		if start > at {
+			end = min(end, start)
+		}
+		return false
+	}
 	for _, b := range tl.blocks {
-		if b.Start <= at && at < b.End() {
+		if busy(b.Start, b.End()) {
 			return 0
 		}
-		if b.Start > at {
-			end = min(end, b.Start)
+	}
+	for _, mt := range tl.meetings {
+		if busy(mt.start, mt.end) {
+			return 0
 		}
 	}
 	return max(end-at, 0)
 }
 
-// firstFree is the first row from i on whose start no block covers; i when
-// there is none.
+// firstFree is the first row from i on whose start no block or meeting
+// covers; i when there is none.
 func (tl *timeline) firstFree(i int) int {
 	for j := max(i, 0); j < len(tl.rows); j++ {
 		if tl.gapFrom(tl.rows[j].start) > 0 {
@@ -138,6 +185,16 @@ func (tl *timeline) firstFree(i int) int {
 		}
 	}
 	return i
+}
+
+// conflict is the first meeting b overlaps (D18, D42).
+func (tl *timeline) conflict(b domain.Block) (meeting, bool) {
+	for _, mt := range tl.meetings {
+		if b.Start < mt.end && mt.start < b.End() {
+			return mt, true
+		}
+	}
+	return meeting{}, false
 }
 
 // clash is the first block other than b itself (same ID) that b overlaps.
