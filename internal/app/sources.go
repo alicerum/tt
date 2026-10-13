@@ -3,6 +3,7 @@ package app
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"slices"
 	"time"
 
@@ -109,6 +110,94 @@ func (s *Service) SyncSources(ctx context.Context) ([]domain.Task, error) {
 		return nil, err
 	}
 	return closed, nil
+}
+
+// PinSource pins the review request kind/extID to today (D20, D49). It
+// creates the request's task (D20b, D48: "Review #n: <title>", the PR link,
+// the configured priority and size, no requester) or, when that task exists
+// but is closed, reopens it, keeping its history. The undo deletes the task
+// it created, or closes the reopened one again as it was; it refuses
+// (ErrConflict) once the task changed, was blocked today, or the day moved on.
+func (s *Service) PinSource(ctx context.Context, kind, extID string) (domain.Task, Undo, error) {
+	today, now := s.Today(), s.clock.Now()
+	var (
+		before, after domain.Task // before is set when a closed task was reopened
+		created, had  bool
+	)
+	err := s.store.InTx(ctx, func(x *store.Tx) error {
+		items, err := x.SourceItems(ctx, kind)
+		if err != nil {
+			return err
+		}
+		i := slices.IndexFunc(items, func(i domain.SourceItem) bool { return i.ExternalID == extID })
+		if i < 0 {
+			return fmt.Errorf("review request %s isn't waiting any more: %w", extID, ErrNotFound)
+		}
+		item := items[i]
+		t, ok, err := x.TaskBySource(ctx, item.Ref())
+		switch {
+		case err != nil:
+			return err
+		case !ok:
+			ref := item.Ref()
+			after = domain.Task{Title: domain.ReviewTitle(item), Link: item.URL, Source: &ref,
+				Priority: min(s.cfg.ReviewPriority, len(s.cfg.Priorities)), Size: s.cfg.ReviewSize,
+				Status: domain.StatusOpen, CreatedAt: now, UpdatedAt: now}
+			if after.ID, err = x.InsertTask(ctx, after); err != nil {
+				return err
+			}
+			created = true
+		case t.Status != domain.StatusOpen:
+			before, after = t, t
+			after.Status, after.ClosedAt, after.ClosedBy, after.DropReason, after.UpdatedAt = domain.StatusOpen, time.Time{}, "", "", now
+			if err := x.UpdateTask(ctx, after); err != nil {
+				return err
+			}
+		default:
+			after = t
+		}
+		if _, had, err = x.GetPin(ctx, after.ID); err != nil || had {
+			return err
+		}
+		return x.PutPin(ctx, domain.Pin{TaskID: after.ID, PinnedOn: today})
+	})
+	if err != nil {
+		return domain.Task{}, nil, err
+	}
+	if !created && before.ID == 0 && had {
+		return after, nil, nil // open and pinned already: nothing changed
+	}
+	return after, func(ctx context.Context) error {
+		if err := s.checkDay(today); err != nil {
+			return err
+		}
+		return s.store.InTx(ctx, func(x *store.Tx) error {
+			if err := unchangedSince(ctx, x, after); err != nil {
+				return err
+			}
+			if !had { // removing the pin (or the task) would take a block placed since
+				blocks, err := x.TaskBlocksOn(ctx, after.ID, today)
+				if err != nil {
+					return err
+				}
+				if len(blocks) > 0 {
+					return fmt.Errorf("task #%d is blocked today: %w", after.ID, ErrConflict)
+				}
+			}
+			if created {
+				return x.DeleteTask(ctx, after.ID) // its pin goes with it
+			}
+			if before.ID != 0 {
+				if err := x.UpdateTask(ctx, before); err != nil {
+					return err
+				}
+			}
+			if had {
+				return nil
+			}
+			return x.DeletePin(ctx, after.ID)
+		})
+	}, nil
 }
 
 // githubState reads the last fetch and the lane: the stored items without an
