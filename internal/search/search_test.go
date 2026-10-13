@@ -140,3 +140,27 @@ func TestGroupByCycle(t *testing.T) {
 		}
 	}
 }
+
+func TestMatchName(t *testing.T) {
+	cases := []struct {
+		query, name string
+		want        bool
+	}{
+		{"", "ana", true},
+		{"an", "ana", true},
+		{"AN", "ana", true},
+		{"@an", "ana", true},
+		{"@", "ana", true}, // a lone @ is a name still being typed
+		{"rf", "raff", true},
+		{"mar", "ana-maria", true},
+		{"aa", "ana-maria", true},
+		{"nm", "ana-maria", false},
+		{"ana x", "ana", false},
+		{"bo", "ana", false},
+	}
+	for _, c := range cases {
+		if got := MatchName(c.query, c.name); got != c.want {
+			t.Errorf("MatchName(%q, %q) = %v; want %v", c.query, c.name, got, c.want)
+		}
+	}
+}

@@ -39,6 +39,7 @@ type row struct {
 	parent   bool              // has children
 	expanded bool              // a parent whose children are listed beneath it
 	orphan   int64             // child listed top-level because this parent isn't shown in the backlog
+	person   bool              // listed under its requester in People: no @who, 📌 when pinned, the close date
 }
 
 // groupKey is the ui_state key that remembers the backlog grouping (D26).
@@ -69,6 +70,7 @@ func (m *Model) refreshRows() {
 	m.pick.clamp(m)
 	m.today.refresh(m)
 	m.lane.refresh(m)
+	m.people.refresh(m)
 	if len(m.detail.stack) > 0 {
 		m.detail.refresh(m)
 	}
@@ -108,11 +110,7 @@ func (m *Model) backlogRows() []row {
 			listed[t.ID] = true
 		}
 	}
-	levels := m.svc.Config().Priorities
-	headings := make([]string, len(levels))
-	for i, l := range levels {
-		headings[i] = l.Name + " · " + l.Definition
-	}
+	headings := m.priorityHeadings()
 	groups := map[search.Group][]domain.Task{}
 	orphanOf := map[int64]int64{}
 	for _, t := range snap.Tasks() {
@@ -157,6 +155,17 @@ func (m *Model) backlogRows() []row {
 	return rows
 }
 
+// priorityHeadings are the priority groups' headings, one per configured
+// level: "P1 · someone is blocked" (D26).
+func (m *Model) priorityHeadings() []string {
+	levels := m.svc.Config().Priorities
+	headings := make([]string, len(levels))
+	for i, l := range levels {
+		headings[i] = l.Name + " · " + l.Definition
+	}
+	return headings
+}
+
 // todayRows: today's candidates in plan order. A pinned parent lists its open
 // children and children closed today beneath it; a pinned child of a pinned
 // parent appears only there.
@@ -195,49 +204,88 @@ func rolloverHint(t domain.Task) row {
 
 func (m *Model) rows(p pane) []row { return m.pick.rows[p] }
 
-// clamp keeps each pane's cursor on a selectable row. It prefers the task the
-// cursor was on (so a reload that reorders rows keeps the highlight on that
-// task) and falls back to the old index when that task is gone.
+// clamp keeps each pane's cursor on a selectable row (see clampRows).
 func (p *pickState) clamp(m *Model) {
 	if p.expanded == nil {
 		p.expanded = map[int64]bool{}
 	}
 	for _, pn := range []pane{paneBacklog, paneToday} {
-		rows := p.rows[pn]
-		c := -1
-		if id := p.selected[pn]; id != 0 {
-			c = slices.IndexFunc(rows, func(r row) bool { return r.kind == rowTask && r.task.ID == id })
+		p.cursor[pn], p.selected[pn] = clampRows(p.rows[pn], p.cursor[pn], p.selected[pn])
+	}
+}
+
+// clampRows puts a cursor on a task row of rows. It prefers task id, the
+// one the cursor was on (so a reload that reorders rows keeps the highlight
+// on that task), and falls back to the old index when that task is gone.
+// It returns the cursor and the task id under it (0 = none).
+func clampRows(rows []row, cursor int, id int64) (int, int64) {
+	c := -1
+	if id != 0 {
+		c = slices.IndexFunc(rows, func(r row) bool { return r.kind == rowTask && r.task.ID == id })
+	}
+	if c < 0 {
+		c = min(cursor, len(rows)-1)
+		for c >= 0 && rows[c].kind != rowTask {
+			c--
 		}
 		if c < 0 {
-			c = min(p.cursor[pn], len(rows)-1)
-			for c >= 0 && rows[c].kind != rowTask {
-				c--
-			}
-			if c < 0 {
-				c = slices.IndexFunc(rows, func(r row) bool { return r.kind == rowTask })
-			}
-			c = max(c, 0)
+			c = slices.IndexFunc(rows, func(r row) bool { return r.kind == rowTask })
 		}
-		p.cursor[pn] = c
-		p.selected[pn] = 0
-		if c < len(rows) && rows[c].kind == rowTask {
-			p.selected[pn] = rows[c].task.ID
-		}
+		c = max(c, 0)
 	}
+	if c < len(rows) && rows[c].kind == rowTask {
+		return c, rows[c].task.ID
+	}
+	return c, 0
 }
 
 func (p *pickState) move(delta int) { p.moveIn(p.focus, delta) }
 
 // moveIn moves pane pn's cursor to the next task row in direction delta.
 func (p *pickState) moveIn(pn pane, delta int) {
-	rows := p.rows[pn]
-	for c := p.cursor[pn] + delta; c >= 0 && c < len(rows); c += delta {
+	if c, ok := stepRows(p.rows[pn], p.cursor[pn], delta); ok {
+		p.cursor[pn], p.selected[pn] = c, p.rows[pn][c].task.ID
+	}
+}
+
+// stepRows finds the next task row after c in direction delta; ok is false
+// at the list's end.
+func stepRows(rows []row, c, delta int) (int, bool) {
+	for c += delta; c >= 0 && c < len(rows); c += delta {
 		if rows[c].kind == rowTask {
-			p.cursor[pn] = c
-			p.selected[pn] = rows[c].task.ID
-			return
+			return c, true
 		}
 	}
+	return 0, false
+}
+
+// rowList is a list of rows with its own cursor and scroll window, like
+// one of the Log's panes (People's tasks, D52).
+type rowList struct {
+	rows     []row
+	cursor   int
+	offset   int   // first row shown
+	selected int64 // task id under the cursor (0 = none); survives reloads
+}
+
+func (l *rowList) clamp() { l.cursor, l.selected = clampRows(l.rows, l.cursor, l.selected) }
+
+func (l *rowList) move(delta int) {
+	if c, ok := stepRows(l.rows, l.cursor, delta); ok {
+		l.cursor, l.selected = c, l.rows[c].task.ID
+	}
+}
+
+func (l *rowList) follow(visible int) {
+	l.offset = scroll(headed(l.rows, l.cursor), l.cursor, l.offset, visible, len(l.rows))
+}
+
+// selectedRow is the task row under the cursor.
+func (l *rowList) selectedRow() (row, bool) {
+	if l.cursor < 0 || l.cursor >= len(l.rows) || l.rows[l.cursor].kind != rowTask {
+		return row{}, false
+	}
+	return l.rows[l.cursor], true
 }
 
 // saveGroup remembers the grouping (D26). One save runs at a time; a g
@@ -258,18 +306,29 @@ func (m *Model) saveGroup() tea.Cmd {
 // comes along. Called after every update.
 func (p *pickState) follow(m *Model) {
 	for pn, rows := range p.rows {
-		visible := m.paneVisible(pane(pn))
-		c, off := p.cursor[pn], p.offset[pn]
-		top := c
-		if top > 0 && top < len(rows) && rows[top-1].kind == rowHeader {
-			top--
-		}
-		off = min(off, top)
-		if c >= off+visible {
-			off = c - visible + 1
-		}
-		p.offset[pn] = max(0, min(off, len(rows)-visible))
+		c := p.cursor[pn]
+		p.offset[pn] = scroll(headed(rows, c), c, p.offset[pn], m.paneVisible(pane(pn)), len(rows))
 	}
+}
+
+// headed is the first row that shows with the cursor's row c: the group
+// heading right above it, if there is one.
+func headed(rows []row, c int) int {
+	if c > 0 && c < len(rows) && rows[c-1].kind == rowHeader {
+		return c - 1
+	}
+	return c
+}
+
+// scroll is the first line of a window of visible lines out of n that keeps
+// lines top..c in view (c is the cursor's), given the window started at off:
+// it moves only when they leave it.
+func scroll(top, c, off, visible, n int) int {
+	off = min(off, top)
+	if c >= off+visible {
+		off = c - visible + 1
+	}
+	return max(0, min(off, n-visible))
 }
 
 // visibleRows is how many rows fit in a pane below its title (the Log's
@@ -341,6 +400,9 @@ func (m *Model) pickKey(key string) tea.Cmd {
 		return nil
 	case "i":
 		m.openInbox()
+		return nil
+	case "P":
+		m.openPeople()
 		return nil
 	case "B":
 		m.screen, m.today.focus = screenToday, focusCandidates // Pick done: block in Today (D35)
@@ -518,16 +580,19 @@ func columns(left, right []string, lw, rw int) string {
 
 // paneLines renders pane pn's title and visible rows; focused shows its cursor.
 func (m *Model) paneLines(pn pane, title, empty string, width int, focused bool) []string {
+	l := rowList{rows: m.rows(pn), cursor: m.pick.cursor[pn], offset: m.pick.offset[pn]}
+	return m.listLines(l, m.paneVisible(pn), title, empty, width, focused)
+}
+
+// listLines renders a list's title and the rows in its window of visible
+// rows; focused shows its cursor.
+func (m *Model) listLines(l rowList, visible int, title, empty string, width int, focused bool) []string {
 	lines := []string{styleTitle.Render(title)}
-	rows := m.rows(pn)
-	if len(rows) == 0 {
+	if len(l.rows) == 0 {
 		return append(lines, styleDim.Render("  "+empty))
 	}
-	visible := m.paneVisible(pn)
-	cursor := m.pick.cursor[pn]
-	start := m.pick.offset[pn]
-	for i := start; i < len(rows) && i < start+visible; i++ {
-		lines = append(lines, m.rowLine(rows[i], width, focused && i == cursor))
+	for i := l.offset; i < len(l.rows) && i < l.offset+visible; i++ {
+		lines = append(lines, m.rowLine(l.rows[i], width, focused && i == l.cursor))
 	}
 	return lines
 }
@@ -555,7 +620,7 @@ func (m *Model) rowLine(r row, width int, selected bool) string {
 	if t.Note != "" {
 		b.WriteString(" ✎")
 	}
-	if t.Requester != "" {
+	if t.Requester != "" && !r.person {
 		b.WriteString(" @" + t.Requester)
 	}
 	if kids := m.idx.children[t.ID]; len(kids) > 0 {
@@ -581,14 +646,20 @@ func (m *Model) rowLine(r row, width int, selected bool) string {
 	if t.RolloverCount > 0 {
 		fmt.Fprintf(&b, " ↻%d", t.RolloverCount)
 	}
-	if c := r.cand; c != nil && c.PinnedDays > 1 {
+	switch c := r.cand; {
+	case c != nil && c.PinnedDays > 1:
 		fmt.Fprintf(&b, " 📌%d", c.PinnedDays)
+	case c != nil && r.person:
+		b.WriteString(" 📌") // People lists unpinned tasks too
 	}
 	switch t.Status {
 	case domain.StatusDone:
 		b.WriteString(" ✓")
 	case domain.StatusDropped:
 		b.WriteString(" ✗")
+	}
+	if t.Status != domain.StatusOpen && r.person {
+		b.WriteString(" " + dayLabel(m.svc.DayOf(t.ClosedAt)))
 	}
 	if r.orphan != 0 {
 		suffix := fmt.Sprintf(" ↳ #%d", r.orphan)

@@ -280,6 +280,8 @@ func (helpOverlay) view(m *Model) string {
 		}
 	case screenToday:
 		local = todayHelp
+	case screenPeople:
+		local = peopleHelp
 	default:
 		local = []string{
 			"⏎        task detail",
@@ -293,7 +295,7 @@ func (helpOverlay) view(m *Model) string {
 			"g        group by priority → size → created → requester (remembered)",
 			"B        done picking: block today's candidates in Today",
 			"w        the Reviews lane: p pins a review (a task Review #n), o opens the PR · w or tab back",
-			"esc      back to Today (when no filter is set) · i inbox",
+			"esc      back to Today (when no filter is set) · i inbox · P people (who asked for what)",
 		}
 	}
 	return styleTitle.Render("KEYS") + "\n" + strings.Join(append(local, global...), "\n") + "\n" + styleDim.Render("any key closes")

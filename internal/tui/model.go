@@ -48,6 +48,7 @@ const (
 	screenLog                 // the backlog; the planning step Pick
 	screenInbox
 	screenDetail
+	screenPeople // requesters and what they asked for (D52)
 )
 
 const maxUndo = 50
@@ -86,6 +87,7 @@ type Model struct {
 	pick   pickState
 	inbox  inboxState
 	detail detailState
+	people peopleState
 
 	lane laneState
 
@@ -173,6 +175,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.detail.follow(m)
 	m.today.follow(m)
 	m.lane.follow(m)
+	m.people.follow(m)
 	return m, cmd
 }
 
@@ -364,6 +367,8 @@ func (m *Model) handleKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.inboxKey(key)
 	case screenDetail:
 		return m.detailKey(key)
+	case screenPeople:
+		return m.peopleKey(key)
 	}
 	return m.pickKey(key)
 }
@@ -478,6 +483,8 @@ func (m *Model) render() string {
 		parts = append(parts, clipLines(m.inboxView(), m.bodyHeight()))
 	case screenDetail:
 		parts = append(parts, clipLines(m.detailView(), m.bodyHeight()))
+	case screenPeople:
+		parts = append(parts, m.peopleView())
 	default:
 		if filtering {
 			parts = append(parts, fb.view(m)) // the filter line sits above the backlog

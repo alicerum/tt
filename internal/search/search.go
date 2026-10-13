@@ -58,6 +58,18 @@ func Match(f dsl.Filter, t domain.Task, parent *domain.Task, now time.Time) bool
 	return true
 }
 
+// MatchName reports whether a person's name passes query, the People
+// filter (D52): every word of query, lowercased and without a leading @,
+// matches name like a fuzzy filter word (D26d).
+func MatchName(query, name string) bool {
+	for _, w := range strings.Fields(strings.ToLower(query)) {
+		if w = strings.TrimPrefix(w, "@"); w != "" && !wordMatches(w, name) {
+			return false
+		}
+	}
+	return true
+}
+
 // wordMatches: w (lowercase) is a substring of hay, or a subsequence of one of
 // hay's words that starts at that word's first letter ("schm" → "schema").
 func wordMatches(w, hay string) bool {

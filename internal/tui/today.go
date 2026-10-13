@@ -420,6 +420,9 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	case "i":
 		m.openInbox()
 		return nil
+	case "P":
+		m.openPeople()
+		return nil
 	}
 	if td.focus == focusCandidates {
 		if n := m.steps(key); n != 0 {
@@ -708,9 +711,9 @@ func (m *Model) todayHints() string {
 		return fmt.Sprintf("%s %q · j/k move · ⏎ drop · esc cancel", verb, c.task.Title)
 	}
 	if m.today.focus == focusCandidates {
-		return "b block · ⏎ open · u unpin · x done · d drop · e edit · c commit · tab timeline · L log · i inbox · a add · ctrl+z undo · ? help · q quit"
+		return "b block · ⏎ open · u unpin · x done · d drop · e edit · c commit · tab timeline · L log · P people · i inbox · a add · ctrl+z undo · ? help · q quit"
 	}
-	hints := "j/k move · m move · +/- size · f fine-tune · u unblock · ⏎ open · x done · c commit · tab candidates · L log · i inbox · ctrl+z undo · ? help"
+	hints := "j/k move · m move · +/- size · f fine-tune · u unblock · ⏎ open · x done · c commit · tab candidates · L log · P people · i inbox · ctrl+z undo · ? help"
 	if b, ok := m.today.tl.blockAt(m.today.cursor); ok && m.conflicted(b) {
 		hints = "r re-slot ⚠ · " + hints
 	}
@@ -731,6 +734,6 @@ var todayHelp = []string{
 	"x d D    done (again: reopen) / drop / delete",
 	"e / E    edit the line / the note in $EDITOR · o open the link",
 	"c        commit the plan (again: refresh)",
-	"L        the log (backlog; pick today's work there, B comes back) · i inbox",
+	"L        the log (backlog; pick today's work there, B comes back) · i inbox · P people",
 	"w        the Reviews lane: p pins a review (a task Review #n), o opens the PR · w or tab back",
 }

@@ -3,6 +3,7 @@ package tui
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ type index struct {
 	cand       map[int64]domain.Candidate
 	inInbox    map[int64]bool
 	requesters []string // most used first
+	people     []person // every requester some task carries, alphabetical (D52)
 	tags       []string // most used first
 	// reviewTask is the task of each review request that has one and didn't
 	// drop it, by external id (D51).
@@ -44,7 +46,7 @@ type index struct {
 func buildIndex(st app.State) index {
 	idx := index{children: map[int64][]domain.Task{}, cand: map[int64]domain.Candidate{}, inInbox: map[int64]bool{},
 		reviewTask: map[string]domain.Task{}}
-	reqCount, tagCount := map[string]int{}, map[string]int{}
+	reqCount, tagCount, openCount := map[string]int{}, map[string]int{}, map[string]int{}
 	for _, t := range st.Snapshot.Tasks() {
 		if t.Source != nil && t.Source.Kind == domain.SourceGitHub && t.Status != domain.StatusDropped {
 			idx.reviewTask[t.Source.ID] = t
@@ -54,6 +56,9 @@ func buildIndex(st app.State) index {
 		}
 		if t.Requester != "" {
 			reqCount[t.Requester]++
+			if t.Status == domain.StatusOpen {
+				openCount[t.Requester]++
+			}
 		}
 		for _, tag := range t.Tags {
 			tagCount[tag]++
@@ -71,6 +76,9 @@ func buildIndex(st app.State) index {
 		idx.inInbox[t.ID] = true
 	}
 	idx.requesters, idx.tags = byUse(reqCount), byUse(tagCount)
+	for _, name := range slices.Sorted(maps.Keys(reqCount)) {
+		idx.people = append(idx.people, person{name: name, open: openCount[name]})
+	}
 	return idx
 }
 
@@ -117,6 +125,8 @@ func (m *Model) headerView() string {
 		name = "Inbox"
 	case screenDetail:
 		name = "Detail"
+	case screenPeople:
+		name = "People"
 	}
 	h := styleTitle.Render("tt · "+name) + " · " + dayLabel(m.state.Plan.Day)
 	if n := len(m.idx.inInbox); n > 0 {
@@ -196,10 +206,13 @@ func (m *Model) hintsView() string {
 		}
 		return styleDim.Render(fmt.Sprintf("1-%d priority · s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help", len(m.svc.Config().Priorities)))
 	}
+	if m.screen == screenPeople {
+		return styleDim.Render(m.peopleHints())
+	}
 	if m.screen == screenDetail {
 		return styleDim.Render("j/k move · ⏎ open child · a add child · J/K reorder · e edit · E note · o link · x done · d drop · p pin · esc back · ? help")
 	}
-	hints := "⏎ open · e edit · a add · / filter · g group · p pin · u unpin · x done · d drop · tab pane · →/← expand · B block today · esc today · i inbox · ctrl+z undo · ? help · q quit"
+	hints := "⏎ open · e edit · a add · / filter · g group · p pin · u unpin · x done · d drop · tab pane · →/← expand · B block today · esc today · i inbox · P people · ctrl+z undo · ? help · q quit"
 	if m.pick.filtered() && m.overlay == nil { // in the filter line, esc restores the previous filter
 		hints = "esc clears filter · " + strings.Replace(hints, " · esc today", "", 1)
 	}
