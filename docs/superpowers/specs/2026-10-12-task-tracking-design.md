@@ -607,6 +607,7 @@ Proposed defaults (pending confirmation):
 - **P5 Help**: `?` overlay listing keys for the current view.
 - **P6 Non-working days**: no working-days config; the new-day banner plus "later" is enough.
 - **P7 Backups**: rely on Time Machine for v1.
+- **P8 Notifications** (from the user 2026-10-13; to brainstorm as the next plan): macOS notifications sent by the running TUI (start with `osascript`, no new dependency). Opt-in per kind, all off by default (tt may be shared): `[notify]` `meetings`, `blocks` (a task block starts), `reviews` (a new review request). Never for what already started or arrived before tt launched (the first fetch after start is silent). Quiet while tt's pane is focused (terminal focus events; tmux `focus-events on`); no focus event ever seen → assume unfocused. Open: meetings vs. Calendar's own alerts, at the start or a minute before, grouping several new requests.
 
 Resolved:
 - ~~GitHub scope~~: direct review requests only (`user-review-requested:@me`); team requests not shown.
