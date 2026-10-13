@@ -18,10 +18,10 @@ A staff engineer's personal planner: capture asks fast (`tt add` / quick-add), t
 | 4a Find & browse: filter DSL + fuzzy search, switchable grouping, placement rule, row cache (spec "Plan 4 split") | merged |
 | 4b Edit & detail: Task detail (children add/reorder), `e` edit line, `$EDITOR` notes, open link, `tt add` from stdin, plus the "Carry-forward from Plan 4a review" items | merged |
 | 5a Today & blocking: D34 (amended), D35 Today home + Log rename, D36 pick-up/drop placement, D37 nudges, D38 timeline, `SetBlockSpan`, shared height budget (spec "Plan 5 split") | merged |
-| 5b Calendar: `tt-cal` Swift EventKit helper (spike passed), `CalendarSource`, poll loop + cache, meetings on the timeline, ⚠ conflicts, freshness indicator, real `tea.Program` test, plus the "Carry-forward from Plan 5a review" items marked Plan 5b | **executing** — D40–D44 approved 2026-10-13 (one piece, not split); verified plan `docs/superpowers/plans/2026-10-13-tt-plan-5b-calendar.md` (6 tasks), SDD in worktree `plan-5b` |
-| 6 GitHub reviews lane (direct requests only, `requested_at`, auto-close) | later |
+| 5b Calendar: `tt-cal` Swift EventKit helper (spike passed), `CalendarSource`, poll loop + cache, meetings on the timeline, ⚠ conflicts, freshness indicator, real `tea.Program` test, plus the "Carry-forward from Plan 5a review" items marked Plan 5b | merged |
+| 6 GitHub reviews lane (direct requests only, `requested_at`, auto-close) | **next** — not designed yet; brainstorm first |
 
-Since 5a: D39 (merged) — blocks only inside working hours (`[work_hours]`, replaces `[timeline]`), Today shows only those hours. Plan 5b: the Swift helper is only compiled while implementing (into `$TMPDIR`, usage errors only); its first real run (`tt-cal calendars`, the permission prompt) and a check against the real calendar are the user's, done together after the merge (the plan's "After the last task").
+Since 5a: D39 (merged) — blocks only inside working hours (`[work_hours]`, replaces `[timeline]`), Today shows only those hours. Plan 5b merged 2026-10-13 (D40–D45; leftovers in the spec's "Carry-forward from Plan 5b review"). `make install` puts `tt` and `tt-cal` side by side in `~/.local/bin`; the helper's first real run (`tt-cal calendars`, the permission prompt) and a check against the real calendar are the user's — never run them from the sandbox.
 
 The UI tweaks backlog in the spec (tab skips empty pane, framed/polished panes) is wanted **later, batched** — don't schedule it unasked.
 
@@ -30,7 +30,7 @@ The UI tweaks backlog in the spec (tab skips empty pane, framed/polished panes) 
 - **Product principles (from the user):** start minimal, add on friction; nudge, never block; a clean undamaged state beats undo always working (undo refuses with ErrConflict instead).
 - **New work:** brainstorm → spec update → plan via superpowers:writing-plans → execute via superpowers:subagent-driven-development in a worktree → final review → fast-forward merge to `main`. The user approves the design/spec; in 4a and 4b they then said "go" without reviewing the plan doc separately, so after writing a verified plan, proceed to execution unless they ask to review it. Always ask (finishing menu) before merging.
 - **Split big plans:** Plan 4 shipped as 4a and 4b, each merged on its own so the user can try it before the next slice. The user iterates by using it: expect design reversals after trying (e.g. D26c), and fold them in quickly as a small reviewed commit.
-- **Spec bookkeeping:** decisions go into the Decisions table (next free number after D44); review leftovers go into a "Carry-forward from Plan N review" section naming the plan that owns each; spec-only commits go straight to `main`.
+- **Spec bookkeeping:** decisions go into the Decisions table (next free number after D45); review leftovers go into a "Carry-forward from Plan N review" section naming the plan that owns each; spec-only commits go straight to `main`.
 - **Plans are pre-verified:** draft every code block in a scratch clone (scratchpad), run gofmt/vet/tests (and `-race` where concurrency matters), then generate the plan doc from those files (new files in full, changes to existing files as `git diff` patches), and replay the doc mechanically on a fresh clone to prove it reproduces the tree.
 - **Execution models:** implementers on haiku (plans contain complete code), task reviewers on sonnet (opus for risky tasks), final whole-branch review on opus. One fix wave after the final review; park residuals as spec carry-forwards.
 - **Sandbox quirks:** `git apply <<'PATCH'` heredocs and `git -C`/`cd && git` compounds are often refused inside a worktree session — save patches to a file and `git apply <file>`, and run plain separate git commands. Inside a worktree session, compound shell commands (pipes with `$VAR`s, heredocs feeding python) are refused too: write helper scripts to the scratchpad with the Write tool and run them with literal paths.
@@ -47,7 +47,7 @@ The UI tweaks backlog in the spec (tab skips empty pane, framed/polished panes) 
 go test ./...                      # all packages
 go test -race ./internal/tui/ ./internal/app/
 gofmt -l . && go vet ./...
-go build -o ~/.local/bin/tt ./cmd/tt
+make install                       # tt + tt-cal into ~/.local/bin (make build: ./bin; make clean)
 TT_DB=/tmp/x.db TT_CONFIG=/nonexistent ./tt   # throwaway database
 ```
 

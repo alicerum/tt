@@ -106,6 +106,7 @@ Asks reach me from many directions (mostly Slack, also 1:1s and PR review reques
 | D42 | **Meetings are busy for placement**: `b` starts on the first row free of blocks and meetings; a ghost's D24 length stops at the next meeting. Dropping over a meeting is allowed: the block gets ⚠ and the status says `blocked "X" 10:00–11:00 · ⚠ overlaps meeting "Standup" 10:00–10:30`. Any block overlapping a meeting shows ⚠, whether the meeting came first or later (D18); the timeline title counts them (`· ⚠ 1`). Blocks still never overlap each other (D36) | Nudge, never block: sometimes a meeting is skipped. D18's marker is the same rule seen from the other side |
 | D43 | **`r` re-slots a ⚠ block** (D18): it picks the block up like `m`, with the ghost on the next free slot after the block that fits its whole length inside the working hours (no block, no meeting); `⏎` drops, `j/k` adjust, `esc` leaves it. No slot: `no free slot left today fits 1h` and the ghost stays on the block. On a block without a conflict: `no conflict · m moves it` | See where it goes before it moves; same pick-up model as D36 |
 | D44 | **Calendar status** in the header: nothing while fresh; dimmed `cal 12m ago` once the last success is older than two polls; `⚠ cal: <short reason>` after a failed fetch, keeping the last good meetings (D3a): `tt-cal not found · run helpers/tt-cal/build.sh`, `no access · System Settings → Privacy & Security → Calendars` (helper exit 2), `unknown calendar "X"` (exit 3), else the first line of the helper's stderr (also on the 10s timeout or bad JSON). A cached day that isn't today is ignored | Degrade, don't break; every failure says what to do |
+| D45 | **Plan 5b rulings** (made during execution, kept after review): ⚠ and the `· ⚠ N` count are for open tasks' blocks only (a closed task's block is history; amends D42's "any block"); `r` searches from the later of the row after the block's start and the now row, so it may overlap the block's own old span but never lands in the past (amends D43; `j/k` still reach the past, D36); `CalendarSource` is defined in `app` (consumer side; `app` never imports `internal/calendar` outside tests); `[calendar] poll` is at least 10s; without calendars the header says `cal: not set up (tt-cal calendars)`; `tt-cal calendars` prints unique names only; meeting titles are made one clean line (control characters become spaces) before rendering; while the permission prompt waits, the helper says `waiting for calendar access · answer the macOS prompt` on stderr, which a timeout reports (D44) | Use first; each is a one-line reversal if it chafes |
 | D28 | Stack: **Go + Bubble Tea/Lip Gloss**, pure-Go SQLite, plus a small **Swift helper** for EventKit | Strong TUI ecosystem, single fast binary, good typing for refactors; EventKit isolated behind `CalendarSource` |
 
 ## Item model
@@ -148,7 +149,7 @@ Plus, outside the task itself: **pins** (task is a Today candidate since day X �
 
 1. **Today** (home screen, D35): timeline (meetings, task blocks, free gaps, "now" line; D38) beside candidates; Reviews lane docked below. Doubles as the Block phase: placement and block keys always work here (D36); `c` commits; `L` Log, `i` Inbox. *(Today mockup)*
 2. **Log** (formerly Pick; planning phase 1 "Pick", also the everyday backlog browser, D35): backlog left with grouping (D26), filter bar (D26a/b) and Reviews lane; today's candidates right with counters and inline ⚠ rollover prompts. Keys: `p` pin, `u` unpin, `x` done, `d` drop, `e` edit, `/` filter, `g` group, `Tab` pane, `⏎` detail (D31), `B` → Today to block (D35), `esc` → Today. *(Pick mockup)*
-3. **Block** (planning phase 2): not a screen of its own; it is Today (D35) with pick-up/drop placement (D36); ⚠ on conflicts (D18) and the calendar freshness indicator come with Plan 5b. *(Block mockup; validate in use)*
+3. **Block** (planning phase 2): not a screen of its own; it is Today (D35) with pick-up/drop placement (D36); ⚠ on conflicts (D18, D42) and the calendar status (D44) came with Plan 5b. *(Block mockup; validate in use)*
 4. **Inbox**: one card at a time; priority definitions always visible; `1-3` priority, `s/m/l/x` size, `@`/`#`/`>` requester/tags/parent, `n` skip, `d` drop; auto-advance once priority + size are set (2 keystrokes). *(Inbox mockup)*
 5. **Task detail** (`⏎` on any task): header, link, and a note preview (first few lines plus size, e.g. "+38 lines"); `E` opens the full note in `$EDITOR` (D29). Lists show a small marker on tasks that have a note. For parents, also children with progress bar, done children kept with date; `a` repeating add-child input (token syntax), `J/K` reorder. *(Parent mockup)*
 6. **Quick-add**: overlay from any view (`a`), token syntax with autocomplete.
@@ -379,7 +380,7 @@ Plan 5 ships in two slices, each merged on its own.
 **Plan 5b — Calendar** (D40–D44):
 - `helpers/tt-cal` (Swift: `main.swift`, `build.sh`): `calendars` and `events --from --to --calendars`; raw JSON; exit codes per Adapters. Compiled in the scratchpad when planning; the first real run (the permission prompt) is the user's.
 - `domain.Event` and `domain.Busy(events)` (D17a: all-day, declined and free aren't busy; tentative is).
-- `internal/calendar`: `CalendarSource`, the `eventkit` adapter (helper next to tt or on PATH, 10s timeout, exit-code mapping), a fake. Adapter tests drive small fake-helper scripts (JSON, exit 2/3, a hang).
+- `internal/calendar`: the `eventkit` adapter (`CalendarSource` itself lives in `app`, D45) (helper next to tt or on PATH, 10s timeout, exit-code mapping), a fake. Adapter tests drive small fake-helper scripts (JSON, exit 2/3, a hang).
 - Migration 004 `integration_state` (fix `TestNewerSchemaIsRefused`'s hardcoded version first); `app.SyncCalendar(ctx)` fetches the planning day, stores the busy events on success, records the error otherwise (payload kept); `Load` returns the meetings and the calendar status; a payload for another day is ignored.
 - Config `[calendar] calendars`, `poll`; the TUI poll loop (background command, `R` fetches now, startup shows the cache first).
 - Today: meetings (D41), busy placement and ⚠ (D42), `r` (D43), header status (D44).
@@ -451,6 +452,22 @@ Plan 5a decisions made during execution (in the code): keys on a timeline row ac
   - the height-budget test with Task detail, an open overlay and the banner; detail opened from Today when its task is deleted; Today at narrow widths
   - undo of `+`/`-`; a resize past the day end; fine-tune after midnight through the UI; `ctrl+z` while a block is picked up; the new-day reset of a pick-up; the "stopped moving … its task is gone" status
   - `TestPlanningNudges` reaches the closed candidate with five `j` presses; select it by id instead
+
+## Carry-forward from Plan 5b review
+
+Plan 5b merged 2026-10-13 (D40–D45). The helper's first real run (`make install`, `tt-cal calendars` for the permission prompt, calendar names into `[calendar] calendars`) is the user's.
+
+- **On friction:**
+  - `R` or a new planning day while a fetch is running is dropped, not queued: right at day_start the in-flight fetch may be yesterday's, so today's meetings can be missing for up to one poll. An "again" flag (like `pick.saveAgain`) fixes it.
+  - Two calendars with the same name (e.g. "Calendar" in iCloud and Google) can't be told apart: `tt-cal calendars` prints names only and `--calendars` takes both.
+  - Every poll writes `integration_state` (even an unchanged failure), so the TUI reloads every poll; skip the write when nothing changed if it ever matters.
+  - With `poll` under 30s the stale marker can read `cal just now`.
+  - `r` with no free slot on a block starting before the working hours leaves the ghost on the cursor's row, not on the block (`pickUpBlock` keeps the cursor when the block's start has no row).
+  - `m ⏎` on a block outside the working hours gives the `fits` error, not `unchanged` (the unchanged check runs after `fits`).
+  - A refused drop's restore overwrites a pick-up started in the milliseconds before the refusal lands; guard on `carry == nil`.
+- **Small (helper):** a bare `--calendars` with no names passes `[]` to EventKit (Go never sends it); duplicate names add a calendar twice; `nonisolated(unsafe)` needs Swift 5.10+; exit 3 with empty stderr reads `unknown calendar ""`.
+- **Small (code):** `plural`'s doc comment sits above `oneLine` in `internal/tui/common.go`; the ⚠ count clones the blocks each render (a counting loop is clearer); `TestTimeoutSaysWhatToDo` races a 500ms timeout against script startup (20/20 under `-race`; bump to 2s if it flakes).
+- **Tests to add when touched:** `calSyncedMsg` with a store error (loop continues, status shows it); a current-`seq` tick while a fetch runs; two meeting bands in one row; a ghost over a row with a block and a meeting; the scroll keeping the cursor when the window shrinks.
 
 ## UI tweaks backlog (from use; not yet scheduled)
 
