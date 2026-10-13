@@ -18,10 +18,10 @@ A staff engineer's personal planner: capture asks fast (`tt add` / quick-add), t
 | 4a Find & browse: filter DSL + fuzzy search, switchable grouping, placement rule, row cache (spec "Plan 4 split") | merged |
 | 4b Edit & detail: Task detail (children add/reorder), `e` edit line, `$EDITOR` notes, open link, `tt add` from stdin, plus the "Carry-forward from Plan 4a review" items | merged |
 | 5a Today & blocking: D34 (amended), D35 Today home + Log rename, D36 pick-up/drop placement, D37 nudges, D38 timeline, `SetBlockSpan`, shared height budget (spec "Plan 5 split") | merged |
-| 5b Calendar: `tt-cal` Swift EventKit helper (spike passed), `CalendarSource`, poll loop + cache, meetings on the timeline, ⚠ conflicts, freshness indicator, real `tea.Program` test, plus the "Carry-forward from Plan 5a review" items marked Plan 5b | **next** — designed (D40–D44, spec "Plan 5 split" → Plan 5b); written spec awaiting the user's review, then writing-plans → SDD |
+| 5b Calendar: `tt-cal` Swift EventKit helper (spike passed), `CalendarSource`, poll loop + cache, meetings on the timeline, ⚠ conflicts, freshness indicator, real `tea.Program` test, plus the "Carry-forward from Plan 5a review" items marked Plan 5b | **executing** — D40–D44 approved 2026-10-13 (one piece, not split); verified plan `docs/superpowers/plans/2026-10-13-tt-plan-5b-calendar.md` (6 tasks), SDD in worktree `plan-5b` |
 | 6 GitHub reviews lane (direct requests only, `requested_at`, auto-close) | later |
 
-Since 5a: D39 (merged) — blocks only inside working hours (`[work_hours]`, replaces `[timeline]`), Today shows only those hours. Plan 5b handoff: the user will review D40–D44 at the start of the next session; then write the verified plan. The Swift helper can only be compiled in the scratchpad (no EventKit prompt there); its first real run and a check against the real calendar are the user's, done together after the helper task.
+Since 5a: D39 (merged) — blocks only inside working hours (`[work_hours]`, replaces `[timeline]`), Today shows only those hours. Plan 5b: the Swift helper is only compiled while implementing (into `$TMPDIR`, usage errors only); its first real run (`tt-cal calendars`, the permission prompt) and a check against the real calendar are the user's, done together after the merge (the plan's "After the last task").
 
 The UI tweaks backlog in the spec (tab skips empty pane, framed/polished panes) is wanted **later, batched** — don't schedule it unasked.
 

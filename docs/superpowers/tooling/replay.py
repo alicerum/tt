@@ -8,6 +8,7 @@ Each task's Create/Patch blocks are applied, then gofmt/vet/test must pass and t
 task's commit runs. At the end the tree must equal SCRATCH_REPO's BRANCH."""
 import re, subprocess, sys, os
 DOC, ORIGIN, SCRATCH, WORK, BRANCH = sys.argv[1:6]
+WORK = os.path.abspath(WORK)  # git apply runs inside WORK
 def sh(cmd, cwd=WORK, check=True):
     r = subprocess.run(cmd, cwd=cwd, shell=isinstance(cmd, str), capture_output=True, text=True)
     if check and r.returncode:
@@ -21,6 +22,9 @@ for i, t in enumerate(tasks, 1):
     lines = t.split("\n")
     j = 0
     while j < len(lines):
+        x = re.match(r"^Make it executable: `([^`]+)`", lines[j])
+        if x:
+            os.chmod(os.path.join(WORK, x.group(1)), 0o755)
         m = re.match(r"^(Create|Patch) `([^`]+)`", lines[j])
         if m:
             j += 2
