@@ -48,6 +48,7 @@ go test ./...                      # all packages
 go test -race ./internal/tui/ ./internal/app/
 gofmt -l . && go vet ./...
 make install                       # tt + tt-cal into ~/.local/bin (make build: ./bin; make clean)
+make config                        # config.example.toml (all defaults) → ~/.config/tt/config.toml, if none yet
 TT_DB=/tmp/x.db TT_CONFIG=/nonexistent ./tt   # throwaway database
 ```
 

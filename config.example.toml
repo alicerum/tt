@@ -1,0 +1,45 @@
+# tt config: every value below is the default. Copy it to
+# ~/.config/tt/config.toml (`make config` does, if you have none yet) and
+# change what you need; a key you leave out keeps its default. Unknown keys
+# are errors, so typos surface.
+
+# When a new planning day begins (D19): work before it still counts as the
+# previous day.
+day_start = "04:00"
+
+# Priority levels, most urgent first (1 to 9 of them). Quick-add's !1, !2, …
+# pick them by position.
+[[priorities]]
+name = "P1"
+definition = "someone is blocked / committed this week"
+
+[[priorities]]
+name = "P2"
+definition = "important this month"
+
+[[priorities]]
+name = "P3"
+definition = "worth doing eventually"
+
+# How long each size takes: a block's default length (D24).
+[sizes]
+s = "1h"
+m = "4h"
+l = "8h"
+xl = "40h"
+
+[planning]
+unsized_block = "30m" # default block length for unsized tasks (D24)
+rollover_alert = 3    # rollovers before a task is flagged (D10a)
+
+# Today shows these hours, and blocks must fit inside them (D39).
+[work_hours]
+start = "08:00"
+end = "19:00"
+
+# Meetings from macOS Calendar (D40). None listed: no calendar. `tt-cal
+# calendars` prints the names to copy here (its first run asks for access).
+[calendar]
+calendars = []
+# calendars = ["Work"]
+poll = "2m" # how often the calendar is fetched; 10s or more
