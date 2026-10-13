@@ -24,7 +24,9 @@ var (
 	// styleGhostAlert is a ghost block over a meeting (D42): selected, in the alert colour.
 	styleGhostAlert = lipgloss.NewStyle().Reverse(true).Foreground(lipgloss.Color("3"))
 	styleClosed     = lipgloss.NewStyle().Strikethrough(true).Faint(true)
-	styleBanner     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
+	// styleLinked is a review request that already has a task (D51).
+	styleLinked = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	styleBanner = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
 )
 
 // index holds lookups derived from one loaded state.
@@ -34,12 +36,19 @@ type index struct {
 	inInbox    map[int64]bool
 	requesters []string // most used first
 	tags       []string // most used first
+	// reviewTask is the task of each review request that has one and didn't
+	// drop it, by external id (D51).
+	reviewTask map[string]domain.Task
 }
 
 func buildIndex(st app.State) index {
-	idx := index{children: map[int64][]domain.Task{}, cand: map[int64]domain.Candidate{}, inInbox: map[int64]bool{}}
+	idx := index{children: map[int64][]domain.Task{}, cand: map[int64]domain.Candidate{}, inInbox: map[int64]bool{},
+		reviewTask: map[string]domain.Task{}}
 	reqCount, tagCount := map[string]int{}, map[string]int{}
 	for _, t := range st.Snapshot.Tasks() {
+		if t.Source != nil && t.Source.Kind == domain.SourceGitHub && t.Status != domain.StatusDropped {
+			idx.reviewTask[t.Source.ID] = t
+		}
 		if t.ParentID != 0 {
 			idx.children[t.ParentID] = append(idx.children[t.ParentID], t)
 		}

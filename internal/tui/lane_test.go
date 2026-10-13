@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -49,10 +50,8 @@ func TestReviewsLaneOnToday(t *testing.T) {
 	h.keys("w")
 	h.mustSee("j/k move · p pin · o open PR · w back")
 	h.keys("j", "p") // #877
-	h.mustSee(`pinned "Review #877: Bump go" · P2 S`, "REVIEWS · 2 waiting", "Review #877: Bump go")
-	if got := h.m.lane.selected; got != "acme/backend#915" {
-		t.Errorf("the cursor stays at the same index, now on #915: %q", got)
-	}
+	h.mustSee(`pinned "Review #877: Bump go" · P2 S`, "REVIEWS · 3 waiting", "Review #877: Bump go")
+	h.keys("j") // to #915
 	if l := h.lineWith("Review #877"); !strings.Contains(l, "[P2 S]") {
 		t.Errorf("the review is a candidate with D48's defaults: %q", l)
 	}
@@ -107,10 +106,13 @@ func TestReviewsLaneInTheLog(t *testing.T) {
 		t.Errorf("esc from the lane: screen %d, lane focused %v", h.m.screen, h.m.lane.focused)
 	}
 
-	// Done by hand while GitHub still asks: back in the lane (D49).
+	// Done by hand while GitHub still asks: the row stays marked (D51), p reopens.
 	h.keys("tab", "x")
 	h.mustSee(`✓ "Review #901: Add idempotency key"`, "REVIEWS · 3 waiting")
-	h.keys("w", "k", "p") // the cursor stayed on #877; #901 is back above it
+	if l := h.lineWith("#901 api"); !strings.Contains(l, "· #2") {
+		t.Errorf("a done review stays marked: %q", l)
+	}
+	h.keys("w", "p") // the cursor stayed on #901
 	if tasks := h.m.state.Snapshot.Tasks(); len(tasks) != 2 || h.task(tasks[1].ID).Status != domain.StatusOpen {
 		t.Errorf("p reopens the review's task: %+v", tasks)
 	}
@@ -133,11 +135,15 @@ func TestReviewsLaneEmptyAndOff(t *testing.T) {
 	h.m.state.GitHub = app.GitHubState{SetUp: true, Err: "not logged in · gh auth login"}
 	h.mustSee("REVIEWS · not fetched yet")
 
-	// The lane's last request pinned: the focus goes back.
+	// The lane emptied by a fetch: the focus goes back.
 	h.setReviews(h.reviewItem("acme/api", 901, "Add idempotency key", "ana", time.Hour))
 	h.keys("w", "p")
+	if !h.m.lane.focused {
+		t.Error("p keeps the lane's focus: the pinned request stays in it (D51)")
+	}
+	h.setReviews()
 	if h.m.lane.focused {
-		t.Error("the lane emptied by p gives the focus back")
+		t.Error("the lane emptied by a fetch gives the focus back")
 	}
 	h.mustSee("REVIEWS · none waiting")
 }
@@ -196,5 +202,52 @@ func TestReviewRowsFitTheirColumn(t *testing.T) {
 	}
 	if got := waited(h.clock.now, h.clock.now.Add(time.Minute)); got != "now" {
 		t.Errorf("a request from the future (clock skew) waits %q", got)
+	}
+}
+
+func TestReviewsWithATaskAreMarked(t *testing.T) {
+	h := newGHHarness(t, config.Default())
+	threeReviews(h)
+	h.keys("w", "j", "p")                                                    // #877
+	h.mustSee(`pinned "Review #877: Bump go" · P2 S`, "REVIEWS · 3 waiting") // it stays in the lane (D51)
+	if l := h.lineWith("#877 photos"); !strings.HasSuffix(strings.TrimRight(l, " "), "@tom  1d · #1") {
+		t.Errorf("a review with a task names it: %q", l)
+	}
+	if h.m.lane.selected != "acme/photos#877" {
+		t.Errorf("the cursor stays on the pinned review: %q", h.m.lane.selected)
+	}
+	on := strings.Split(styleLinked.Render("x"), "x")[0]
+	if line := h.m.reviewLine(h.m.reviews()[1], 100, false); on == "" || !strings.HasPrefix(line, on) {
+		t.Errorf("a review with a task is coloured: %q", line)
+	}
+	if line := h.m.reviewLine(h.m.reviews()[0], 100, false); strings.Contains(line, on) || strings.Contains(line, " · #") {
+		t.Errorf("a review without a task is plain: %q", line)
+	}
+
+	h.keys("p")
+	h.mustSee("already pinned · #1")
+	if len(h.m.state.Snapshot.Tasks()) != 1 || len(h.m.undo) != 1 {
+		t.Errorf("p on a pinned review changes nothing: %d tasks, %d undos", len(h.m.state.Snapshot.Tasks()), len(h.m.undo))
+	}
+
+	ctx := context.Background()
+	if _, err := h.svc.Done(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R")
+	if l := h.lineWith("#877 photos"); !strings.Contains(l, "· #1") {
+		t.Errorf("a done task still marks its review: %q", l)
+	}
+	if _, err := h.svc.Drop(ctx, 1, ""); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R")
+	if l := h.lineWith("#877 photos"); strings.Contains(l, "· #1") {
+		t.Errorf("a dropped task doesn't mark its review: %q", l)
+	}
+	h.keys("p") // the lane kept its focus: reopens the dropped task
+	h.mustSee(`pinned "Review #877: Bump go"`)
+	if got := h.task(1); got.Status != domain.StatusOpen {
+		t.Errorf("p on a dropped review's row reopens its task: %v", got.Status)
 	}
 }

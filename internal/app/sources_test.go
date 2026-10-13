@@ -188,8 +188,8 @@ func TestSyncSourcesAutoCloses(t *testing.T) {
 		t.Fatal(err)
 	}
 	edit := mustUndo(t)(s.Edit(ctx, aID, "Review #901 with notes"))
-	if got := ids(mustLoad(t, s).GitHub.Reviews); len(got) != 1 || got[0] != "acme/api#915" {
-		t.Fatalf("lane = %v; want only #915: reviews with an open task leave it, a closed one comes back (D49)", got)
+	if got := ids(mustLoad(t, s).GitHub.Reviews); len(got) != 3 {
+		t.Fatalf("lane = %v; want every request, with a task or not (D51)", got)
 	}
 
 	// D20a: #901 is no longer requested; #877 still is.

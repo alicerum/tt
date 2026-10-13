@@ -158,7 +158,7 @@ func (s *Service) Load(ctx context.Context) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	gh, err := s.githubState(ctx, snap)
+	gh, err := s.githubState(ctx)
 	if err != nil {
 		return State{}, err
 	}

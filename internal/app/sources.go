@@ -31,8 +31,8 @@ func (s *Service) SourceSetUp() bool { return s.src != nil }
 // GitHubState is what the views show of GitHub (D49, D50).
 type GitHubState struct {
 	SetUp bool
-	// Reviews is the Reviews lane: the requests with no open task, longest
-	// waiting first.
+	// Reviews is the Reviews lane: every request awaiting me, with or
+	// without a task (D51), longest waiting first.
 	Reviews     []domain.SourceItem
 	LastSuccess time.Time // zero: never fetched
 	Err         string    // why the last fetch failed; "" once one succeeds
@@ -204,10 +204,9 @@ func (s *Service) PinSource(ctx context.Context, kind, extID string) (domain.Tas
 	}, nil
 }
 
-// githubState reads the last fetch and the lane: the stored items without an
-// open task in snap (a pinned review is a candidate instead; a closed one
-// whose PR still requests me is back, D49).
-func (s *Service) githubState(ctx context.Context, snap domain.Snapshot) (GitHubState, error) {
+// githubState reads the last fetch and the lane: every stored item, whether
+// it has a task or not (D51; the TUI marks the ones that have one).
+func (s *Service) githubState(ctx context.Context) (GitHubState, error) {
 	if s.src == nil {
 		return GitHubState{}, nil
 	}
@@ -220,20 +219,8 @@ func (s *Service) githubState(ctx context.Context, snap domain.Snapshot) (GitHub
 	if ok {
 		gs.LastSuccess, gs.Err = in.LastSuccessAt, in.LastError
 	}
-	items, err := s.store.SourceItems(ctx, kind)
-	if err != nil {
+	if gs.Reviews, err = s.store.SourceItems(ctx, kind); err != nil {
 		return GitHubState{}, err
-	}
-	planned := map[string]bool{}
-	for _, t := range snap.Tasks() {
-		if t.Source != nil && t.Source.Kind == kind && t.Status == domain.StatusOpen {
-			planned[t.Source.ID] = true
-		}
-	}
-	for _, i := range items {
-		if !planned[i.ExternalID] {
-			gs.Reviews = append(gs.Reviews, i)
-		}
 	}
 	slices.SortFunc(gs.Reviews, func(a, b domain.SourceItem) int {
 		return cmp.Or(a.WaitingSince().Compare(b.WaitingSince()), cmp.Compare(a.ExternalID, b.ExternalID))

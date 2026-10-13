@@ -38,8 +38,8 @@ func TestPinSourceCreatesTheTask(t *testing.T) {
 	if !pinned(t, s, task.ID) {
 		t.Error("the review is a candidate now")
 	}
-	if snap := mustLoad(t, s); snap.GitHub.Reviews != nil || len(snap.Snapshot.Inbox()) != 0 {
-		t.Errorf("a pinned review leaves the lane (D49) and skips the Inbox: lane %v", ids(snap.GitHub.Reviews))
+	if snap := mustLoad(t, s); len(snap.GitHub.Reviews) != 1 || len(snap.Snapshot.Inbox()) != 0 {
+		t.Errorf("a pinned review stays in the lane (D51) and skips the Inbox: lane %v", ids(snap.GitHub.Reviews))
 	}
 	if err := undo(ctx); err != nil {
 		t.Fatal(err)
@@ -141,8 +141,8 @@ func TestPinSourceReopensItsTask(t *testing.T) {
 	if again.ID != first.ID || got.Status != domain.StatusOpen || got.ClosedBy != "" || !got.ClosedAt.IsZero() || got.Size != domain.SizeM {
 		t.Errorf("reopened = %+v; want the same task, open, keeping its own size", got)
 	}
-	if !pinned(t, s, first.ID) || mustLoad(t, s).GitHub.Reviews != nil {
-		t.Error("the reopened review is a candidate, not in the lane")
+	if !pinned(t, s, first.ID) || len(mustLoad(t, s).GitHub.Reviews) != 1 {
+		t.Error("the reopened review is a candidate, and still in the lane (D51)")
 	}
 	if err := undo(ctx); err != nil {
 		t.Fatalf("undo of the reopen (the block was there before): %v", err)

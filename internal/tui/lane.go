@@ -110,17 +110,26 @@ func (m *Model) laneView(width int) []string {
 }
 
 // reviewLine renders `#901 api  Add idempotency key… @ana  3d`: the repo
-// without its owner, the title cut to fit, the author and the wait.
+// without its owner, the title cut to fit, the author and the wait. A
+// request with a task that isn't dropped names it (` · #11`) and is
+// coloured (D51).
 func (m *Model) reviewLine(i domain.SourceItem, width int, selected bool) string {
 	repo := i.Repo
 	if _, name, ok := strings.Cut(repo, "/"); ok {
 		repo = name
 	}
 	right := " @" + domain.OneLine(i.Author) + "  " + waited(m.svc.Now(), i.WaitingSince())
+	t, linked := m.idx.reviewTask[i.ExternalID]
+	if linked {
+		right += fmt.Sprintf(" · #%d", t.ID)
+	}
 	left := fmt.Sprintf("  #%d %s  %s", i.Number, domain.OneLine(repo), domain.OneLine(i.Title))
 	line := pad(left, width-ansi.StringWidth(right)) + right
-	if selected {
+	switch {
+	case selected:
 		return styleSelected.Render(pad(line, width))
+	case linked:
+		return styleLinked.Render(line)
 	}
 	return line
 }
@@ -189,6 +198,12 @@ func (m *Model) pinReview() tea.Cmd {
 		return nil
 	}
 	i := m.reviews()[m.lane.cursor]
+	if t, ok := m.idx.reviewTask[i.ExternalID]; ok && t.Status == domain.StatusOpen {
+		if _, pinned := m.idx.cand[t.ID]; pinned {
+			m.setStatus(fmt.Sprintf("already pinned · #%d", t.ID))
+			return nil
+		}
+	}
 	label := fmt.Sprintf("%q", domain.ReviewTitle(i))
 	svc, ctx, levels := m.svc, m.ctx, m.svc.Config().Priorities
 	return func() tea.Msg {
