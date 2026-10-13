@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"tt/internal/config"
+	"tt/internal/domain"
 )
 
 // on is the escape sequence that starts style st.
@@ -115,18 +116,18 @@ func TestTheHighlightRunsToTheEndOfTheRow(t *testing.T) {
 	h.keys("R")
 	reversedToTheEnd(t, "the cursor's row over a struck-through block", h.m.timelineRow(h.m.today.cursor, 60))
 
-	parent := h.add("Parent !1 ~l")
-	kid := h.add("Kid ~s")
-	if _, err := h.svc.SetParent(ctx, kid.ID, parent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.svc.Done(ctx, parent.ID); err != nil { // the kid is listed on its own, with a dim ↳ #parent
+	// A closed Log row nests the closed style under the highlight.
+	shipped := h.add("Shipped ~s")
+	if _, err := h.svc.Done(ctx, shipped.ID); err != nil {
 		t.Fatal(err)
 	}
 	h.keys("R", "L")
-	r, ok := h.m.selectedRow()
-	if !ok || r.task.ID != kid.ID || r.orphan == 0 {
-		t.Fatalf("the Log's cursor is on the orphaned kid: %+v", r)
+	if err := h.m.applyFilter("shipped is:done"); err != nil {
+		t.Fatal(err)
 	}
-	reversedToTheEnd(t, "a Log row with a dim suffix", h.m.rowLine(r, 60, true))
+	r, ok := h.m.selectedRow()
+	if !ok || r.task.ID != shipped.ID || r.task.Status != domain.StatusDone {
+		t.Fatalf("the Log's cursor is on the done task: %+v", r)
+	}
+	reversedToTheEnd(t, "a selected closed Log row", h.m.rowLine(r, 60, true))
 }

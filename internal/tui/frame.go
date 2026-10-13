@@ -86,7 +86,7 @@ func cutHints(hints string, width int) string {
 	if help == "" {
 		return ansi.Truncate(left, width, "…")
 	}
-	return left + strings.Repeat(" ", max(width-ansi.StringWidth(left)-len(help), 1)) + help
+	return left + strings.Repeat(" ", max(width-ansi.StringWidth(left)-ansi.StringWidth(help), 1)) + help
 }
 
 // framed reports whether panes get frames: not when the body is too short

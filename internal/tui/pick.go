@@ -359,6 +359,11 @@ func (m *Model) paneVisible(pn pane) int {
 	return max(n, 1)
 }
 
+// appliedFilterLine is the dim row that shows an applied filter (D56).
+func appliedFilterLine(text string) string {
+	return styleDim.Render("filter › " + text + " · esc clears")
+}
+
 // filterLines is what the backlog's frame shows above its rows (D56): the
 // filter being typed (with its error and suggestions), or the applied
 // filter, dim; nothing without a filter.
@@ -367,7 +372,7 @@ func (m *Model) filterLines() []string {
 		return strings.Split(fb.view(m), "\n")
 	}
 	if m.pick.filtered() {
-		return []string{styleDim.Render("filter › " + m.pick.filterText + " · esc clears")}
+		return []string{appliedFilterLine(m.pick.filterText)}
 	}
 	return nil
 }

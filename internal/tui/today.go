@@ -23,6 +23,10 @@ const (
 	focusCandidates
 )
 
+// nothingPinned is what Today says of an empty candidates pane, in the pane
+// and as the status when tab skips it (D57).
+const nothingPinned = "nothing pinned · L opens the log to pick"
+
 // todayState is the Today screen (D35): the timeline (D38) beside today's
 // candidates. The candidates pane shares the Log's candidates rows and cursor.
 type todayState struct {
@@ -398,7 +402,7 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	switch key {
 	case "tab":
 		if td.focus == focusTimeline && len(m.rows(paneToday)) == 0 { // D57
-			m.setStatus("nothing pinned · L opens the log to pick")
+			m.setStatus(nothingPinned)
 			return nil
 		}
 		td.focus = 1 - td.focus
@@ -516,7 +520,7 @@ func (m *Model) todayView() string {
 	lw := m.width / 2
 	rw := m.width - lw
 	left := m.box(m.timelineTitle(), m.timelineLines(m.inner(lw)), lw, m.bodyHeight(), m.timelineFocused())
-	right := m.paneBox(paneToday, "CANDIDATES", "nothing pinned · L opens the log to pick", nil, rw, m.today.focus == focusCandidates && !m.lane.focused)
+	right := m.paneBox(paneToday, "CANDIDATES", nothingPinned, nil, rw, m.today.focus == focusCandidates && !m.lane.focused)
 	right = append(right, m.laneView(rw)...)
 	return beside(left, right)
 }

@@ -106,9 +106,6 @@ func (m *Model) laneView(width int) []string {
 	for i := m.lane.offset; i < len(gs.Reviews) && len(rows) < n-2; i++ {
 		rows = append(rows, m.reviewLine(gs.Reviews[i], m.inner(width), m.lane.focused && i == m.lane.cursor))
 	}
-	if !m.framed() {
-		return append([]string{"", styleTitle.Render(title)}, rows...)
-	}
 	return frame(title, rows, width, n, m.lane.focused)
 }
 

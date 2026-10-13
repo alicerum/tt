@@ -100,7 +100,7 @@ func (m *Model) peopleFilterLines() []string {
 		return []string{f.view(m)}
 	}
 	if m.people.filter != "" {
-		return []string{styleDim.Render("filter › " + m.people.filter + " · esc clears")}
+		return []string{appliedFilterLine(m.people.filter)}
 	}
 	return nil
 }

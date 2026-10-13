@@ -102,3 +102,23 @@ func TestARefocusLeavesScreensNotOnShowAlone(t *testing.T) {
 		t.Error("the Log's focus only moves while the Log is on show")
 	}
 }
+
+func TestTypingAFilterKeepsTheFocusThroughAReload(t *testing.T) {
+	h := newLogHarness(t, config.Default())
+	a := h.add("Alpha !1 ~s")
+	h.pinned("Beta !2 ~s")
+	if h.m.pick.focus != paneBacklog {
+		t.Fatal("the focus starts on the backlog")
+	}
+	h.keys("/")
+	if _, err := h.svc.Pin(context.Background(), a.ID); err != nil { // another shell empties the backlog
+		t.Fatal(err)
+	}
+	h.run(h.m.load())
+	if len(h.m.pick.rows[paneBacklog]) != 0 {
+		t.Fatal("the reload emptied the backlog")
+	}
+	if h.m.pick.focus != paneBacklog {
+		t.Error("a reload while the filter is typed leaves the focus alone")
+	}
+}
