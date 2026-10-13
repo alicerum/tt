@@ -383,7 +383,11 @@ func (td *todayState) follow(m *Model) {
 		return
 	}
 	visible, l := m.visibleRows(), td.line(td.cursor)
-	off := min(td.offset, l)
+	top := l
+	if td.cursor == td.tl.nowRow {
+		top-- // the now line above the cursor's row comes into view with it
+	}
+	off := min(td.offset, top)
 	if l >= off+visible {
 		off = l - visible + 1
 	}

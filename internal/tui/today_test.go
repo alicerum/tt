@@ -251,4 +251,14 @@ func TestNowLineSitsAboveItsRow(t *testing.T) {
 	h.clock.now = h.clock.now.Add(10 * time.Minute)
 	h.keys("R")
 	above("09:30") // it moves once the row has passed
+
+	h.send(tea.WindowSizeMsg{Width: 100, Height: 12}) // a short split: the timeline scrolls
+	h.keys("j")                                       // onto the now row (09:30)
+	for range 12 {
+		h.keys("j")
+	}
+	for range 12 {
+		h.keys("k")
+	}
+	above("09:30") // scrolling back up onto the now row shows the line above it too
 }
