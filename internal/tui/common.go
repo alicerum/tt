@@ -132,9 +132,6 @@ func (m *Model) headerView() string {
 	if n := len(m.idx.inInbox); n > 0 {
 		h += styleDim.Render(fmt.Sprintf(" · inbox %d", n))
 	}
-	if m.state.Plan.Committed {
-		h += styleDim.Render(" · plan committed")
-	}
 	return h + m.calendarStatus() + m.githubStatus()
 }
 

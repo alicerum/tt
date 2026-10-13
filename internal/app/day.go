@@ -5,7 +5,6 @@ import (
 	"context"
 	"math"
 	"slices"
-	"time"
 
 	"tt/internal/domain"
 	"tt/internal/store"
@@ -90,40 +89,6 @@ func (s *Service) StartDay(ctx context.Context) (DayResult, error) {
 	return res, nil
 }
 
-// CommitSummary is the finish-line summary of a committed plan (D22).
-type CommitSummary struct {
-	Blocks     int
-	Blocked    time.Duration // total time in blocks
-	Candidates int           // open candidates without a block
-}
-
-// CommitPlan marks today's plan as committed and summarizes it. It starts the
-// day first if needed. Committing again just refreshes the time.
-func (s *Service) CommitPlan(ctx context.Context) (CommitSummary, error) {
-	res, err := s.StartDay(ctx)
-	if err != nil {
-		return CommitSummary{}, err
-	}
-	err = s.store.InTx(ctx, func(x *store.Tx) error { return x.CommitDay(ctx, res.Day, s.clock.Now()) })
-	if err != nil {
-		return CommitSummary{}, err
-	}
-	plan, err := s.Plan(ctx)
-	if err != nil {
-		return CommitSummary{}, err
-	}
-	sum := CommitSummary{Blocks: len(plan.Blocks)}
-	for _, b := range plan.Blocks {
-		sum.Blocked += b.Duration
-	}
-	for _, c := range plan.Candidates {
-		if c.Task.Status == domain.StatusOpen && !c.Blocked {
-			sum.Candidates++
-		}
-	}
-	return sum, nil
-}
-
 // Plan returns today's candidates and blocks. Closed tasks stay among the
 // candidates until the next planning day, so the day's wins remain visible.
 func (s *Service) Plan(ctx context.Context) (domain.Plan, error) {
@@ -170,7 +135,7 @@ func (s *Service) buildPlan(today domain.Day, snap domain.Snapshot, state store.
 	for _, b := range state.Blocks {
 		blocked[b.TaskID] = true
 	}
-	plan := domain.Plan{Day: today, Committed: state.Committed, Blocks: state.Blocks}
+	plan := domain.Plan{Day: today, Blocks: state.Blocks}
 	for _, p := range state.Pins {
 		t, ok := snap.Get(p.TaskID)
 		if !ok {

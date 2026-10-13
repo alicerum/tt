@@ -174,41 +174,6 @@ func TestUndoAfterRolloverConflicts(t *testing.T) {
 	}
 }
 
-func TestCommitPlan(t *testing.T) {
-	s, _ := newService(t) // day not started yet: CommitPlan starts it
-	ctx := context.Background()
-	a := mustAdd(t, s, "A !1 ~s")
-	b := mustAdd(t, s, "B !2 ~s")
-	c := mustAdd(t, s, "C !3 ~s")
-	mustBlock(t, s, a.ID, 10*h, 90*m)
-	mustBlock(t, s, a.ID, 14*h, 30*m)
-	for _, id := range []int64{b.ID, c.ID} {
-		if _, err := s.Pin(ctx, id); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := s.Done(ctx, c.ID); err != nil {
-		t.Fatal(err)
-	}
-	if mustPlan(t, s).Committed {
-		t.Error("plan committed before CommitPlan")
-	}
-	sum, err := s.CommitPlan(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := CommitSummary{Blocks: 2, Blocked: 2 * h, Candidates: 1}
-	if sum != want {
-		t.Errorf("summary = %+v; want %+v", sum, want)
-	}
-	if !mustPlan(t, s).Committed {
-		t.Error("plan not committed after CommitPlan")
-	}
-	if _, err := s.CommitPlan(ctx); err != nil {
-		t.Errorf("committing again: %v", err)
-	}
-}
-
 func TestPlanOrderAndAlert(t *testing.T) {
 	s, clock := startedService(t)
 	s.cfg.RolloverAlert = 1

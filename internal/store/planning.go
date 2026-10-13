@@ -18,9 +18,8 @@ type PinState struct {
 
 // PlanState is the planning data for one day.
 type PlanState struct {
-	Pins      []PinState
-	Blocks    []domain.Block // by start
-	Committed bool
+	Pins   []PinState
+	Blocks []domain.Block // by start
 }
 
 func (x *Tx) GetPin(ctx context.Context, taskID int64) (domain.Pin, bool, error) {
@@ -162,20 +161,6 @@ func (x *Tx) InsertDay(ctx context.Context, day domain.Day, startedAt time.Time)
 	return err
 }
 
-// CommitDay records that day's plan was committed at at.
-func (x *Tx) CommitDay(ctx context.Context, day domain.Day, at time.Time) error {
-	res, err := x.tx.ExecContext(ctx, "UPDATE days SET committed_at = ? WHERE day = ?", formatTime(at), string(day))
-	if err != nil {
-		return err
-	}
-	if n, err := res.RowsAffected(); err != nil {
-		return err
-	} else if n == 0 {
-		return fmt.Errorf("day %s: %w", day, ErrNotFound)
-	}
-	return nil
-}
-
 // CountDone counts tasks marked done with closed_at in [from, to).
 func (x *Tx) CountDone(ctx context.Context, from, to time.Time) (int, error) {
 	var n int
@@ -217,16 +202,8 @@ func (s *Store) LoadPlan(ctx context.Context, day domain.Day) (domain.Snapshot, 
 			return err
 		}
 
-		if state.Blocks, err = queryBlocks(ctx, tx, "WHERE day = ?", string(day)); err != nil {
-			return err
-		}
-		var committed sql.NullString
-		err = tx.QueryRowContext(ctx, "SELECT committed_at FROM days WHERE day = ?", string(day)).Scan(&committed)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		state.Committed = committed.Valid
-		return nil
+		state.Blocks, err = queryBlocks(ctx, tx, "WHERE day = ?", string(day))
+		return err
 	})
 	return snap, state, err
 }

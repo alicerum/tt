@@ -151,7 +151,7 @@ func waited(now, since time.Time) string {
 
 // laneKey handles w, and every key while the lane has the focus. ok is
 // false for a key the screen should handle: it also gives the focus back,
-// so L, B, i, c, esc and the rest keep their screen's meaning (D49).
+// so L, B, i, P, esc and the rest keep their screen's meaning (D49).
 func (m *Model) laneKey(key string) (cmd tea.Cmd, ok bool) {
 	l := &m.lane
 	if !l.focused {

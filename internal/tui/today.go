@@ -341,20 +341,6 @@ func parseSpan(s string, dayStart time.Duration) (start, dur time.Duration, err 
 	return start, dur, nil
 }
 
-// commitPlan commits today's plan and shows the summary (D22, D35).
-func (m *Model) commitPlan() tea.Cmd {
-	svc, ctx := m.svc, m.ctx
-	return func() tea.Msg {
-		sum, err := svc.CommitPlan(ctx)
-		status := "plan committed · no blocks"
-		if sum.Blocks > 0 {
-			status = "plan committed · " + plural(sum.Blocks, "block", "blocks") + " · " + shortDur(sum.Blocked)
-		}
-		status += " · " + plural(sum.Candidates, "candidate", "candidates") + " left"
-		return actionMsg{status: status, err: err}
-	}
-}
-
 // move steps the cursor, stopping at the first and the last row.
 func (td *todayState) move(delta int) {
 	td.cursor = max(0, min(td.cursor+delta, len(td.tl.rows)-1))
@@ -409,8 +395,6 @@ func (m *Model) todayKey(key string) tea.Cmd {
 		return cmd
 	}
 	switch key {
-	case "c":
-		return m.commitPlan()
 	case "tab":
 		td.focus = 1 - td.focus
 		return nil
@@ -711,9 +695,9 @@ func (m *Model) todayHints() string {
 		return fmt.Sprintf("%s %q · j/k move · ⏎ drop · esc cancel", verb, c.task.Title)
 	}
 	if m.today.focus == focusCandidates {
-		return "b block · ⏎ open · u unpin · x done · d drop · e edit · c commit · tab timeline · L log · P people · i inbox · a add · ctrl+z undo · ? help · q quit"
+		return "b block · ⏎ open · u unpin · x done · d drop · e edit · tab timeline · L log · P people · i inbox · a add · ctrl+z undo · ? help · q quit"
 	}
-	hints := "j/k move · m move · +/- size · f fine-tune · u unblock · ⏎ open · x done · c commit · tab candidates · L log · P people · i inbox · ctrl+z undo · ? help"
+	hints := "j/k move · m move · +/- size · f fine-tune · u unblock · ⏎ open · x done · tab candidates · L log · P people · i inbox · ctrl+z undo · ? help"
 	if b, ok := m.today.tl.blockAt(m.today.cursor); ok && m.conflicted(b) {
 		hints = "r re-slot ⚠ · " + hints
 	}
@@ -733,7 +717,6 @@ var todayHelp = []string{
 	"■        a meeting (read-only); a block over one shows ⚠, and placing over one is allowed",
 	"x d D    done (again: reopen) / drop / delete",
 	"e / E    edit the line / the note in $EDITOR · o open the link",
-	"c        commit the plan (again: refresh)",
 	"L        the log (backlog; pick today's work there, B comes back) · i inbox · P people",
 	"w        the Reviews lane: p pins a review (a task Review #n), o opens the PR · w or tab back",
 }

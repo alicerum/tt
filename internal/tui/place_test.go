@@ -205,16 +205,22 @@ func TestAMovedBlockThatVanishesStopsTheMove(t *testing.T) {
 	}
 }
 
-func TestCommitPlan(t *testing.T) {
+// There is no commit step any more (D54): c does nothing on Today, and
+// no hint or help line offers it.
+func TestNoCommitStep(t *testing.T) {
 	h := newHarness(t, config.Default())
-	h.pinned("Waiting !2 ~s")
-	h.keys("c")
-	h.mustSee("plan committed · no blocks · 1 candidate left", "· plan committed")
-
 	a := h.pinned("Alpha !1 ~s")
 	h.block(a.ID, 10*time.Hour, 90*time.Minute)
-	h.keys("tab", "c")
-	h.mustSee("plan committed · 1 block · 1h30m · 1 candidate left")
+	for _, focus := range []string{"timeline", "candidates"} {
+		h.keys("c")
+		h.mustNotSee("committed", "c commit")
+		if h.m.status != "" {
+			t.Errorf("c on the %s says %q", focus, h.m.status)
+		}
+		h.keys("tab")
+	}
+	h.keys("?")
+	h.mustNotSee("commit")
 }
 
 func TestUnpinningABlockedParentIsRefusedInTheTUI(t *testing.T) {

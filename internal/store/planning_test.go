@@ -141,12 +141,6 @@ func TestDays(t *testing.T) {
 		if d, ok, err := x.LatestDayBefore(ctx, "2026-10-12"); err != nil || !ok || d != "2026-10-09" {
 			t.Errorf("LatestDayBefore = %q, %v, %v; want 2026-10-09 (skips the weekend)", d, ok, err)
 		}
-		if err := x.CommitDay(ctx, "2026-10-12", at); err != nil {
-			return err
-		}
-		if err := x.CommitDay(ctx, "2026-10-13", at); !errors.Is(err, ErrNotFound) {
-			t.Errorf("CommitDay on a missing day: %v; want ErrNotFound", err)
-		}
 		return nil
 	})
 }
@@ -214,10 +208,8 @@ func TestLoadPlan(t *testing.T) {
 		if err := x.PutPin(ctx, domain.Pin{TaskID: b, PinnedOn: "2026-10-12"}); err != nil { // today → 1
 			return err
 		}
-		if _, err := x.InsertBlock(ctx, domain.Block{TaskID: b, Day: "2026-10-12", Start: 10 * time.Hour, Duration: time.Hour}); err != nil {
-			return err
-		}
-		return x.CommitDay(ctx, "2026-10-12", at)
+		_, err := x.InsertBlock(ctx, domain.Block{TaskID: b, Day: "2026-10-12", Start: 10 * time.Hour, Duration: time.Hour})
+		return err
 	})
 
 	snap, state, err := s.LoadPlan(context.Background(), "2026-10-12")
@@ -234,14 +226,14 @@ func TestLoadPlan(t *testing.T) {
 	if diff := cmp.Diff(want, state.Pins); diff != "" {
 		t.Errorf("pins (-want +got):\n%s", diff)
 	}
-	if len(state.Blocks) != 1 || state.Blocks[0].TaskID != b || !state.Committed {
+	if len(state.Blocks) != 1 || state.Blocks[0].TaskID != b {
 		t.Errorf("state = %+v", state)
 	}
 	_, state, err = s.LoadPlan(context.Background(), "2026-10-13")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Committed || len(state.Blocks) != 0 {
+	if len(state.Blocks) != 0 {
 		t.Errorf("unplanned day state = %+v", state)
 	}
 }
