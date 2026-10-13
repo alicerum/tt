@@ -69,9 +69,8 @@ func (l *laneState) follow(m *Model) {
 
 // laneLines is how many lines the lane takes in its column: its frame and one
 // row per request, up to a third of the body but never fewer than laneMinRows
-// (D59). The pane above keeps its
-// frame and three rows, so in a short column the lane gives up rows first,
-// then disappears; 0 when GitHub is off.
+// (D59). The pane above keeps its frame and three rows, so in a short column
+// the lane gives up rows first, then disappears; 0 when GitHub is off.
 func (m *Model) laneLines() int {
 	if !m.state.GitHub.SetUp {
 		return 0
