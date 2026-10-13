@@ -242,7 +242,7 @@ func (m *Model) detailView() []string {
 		return nil
 	}
 	if d.cursor == 0 {
-		head[0] = styleSelected.Render(pad(head[0], m.inner(m.width)))
+		head[0] = within(styleSelected, pad(head[0], m.inner(m.width)))
 	}
 	lines := head
 	if d.rows[0].ParentID == 0 {
@@ -277,10 +277,10 @@ func (m *Model) childLine(c domain.Task, selected bool) string {
 	}
 	line = pad(line, m.inner(m.width))
 	if c.Status != domain.StatusOpen {
-		line = styleClosed.Render(line)
+		line = within(styleClosed, line)
 	}
 	if selected {
-		line = styleSelected.Render(line)
+		line = within(styleSelected, line)
 	}
 	return line
 }

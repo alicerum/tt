@@ -693,10 +693,10 @@ func (m *Model) rowLine(r row, width int, selected bool) string {
 	}
 	line := pad(b.String(), width)
 	if t.Status != domain.StatusOpen {
-		line = styleClosed.Render(line)
+		line = within(styleClosed, line)
 	}
 	if selected {
-		line = styleSelected.Render(line)
+		line = within(styleSelected, line) // the highlight runs to the end over styled parts (D58)
 	}
 	return line
 }

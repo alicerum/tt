@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"tt/internal/app"
@@ -571,37 +572,54 @@ func (m *Model) timelineRow(i, width int) string {
 	}
 	if r.outside {
 		b := r.blocks[0]
-		line := pad(" "+clock(r.start)+" ▓ "+m.blockText(b, true)+" · outside of working hours", width)
+		line := pad(" "+clock(r.start)+" "+m.blockStyle(b).Render("▓")+" "+m.blockText(b, true)+" · outside of working hours", width)
 		if m.timelineFocused() && i == td.cursor {
-			return styleSelected.Render(line)
+			return within(styleSelected, line)
 		}
-		return styleDim.Render(line)
+		return within(styleDim, line)
 	}
 	var labels []string
-	carried := false
+	var first, carried *domain.Block // the first block starting in the row; one carrying on into it
 	for _, b := range r.blocks {
 		if b.Start >= r.start {
 			labels = append(labels, m.blockLabel(b))
+			if first == nil {
+				first = &b
+			}
 		} else {
-			carried = true
+			carried = &b
 		}
 	}
 	var parts []string
 	switch {
-	case len(labels) > 0:
-		parts = append(parts, "▓ "+strings.Join(labels, " · "))
-	case carried:
-		parts = append(parts, "▓")
+	case first != nil:
+		parts = append(parts, m.blockStyle(*first).Render("▓")+" "+strings.Join(labels, " · "))
+	case carried != nil:
+		parts = append(parts, m.blockStyle(*carried).Render("▓"))
 	}
 	parts = append(parts, m.meetingParts(r)...)
 	line := pad(" "+clock(r.start)+" "+strings.Join(parts, " · "), width)
 	if now := td.tl.now; now >= 0 && r.start+rowLen <= now {
-		line = styleDim.Render(line) // the past
+		line = within(styleDim, line) // the past
 	}
 	if m.timelineFocused() && i == td.cursor {
-		line = styleSelected.Render(line)
+		line = within(styleSelected, line)
 	}
 	return line
+}
+
+// blockColours are the timeline's block colours (D58): ANSI green, blue,
+// magenta, cyan, bright blue and bright magenta; never yellow or red, which
+// ⚠ and errors use.
+var blockColours = []string{"2", "4", "5", "6", "12", "13"}
+
+// blockStyle is block b's colour, chosen by its task's id so it never
+// changes during the day; a closed (or missing) task's block is dim.
+func (m *Model) blockStyle(b domain.Block) lipgloss.Style {
+	if t, ok := m.state.Snapshot.Get(b.TaskID); !ok || t.Status != domain.StatusOpen {
+		return styleDim
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(blockColours[b.TaskID%int64(len(blockColours))]))
 }
 
 // timelineFocused: the timeline has the focus, not its candidates or the
@@ -631,11 +649,11 @@ func (m *Model) ghostRow(r tlRow, g domain.Block, width int) string {
 	line := pad(text, width)
 	switch {
 	case m.fits(g) != nil:
-		return styleError.Render(line)
+		return within(styleError, line)
 	case overMeeting:
-		return styleGhostAlert.Render(line)
+		return within(styleGhostAlert, line)
 	}
-	return styleSelected.Render(line)
+	return within(styleSelected, line)
 }
 
 // meetingParts renders row r's meetings (D41): ■ and the title of a band
@@ -656,7 +674,7 @@ func (m *Model) meetingParts(r tlRow) []string {
 		if bd.more > 0 {
 			s += fmt.Sprintf(" +%d", bd.more)
 		}
-		out = append(out, s)
+		out = append(out, styleDim.Render(s)) // one neutral style, never like a block (D58)
 	}
 	return out
 }
@@ -677,14 +695,15 @@ func (m *Model) blockText(b domain.Block, times bool) string {
 	if times {
 		s = span(b) + " " + s
 	}
-	if m.conflicted(b) {
-		s += " ⚠" // D18, D42: r re-slots it
-	}
 	switch t.Status {
 	case domain.StatusDone:
 		return styleClosed.Render(s + " ✓")
 	case domain.StatusDropped:
 		return styleClosed.Render(s + " ✗")
+	}
+	s = m.blockStyle(b).Render(s) // its task's colour (D58)
+	if m.conflicted(b) {
+		s += styleAlert.Render(" ⚠") // D18, D42: r re-slots it
 	}
 	return s
 }

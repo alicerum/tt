@@ -284,7 +284,7 @@ func (m *Model) personLine(pr person, width int, cursor bool) string {
 	line := pad(fmt.Sprintf("  %s · %d open", pr.name, pr.open), width)
 	switch {
 	case cursor && !m.people.onTasks:
-		return styleSelected.Render(line)
+		return within(styleSelected, line)
 	case cursor:
 		return styleTitle.Render(line) // whose tasks the right pane shows
 	case pr.open == 0:

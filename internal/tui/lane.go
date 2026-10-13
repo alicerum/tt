@@ -130,7 +130,7 @@ func (m *Model) reviewLine(i domain.SourceItem, width int, selected bool) string
 	line := pad(left, width-ansi.StringWidth(right)) + right
 	switch {
 	case selected:
-		return styleSelected.Render(pad(line, width))
+		return within(styleSelected, pad(line, width))
 	case linked:
 		return styleLinked.Render(line)
 	}
