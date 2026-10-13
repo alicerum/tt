@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -250,18 +249,6 @@ func plusChildren(n int) string {
 }
 
 // plural renders "1 match" / "3 matches".
-// oneLine makes text from outside (a meeting title) safe to render in a row:
-// every control character (newline, tab, ESC, BEL, C1) becomes a space, runs
-// of spaces collapse, the ends are trimmed.
-func oneLine(s string) string {
-	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return ' '
-		}
-		return r
-	}, s)), " ")
-}
-
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return "1 " + one

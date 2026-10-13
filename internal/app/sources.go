@@ -74,6 +74,10 @@ func (s *Service) SyncSources(ctx context.Context) ([]domain.Task, error) {
 		live := map[string]bool{}
 		var set []domain.SourceItem
 		for _, i := range items {
+			// Text from outside is stored as one clean line, so no view or
+			// task title built from it can carry a control character.
+			i.ExternalID, i.Title, i.URL = domain.OneLine(i.ExternalID), domain.OneLine(i.Title), domain.OneLine(i.URL)
+			i.Author, i.Repo = domain.OneLine(i.Author), domain.OneLine(i.Repo)
 			if live[i.ExternalID] {
 				continue
 			}

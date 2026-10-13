@@ -67,20 +67,6 @@ func TestMeetingTitlesAreOneCleanLine(t *testing.T) {
 	}
 }
 
-func TestOneLine(t *testing.T) {
-	for in, want := range map[string]string{
-		"Standup":           "Standup",
-		"  a \n\n b\t\tc  ": "a b c",
-		"x\x1b[31my\u009bz": "x [31my z",
-		"\x07\x1b":          "",
-		"Café ■ 日本":         "Café ■ 日本",
-	} {
-		if got := oneLine(in); got != want {
-			t.Errorf("oneLine(%q) = %q; want %q", in, got, want)
-		}
-	}
-}
-
 func TestPlacementAroundMeetings(t *testing.T) {
 	h := newCalHarness(t, config.Default())
 	h.meetings(

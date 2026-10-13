@@ -56,7 +56,7 @@ func (td *todayState) refresh(m *Model) {
 	var meetings []meeting
 	for _, e := range m.state.Calendar.Meetings {
 		// a title is a third party's text: no newline or escape reaches the screen
-		meetings = append(meetings, meeting{title: oneLine(e.Title), start: plan.Day.Offset(e.Start), end: plan.Day.Offset(e.End)})
+		meetings = append(meetings, meeting{title: domain.OneLine(e.Title), start: plan.Day.Offset(e.Start), end: plan.Day.Offset(e.End)})
 	}
 	td.tl = buildTimeline(plan.Blocks, meetings, cfg.WorkStart, cfg.WorkEnd, now)
 	rows := td.tl.rows

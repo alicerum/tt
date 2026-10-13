@@ -116,8 +116,8 @@ func (m *Model) reviewLine(i domain.SourceItem, width int, selected bool) string
 	if _, name, ok := strings.Cut(repo, "/"); ok {
 		repo = name
 	}
-	right := " @" + oneLine(i.Author) + "  " + waited(m.svc.Now(), i.WaitingSince())
-	left := fmt.Sprintf("  #%d %s  %s", i.Number, oneLine(repo), oneLine(i.Title))
+	right := " @" + domain.OneLine(i.Author) + "  " + waited(m.svc.Now(), i.WaitingSince())
+	left := fmt.Sprintf("  #%d %s  %s", i.Number, domain.OneLine(repo), domain.OneLine(i.Title))
 	line := pad(left, width-ansi.StringWidth(right)) + right
 	if selected {
 		return styleSelected.Render(pad(line, width))

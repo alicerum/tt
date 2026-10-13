@@ -2,8 +2,22 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
 )
+
+// OneLine makes text from outside (a meeting title, a PR title) safe to store
+// and render in a row: every control character (newline, tab, ESC, BEL, C1)
+// becomes a space, runs of spaces collapse, the ends are trimmed.
+func OneLine(s string) string {
+	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)), " ")
+}
 
 // SourceGitHub is the source kind of GitHub review requests (D20, D50).
 const SourceGitHub = "github"

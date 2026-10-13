@@ -5,8 +5,10 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"tt/internal/config"
 	"tt/internal/domain"
@@ -143,6 +145,34 @@ func TestSyncSourcesFillsTheLane(t *testing.T) {
 	}
 }
 
+func TestSyncSourcesStoresOneCleanLine(t *testing.T) {
+	s, clock, src, _ := srcService(t)
+	ctx := context.Background()
+	dirty := review(901, "Fix\n\tthe \x1b]52;c;aGk=\x07 thing", clock.now)
+	dirty.Author, dirty.Repo, dirty.URL = "a\x1b[31mna", "acme\n/api", "https://x/\x07pull/901"
+	dirty.ExternalID = "acme/api#9\n01"
+	src.Set([]domain.SourceItem{dirty}, nil)
+	mustSyncSources(t, s)
+	hasControl := func(s string) bool { return strings.IndexFunc(s, unicode.IsControl) >= 0 }
+	reviews := mustLoad(t, s).GitHub.Reviews
+	if len(reviews) != 1 {
+		t.Fatalf("lane = %v", ids(reviews))
+	}
+	r := reviews[0]
+	for _, f := range []string{r.Title, r.Author, r.Repo, r.URL, r.ExternalID} {
+		if hasControl(f) {
+			t.Errorf("a stored field has control characters: %q in %+v", f, r)
+		}
+	}
+	task, _, err := s.PinSource(ctx, "github", r.ExternalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasControl(task.Title) || hasControl(task.Link) {
+		t.Errorf("task title %q, link %q have control characters", task.Title, task.Link)
+	}
+}
+
 func TestSyncSourcesAutoCloses(t *testing.T) {
 	s, clock, src, st := srcService(t)
 	ctx := context.Background()
@@ -159,7 +189,7 @@ func TestSyncSourcesAutoCloses(t *testing.T) {
 	}
 	edit := mustUndo(t)(s.Edit(ctx, aID, "Review #901 with notes"))
 	if got := ids(mustLoad(t, s).GitHub.Reviews); len(got) != 1 || got[0] != "acme/api#915" {
-		t.Fatalf("lane = %v; want only #915: pinned reviews leave it, a closed one comes back (D49)", got)
+		t.Fatalf("lane = %v; want only #915: reviews with an open task leave it, a closed one comes back (D49)", got)
 	}
 
 	// D20a: #901 is no longer requested; #877 still is.

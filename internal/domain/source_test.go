@@ -22,3 +22,23 @@ func TestSourceItem(t *testing.T) {
 		t.Errorf("Ref = %+v", got)
 	}
 }
+
+func TestOneLine(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{"plain", "Standup", "Standup"},
+		{"newline and tab", "a\nb\tc", "a b c"},
+		{"runs of spaces", "a    b", "a b"},
+		{"leading and trailing", "  a \n\n b\t\tc  ", "a b c"},
+		{"CSI", "\x1b[31mred", "[31mred"},
+		{"OSC", "\x1b]52;c;aGk=\x07x", "]52;c;aGk= x"},
+		{"C1", "x\u009by", "x y"},
+		{"only controls", "\x07\x1b", ""},
+		{"unicode kept", "Café ■ 日本", "Café ■ 日本"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := OneLine(tc.in); got != tc.want {
+				t.Errorf("OneLine(%q) = %q; want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
