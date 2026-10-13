@@ -362,9 +362,9 @@ func (td *todayState) move(delta int) {
 }
 
 // line is the timeline line row i is drawn on: the now line comes right
-// after the row holding now.
+// before the row holding now, and moves down once that row has passed.
 func (td *todayState) line(i int) int {
-	if n := td.tl.nowRow; n >= 0 && i > n {
+	if n := td.tl.nowRow; n >= 0 && i >= n {
 		return i + 1
 	}
 	return i
@@ -551,11 +551,11 @@ func (m *Model) timelineLines(width int) []string {
 	}
 	var all []string
 	for i := range td.tl.rows {
-		all = append(all, m.timelineRow(i, width))
 		if i == td.tl.nowRow {
 			now := "━━ now " + clock(td.tl.now) + " "
 			all = append(all, styleAlert.Render(now+strings.Repeat("━", max(width-ansi.StringWidth(now), 0))))
 		}
+		all = append(all, m.timelineRow(i, width))
 	}
 	end := min(len(all), td.offset+m.visibleRows())
 	return append([]string{styleTitle.Render(title)}, all[min(td.offset, end):end]...)

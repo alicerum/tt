@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -230,4 +231,24 @@ func TestTimelineRowsAcrossADSTGap(t *testing.T) {
 	if got := h.m.today.tl.rows[h.m.today.tl.nowRow].start; got != 3*time.Hour+30*time.Minute {
 		t.Errorf("now row = %v; want 03:30 by the wall clock", got)
 	}
+}
+
+func TestNowLineSitsAboveItsRow(t *testing.T) {
+	h := newHarness(t, config.Default())
+	above := func(row string) {
+		t.Helper()
+		lines := strings.Split(h.screen(), "\n")
+		i := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, "━━ now ") })
+		if i < 0 || i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], " "+row+" ") {
+			t.Fatalf("the now line should sit right above the %s row:\n%s", row, h.screen())
+		}
+	}
+	above("09:00") // 09:00: the row now is in comes after the line
+	h.clock.now = h.clock.now.Add(20 * time.Minute)
+	h.keys("R")
+	above("09:00") // the line stays above its row for the row's 30 minutes
+	h.mustSee("━━ now 09:20")
+	h.clock.now = h.clock.now.Add(10 * time.Minute)
+	h.keys("R")
+	above("09:30") // it moves once the row has passed
 }
