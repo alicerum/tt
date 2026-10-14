@@ -29,6 +29,8 @@ type Options struct {
 	Exec func(c *exec.Cmd, done tea.ExecCallback) tea.Cmd
 	// Open opens a link (D21). nil means macOS `open`.
 	Open func(ctx context.Context, url string) error
+	// Notify shows a macOS notification (D63). nil means osascript.
+	Notify func(ctx context.Context, title, body string) error
 }
 
 func DefaultOptions() Options {
@@ -94,6 +96,8 @@ type Model struct {
 	cal pollLoop // the calendar's
 	gh  pollLoop // GitHub's (D50)
 
+	notify notifyState
+
 	overlay     overlay
 	banner      *app.DayResult
 	undo        []undoEntry
@@ -102,7 +106,9 @@ type Model struct {
 }
 
 func New(ctx context.Context, svc *app.Service, opts Options) *Model {
-	return &Model{svc: svc, opts: opts, ctx: ctx, width: 100, height: 30, pick: pickState{group: search.ByPriority}}
+	now := svc.Now()
+	return &Model{svc: svc, opts: opts, ctx: ctx, width: 100, height: 30, pick: pickState{group: search.ByPriority},
+		notify: notifyState{launched: now, checked: now}}
 }
 
 // pollLoop is an integration's poll loop (D3): one fetch at a time, then the
@@ -152,6 +158,7 @@ type (
 		closed []domain.Task // tasks the fetch closed (D20a)
 		err    error
 	}
+	notifiedMsg struct{ err error }
 )
 
 func (m *Model) Init() tea.Cmd {
@@ -197,8 +204,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.refreshRows()
 		m.refocus(had)
 		m.inbox.sync(m)
+		return m.checkReviews()
 	case watchTickMsg:
-		cmds := []tea.Cmd{m.checkVersion(), m.opts.Schedule(m.opts.WatchEvery, watchTickMsg{})}
+		cmds := []tea.Cmd{m.checkVersion(), m.checkAlerts(), m.opts.Schedule(m.opts.WatchEvery, watchTickMsg{})}
 		if m.dayIsStale() {
 			cmds = append(cmds, m.startDay())
 		}
@@ -302,6 +310,12 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return tea.Batch(m.load(), m.opts.Schedule(m.svc.Config().GitHubPoll, ghTickMsg{seq: m.gh.seq}))
 	case noteEditedMsg:
 		return m.noteEdited(msg)
+	case notifiedMsg:
+		m.notified(msg)
+	case tea.FocusMsg:
+		m.notify.focused = true
+	case tea.BlurMsg:
+		m.notify.focused = false
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	case tea.PasteMsg:
@@ -492,6 +506,7 @@ func (m *Model) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
 	v.WindowTitle = "tt"
+	v.ReportFocus = m.svc.Config().Notify.On() // only notifications care (D66)
 	return v
 }
 

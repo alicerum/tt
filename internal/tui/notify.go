@@ -1,15 +1,105 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"os/exec"
 	"slices"
 	"strings"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 
 	"tt/internal/app"
 	"tt/internal/config"
 	"tt/internal/domain"
 )
+
+// notifyState is the notifications' (D63–D66). Nothing of it is persisted:
+// what came before launch never notifies anyway.
+type notifyState struct {
+	launched time.Time
+	checked  time.Time // the alerts due up to here are handled; launch at first
+	// reviews is the last good GitHub fetch's requests (at reviewsAt); nil
+	// until the first good fetch since launch.
+	reviews   map[string]bool
+	reviewsAt time.Time
+	focused   bool // tt's pane has the focus (D66); false until a focus event says so
+	failed    bool // a send failed, and the status said so (once per run)
+}
+
+// checkAlerts sends the meeting and block alerts due since the last check
+// (D64). It runs on the watch tick, so a laptop waking from sleep catches
+// up within a second, and due drops what's over a minute late.
+func (m *Model) checkAlerts() tea.Cmd {
+	n := m.svc.Config().Notify
+	now := m.svc.Now()
+	if !m.loaded || !(n.Meetings || n.Blocks) || !now.After(m.notify.checked) {
+		return nil
+	}
+	ms := due(moments(m.state, n, now.Location()), m.notify.checked, now)
+	m.notify.checked = now
+	return m.send(alertNotes(ms)...)
+}
+
+// checkReviews notifies the requests a good GitHub fetch found that the
+// previous good fetch didn't (D65). The first good fetch since launch only
+// remembers them: they were there before. A failed fetch keeps the last
+// good one's time, so it changes nothing.
+func (m *Model) checkReviews() tea.Cmd {
+	gh := m.state.GitHub
+	if !m.svc.Config().Notify.Reviews || gh.LastSuccess.Before(m.notify.launched) || gh.LastSuccess.Equal(m.notify.reviewsAt) {
+		return nil
+	}
+	prev := m.notify.reviews
+	m.notify.reviews, m.notify.reviewsAt = reviewIDs(gh.Reviews), gh.LastSuccess
+	if fresh := newReviews(prev, gh.Reviews); prev != nil && len(fresh) > 0 {
+		return m.send(reviewNote(fresh))
+	}
+	return nil
+}
+
+// send shows the notes in the background, unless tt has the focus (D66):
+// what is on the screen needs no notification, and it isn't kept for later.
+func (m *Model) send(notes ...note) tea.Cmd {
+	if m.notify.focused || len(notes) == 0 {
+		return nil
+	}
+	fn, ctx := m.notifier(), m.ctx
+	return func() tea.Msg {
+		for _, n := range notes {
+			if err := fn(ctx, n.title, n.body); err != nil {
+				return notifiedMsg{err: err}
+			}
+		}
+		return nil
+	}
+}
+
+// notified reports the first failed send of the run (D63); later ones
+// would only repeat it.
+func (m *Model) notified(msg notifiedMsg) {
+	if msg.err != nil && !m.notify.failed {
+		m.notify.failed = true
+		m.setErr(fmt.Errorf("can't notify: %w", msg.err))
+	}
+}
+
+func (m *Model) notifier() func(ctx context.Context, title, body string) error {
+	if m.opts.Notify != nil {
+		return m.opts.Notify
+	}
+	return notifyWithSystem
+}
+
+// notifyWithSystem shows a notification through macOS osascript.
+func notifyWithSystem(ctx context.Context, title, body string) error {
+	out, err := exec.CommandContext(ctx, "osascript", osascriptArgs(title, body)...).CombinedOutput()
+	if err != nil && len(out) > 0 {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return err
+}
 
 // moment is one alert of a meeting or a task block (D64): due minutes
 // before the start. Moving a block moves its moments.

@@ -41,6 +41,9 @@ type harness struct {
 	editor  func(path string) error
 	opened  []string // links passed to Open
 	openErr error
+
+	notes     []note // notifications passed to Notify
+	notifyErr error
 }
 
 func newHarness(t *testing.T, cfg config.Config) *harness {
@@ -92,6 +95,10 @@ func startHarness(t *testing.T, cfg config.Config, cal *calendar.Fake, src *sour
 		Open: func(_ context.Context, url string) error {
 			h.opened = append(h.opened, url)
 			return h.openErr
+		},
+		Notify: func(_ context.Context, title, body string) error {
+			h.notes = append(h.notes, note{title: title, body: body})
+			return h.notifyErr
 		},
 	}
 	h.m = New(context.Background(), svc, opts)
