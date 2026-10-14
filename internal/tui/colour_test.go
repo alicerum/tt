@@ -36,7 +36,7 @@ func colour(i int) string { return on(lipgloss.NewStyle().Foreground(lipgloss.Co
 func TestBlocksAreColouredPerTask(t *testing.T) {
 	h := newHarness(t, config.Default())
 	ctx := context.Background()
-	fix := h.pinned("Fix CI !1 ~s")    // #1
+	fix := h.pinned("Fix CI !3 ~s")    // #1
 	rfc := h.pinned("Write RFC !2 ~s") // #2
 	h.block(fix.ID, 10*time.Hour, time.Hour)
 	h.block(rfc.ID, 12*time.Hour, 30*time.Minute)
@@ -45,7 +45,7 @@ func TestBlocksAreColouredPerTask(t *testing.T) {
 	if c1 == c2 {
 		t.Fatal("tasks #1 and #2 get different colours")
 	}
-	if l := h.rawLine("10:00 ▓ Fix CI"); !strings.Contains(l, c1+"▓") || !strings.Contains(l, c1+"Fix CI [P1 S]") {
+	if l := h.rawLine("10:00 ▓ Fix CI"); !strings.Contains(l, c1+"▓") || !strings.Contains(l, c1+"Fix CI [ 50 S]") {
 		t.Errorf("a block's ▓ and label take its task's colour: %q", l)
 	}
 	if l := h.rawLine("10:30 ▓"); !strings.Contains(l, c1+"▓") {
@@ -74,7 +74,7 @@ func TestBlocksAreColouredPerTask(t *testing.T) {
 
 func TestConflictsAndMeetingsKeepTheirOwnStyles(t *testing.T) {
 	h := newCalHarness(t, config.Default())
-	fix := h.pinned("Fix CI !1 ~s")
+	fix := h.pinned("Fix CI !3 ~s")
 	h.block(fix.ID, 10*time.Hour, time.Hour)
 	h.meetings(ev("Standup", 10*time.Hour, 10*time.Hour+30*time.Minute), ev("Lunch", 12*time.Hour, 13*time.Hour))
 	l := h.rawLine("10:00 ▓ Fix CI")
@@ -106,7 +106,7 @@ func reversedToTheEnd(t *testing.T, what, line string) {
 func TestTheHighlightRunsToTheEndOfTheRow(t *testing.T) {
 	h := newHarness(t, config.Default())
 	ctx := context.Background()
-	fix := h.pinned("Fix CI !1 ~s")
+	fix := h.pinned("Fix CI !3 ~s")
 	h.block(fix.ID, 9*time.Hour, time.Hour) // the cursor rests on 09:00 (now)
 	reversedToTheEnd(t, "the cursor's coloured block row", h.m.timelineRow(h.m.today.cursor, 60))
 

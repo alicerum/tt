@@ -11,9 +11,9 @@ import (
 
 func TestRenameAPerson(t *testing.T) {
 	h := newHarness(t, config.Default())
-	one := h.add("One @raf !1 ~s")
+	one := h.add("One @raf !3 ~s")
 	two := h.add("Two @raf !2 ~s")
-	h.add("Ana's @ana !1 ~s")
+	h.add("Ana's @ana !3 ~s")
 	h.keys("P", "j")
 	h.keys("r")
 	h.mustSee("rename @raf › raf")
@@ -48,9 +48,9 @@ func TestRenameAPerson(t *testing.T) {
 func TestMergeIntoAnotherPerson(t *testing.T) {
 	h := newHarness(t, config.Default())
 	ctx := context.Background()
-	one := h.add("One @raf !1 ~s")
+	one := h.add("One @raf !3 ~s")
 	two := h.add("Two @raf !2 ~s")
-	own := h.add("Ana's @ana !1 ~s")
+	own := h.add("Ana's @ana !3 ~s")
 	merge := func() {
 		t.Helper()
 		h.keys("r", "ctrl+u")
@@ -96,8 +96,8 @@ func TestMergeIntoAnotherPerson(t *testing.T) {
 
 func TestRenameWhileFiltered(t *testing.T) {
 	h := newHarness(t, config.Default())
-	h.add("One @raf !1 ~s")
-	h.add("Ana's @ana !1 ~s")
+	h.add("One @raf !3 ~s")
+	h.add("Ana's @ana !3 ~s")
 	h.keys("P", "/")
 	h.typeText("ra")
 	h.keys("enter")
@@ -119,8 +119,8 @@ func TestRenameWhileFiltered(t *testing.T) {
 
 func TestRenameOfANameGoneMeanwhile(t *testing.T) {
 	h := newHarness(t, config.Default())
-	h.add("One @raf !1 ~s")
-	h.add("Ana's @ana !1 ~s")
+	h.add("One @raf !3 ~s")
+	h.add("Ana's @ana !3 ~s")
 	h.keys("P", "j")
 	if _, _, err := h.svc.RenameRequester(context.Background(), "raf", "zed"); err != nil {
 		t.Fatal(err) // another shell; the TUI hasn't reloaded yet

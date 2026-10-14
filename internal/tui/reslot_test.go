@@ -15,9 +15,9 @@ import (
 func TestReslotAConflictedBlock(t *testing.T) {
 	h := newCalHarness(t, config.Default())
 	h.meetings(ev("Review", 10*time.Hour, 11*time.Hour), ev("Lunch", 12*time.Hour, 13*time.Hour))
-	a := h.pinned("Alpha !1 ~s")
+	a := h.pinned("Alpha !3 ~s")
 	h.block(a.ID, 10*time.Hour, time.Hour)
-	b := h.pinned("Beta !1 ~s")
+	b := h.pinned("Beta !3 ~s")
 	h.block(b.ID, 11*time.Hour, time.Hour)
 
 	h.keys("j", "j", "j", "j") // 11:00: Beta, no conflict
@@ -39,7 +39,7 @@ func TestReslotAConflictedBlock(t *testing.T) {
 	h.mustSee(`moved "Alpha" to 13:00–14:00`)
 	h.mustNotSee("⚠")
 	h.keys("ctrl+z")
-	h.mustSee(`undid move "Alpha"`, " 10:00 ▓ Alpha [P1 S] ⚠")
+	h.mustSee(`undid move "Alpha"`, " 10:00 ▓ Alpha [ 50 S] ⚠")
 
 	h.keys("r", "esc") // esc leaves it where it is
 	if bs := h.blocks(); bs[0].Start != 10*time.Hour || h.m.today.carry != nil {
@@ -50,7 +50,7 @@ func TestReslotAConflictedBlock(t *testing.T) {
 func TestReslotStartsFromNow(t *testing.T) {
 	h := newCalHarness(t, config.Default())
 	h.meetings(ev("Review", 10*time.Hour, 11*time.Hour))
-	a := h.pinned("Alpha !1 ~s")
+	a := h.pinned("Alpha !3 ~s")
 	h.block(a.ID, 10*time.Hour, time.Hour)
 	h.clock.now = h.clock.now.Add(6 * time.Hour) // 15:00
 	h.keys("R")
@@ -63,7 +63,7 @@ func TestReslotStartsFromNow(t *testing.T) {
 func TestReslotWithNoFreeSlot(t *testing.T) {
 	h := newCalHarness(t, config.Default())
 	h.meetings(ev("All hands", 14*time.Hour, 14*time.Hour+30*time.Minute))
-	long := h.pinned("Long !1 ~m")
+	long := h.pinned("Long !3 ~m")
 	h.block(long.ID, 14*time.Hour, 5*time.Hour)              // 14:00–19:00: nothing later fits 5h before 19:00
 	h.keys("j", "j", "j", "j", "j", "j", "j", "j", "j", "j") // 14:00
 	h.keys("r")
@@ -78,8 +78,8 @@ func TestReslotWithNoFreeSlot(t *testing.T) {
 
 func TestARefusedDropKeepsThePickUp(t *testing.T) {
 	h := newHarness(t, config.Default())
-	other := h.pinned("Other !1 ~s")
-	h.pinned("Alpha !1 ~s")
+	other := h.pinned("Other !3 ~s")
+	h.pinned("Alpha !3 ~s")
 	h.keys("tab", "j", "b") // Alpha's ghost at 09:00
 	// Meanwhile another tt blocks Other at 09:00; this one hasn't reloaded yet.
 	if _, _, err := h.svc.Block(context.Background(), other.ID, 9*time.Hour, time.Hour); err != nil {
@@ -90,7 +90,7 @@ func TestARefusedDropKeepsThePickUp(t *testing.T) {
 	if c := h.m.today.carry; c == nil || c.task.Title != "Alpha" || h.m.today.at != 9*time.Hour {
 		t.Fatalf("a refused drop gives the pick-up back where it was: %+v at %v", c, h.m.today.at)
 	}
-	h.mustSee(" 09:00 ░ Alpha 1h · Other [P1 S]") // the reload shows why
+	h.mustSee(" 09:00 ░ Alpha 1h · Other [ 50 S]") // the reload shows why
 	h.keys("j", "j", "enter")
 	h.mustSee(`blocked "Alpha" 10:00–11:00`)
 }
@@ -98,7 +98,7 @@ func TestARefusedDropKeepsThePickUp(t *testing.T) {
 func TestFineTuneRereadsTheBlock(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t, config.Default())
-	a := h.pinned("Alpha !1 ~s")
+	a := h.pinned("Alpha !3 ~s")
 	b := h.block(a.ID, 10*time.Hour, time.Hour)
 	h.keys("j", "j", "f")
 	undos := len(h.m.undo)
@@ -133,7 +133,7 @@ func TestFineTuneRereadsTheBlock(t *testing.T) {
 
 func TestScrollKeepsTheCursorWhenRowsAppearAbove(t *testing.T) {
 	h := newHarness(t, config.Default())
-	early := h.pinned("Early !1 ~s")
+	early := h.pinned("Early !3 ~s")
 	h.send(tea.WindowSizeMsg{Width: 100, Height: 12})
 	for range 10 {
 		h.keys("j") // 14:00, scrolled

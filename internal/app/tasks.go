@@ -21,14 +21,14 @@ var (
 
 // Add captures a task from a quick-add line (D25).
 func (s *Service) Add(ctx context.Context, line string) (domain.Task, Undo, error) {
-	d, err := dsl.ParseAdd(line, len(s.cfg.Priorities))
+	d, err := dsl.ParseAdd(line, s.Today())
 	if err != nil {
 		return domain.Task{}, nil, err
 	}
 	now := s.clock.Now()
 	t := domain.Task{
 		Title: d.Title, Note: d.Note, Link: d.Link, Requester: d.Requester, Tags: d.Tags,
-		Priority: d.Priority, Size: d.Size, Status: domain.StatusOpen, CreatedAt: now, UpdatedAt: now,
+		Impact: d.Impact, Due: d.Due, Size: d.Size, Status: domain.StatusOpen, CreatedAt: now, UpdatedAt: now,
 	}
 	err = s.store.InTx(ctx, func(x *store.Tx) (err error) {
 		t.ID, err = x.InsertTask(ctx, t)
@@ -51,34 +51,35 @@ func (s *Service) Add(ctx context.Context, line string) (domain.Task, Undo, erro
 
 // EditLine renders a task as a token line for prefilling the edit input.
 // The note is left out; Edit keeps it unless the new line has " -- ".
-// A child's priority is inherited (D6), so it is left out too (D32).
+// A child's impact is its parent's (D68), so it is left out (D32, D73); the
+// due is the task's own, as an absolute date, never an inherited one.
 func EditLine(t domain.Task) string {
-	d := dsl.Draft{Title: t.Title, Requester: t.Requester, Tags: t.Tags, Priority: t.Priority, Size: t.Size, Link: t.Link}
+	d := dsl.Draft{Title: t.Title, Requester: t.Requester, Tags: t.Tags, Impact: t.Impact, Due: t.Due, Size: t.Size, Link: t.Link}
 	if t.ParentID != 0 {
-		d.Priority = 0
+		d.Impact = 0
 	}
 	return dsl.FormatAdd(d)
 }
 
-// ParseEdit parses an edit line for t: !n is refused on a child (D32).
+// ParseEdit parses an edit line for t: !n is refused on a child (D32, D73).
 // The TUI calls it to validate before submitting; Edit applies the same rule.
 func (s *Service) ParseEdit(t domain.Task, line string) (dsl.Draft, error) {
 	if t.ParentID != 0 {
 		return s.ParseChild(t.ParentID, line)
 	}
-	return dsl.ParseAdd(line, len(s.cfg.Priorities))
+	return dsl.ParseAdd(line, s.Today())
 }
 
-// Edit replaces title, requester, tags, priority, size and link from line;
-// a token missing from line clears that field. The note changes only if
-// line contains " -- ".
+// Edit replaces title, requester, tags, impact, due, size and link from
+// line; a token missing from line clears that field. The note changes only
+// if line contains " -- ".
 func (s *Service) Edit(ctx context.Context, id int64, line string) (Undo, error) {
 	return s.modify(ctx, id, func(_ *store.Tx, t *domain.Task) error {
 		d, err := s.ParseEdit(*t, line)
 		if err != nil {
 			return err
 		}
-		t.Title, t.Requester, t.Tags, t.Priority, t.Size, t.Link = d.Title, d.Requester, d.Tags, d.Priority, d.Size, d.Link
+		t.Title, t.Requester, t.Tags, t.Impact, t.Due, t.Size, t.Link = d.Title, d.Requester, d.Tags, d.Impact, d.Due, d.Size, d.Link
 		if d.HasNote {
 			t.Note = d.Note
 		}
@@ -106,13 +107,30 @@ func (s *Service) SetNoteFrom(ctx context.Context, id int64, from, note string) 
 	})
 }
 
-// SetPriority sets priority p (1..levels); 0 clears it.
-func (s *Service) SetPriority(ctx context.Context, id int64, p int) (Undo, error) {
-	if p < 0 || p > len(s.cfg.Priorities) {
-		return nil, fmt.Errorf("priority %d: %w (use 1 to %d, or 0 to clear)", p, ErrInvalidValue, len(s.cfg.Priorities))
+// SetImpact sets impact n (1 to 3, D68); 0 clears it. A child's impact is
+// its parent's, so setting one is refused (D73).
+func (s *Service) SetImpact(ctx context.Context, id int64, n int) (Undo, error) {
+	if n < 0 || n > domain.MaxImpact {
+		return nil, fmt.Errorf("impact %d: %w (use 1 to %d, or 0 to clear)", n, ErrInvalidValue, domain.MaxImpact)
 	}
 	return s.modify(ctx, id, func(_ *store.Tx, t *domain.Task) error {
-		t.Priority = p
+		if t.ParentID != 0 && n != 0 {
+			return inheritedImpact(t.ParentID, n)
+		}
+		t.Impact = n
+		return nil
+	})
+}
+
+// SetDue sets the due date (D69); "" clears it.
+func (s *Service) SetDue(ctx context.Context, id int64, due domain.Day) (Undo, error) {
+	if due != "" {
+		if _, err := domain.ParseDay(string(due)); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidValue, err)
+		}
+	}
+	return s.modify(ctx, id, func(_ *store.Tx, t *domain.Task) error {
+		t.Due = due
 		return nil
 	})
 }

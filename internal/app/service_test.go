@@ -68,14 +68,14 @@ func TestAddAndUndo(t *testing.T) {
 	s, _ := newService(t)
 	ctx := context.Background()
 
-	task, undo, err := s.Add(ctx, "Reply to Ana @ana #photos !1 ~s https://x.io -- before Friday")
+	task, undo, err := s.Add(ctx, "Reply to Ana @ana #photos !1 ^fri ~s https://x.io -- before Friday")
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := mustGet(t, s, task.ID)
 	want := domain.Task{
 		ID: task.ID, Title: "Reply to Ana", Note: "before Friday", Link: "https://x.io", Requester: "ana",
-		Tags: []string{"photos"}, Priority: 1, Size: domain.SizeS, Status: domain.StatusOpen,
+		Tags: []string{"photos"}, Impact: 1, Due: "2026-10-16", Size: domain.SizeS, Status: domain.StatusOpen,
 		CreatedAt: got.CreatedAt, UpdatedAt: got.UpdatedAt,
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
@@ -107,16 +107,16 @@ func TestEditReplacesFieldsAndKeepsNote(t *testing.T) {
 	must := mustUndo(t)
 	s, clock := newService(t)
 	ctx := context.Background()
-	task := mustAdd(t, s, "Old title @ana #a !1 ~s -- keep me")
+	task := mustAdd(t, s, "Old title @ana #a !1 ^tom ~s -- keep me")
 
-	if line := EditLine(mustGet(t, s, task.ID)); line != "Old title @ana #a !1 ~s" {
+	if line := EditLine(mustGet(t, s, task.ID)); line != "Old title @ana #a !1 ^2026-10-13 ~s" {
 		t.Errorf("EditLine = %q", line)
 	}
 
 	clock.Advance(time.Minute)
 	undo := must(s.Edit(ctx, task.ID, "New title #b ~l"))
 	got := mustGet(t, s, task.ID)
-	if got.Title != "New title" || got.Requester != "" || got.Priority != 0 || got.Size != domain.SizeL ||
+	if got.Title != "New title" || got.Requester != "" || got.Impact != 0 || got.Due != "" || got.Size != domain.SizeL ||
 		!cmp.Equal(got.Tags, []string{"b"}) || got.Note != "keep me" {
 		t.Errorf("after Edit: %+v", got)
 	}
@@ -154,22 +154,39 @@ func TestTriageSetters(t *testing.T) {
 	ctx := context.Background()
 	task := mustAdd(t, s, "Triage me")
 
-	must(s.SetPriority(ctx, task.ID, 2))
+	must(s.SetImpact(ctx, task.ID, 2))
 	undo := must(s.SetSize(ctx, task.ID, domain.SizeXL))
 	got := mustGet(t, s, task.ID)
-	if got.Priority != 2 || got.Size != domain.SizeXL || domain.InInbox(got, nil) {
+	if got.Impact != 2 || got.Size != domain.SizeXL || domain.InInbox(got, nil) {
 		t.Errorf("after triage: %+v", got)
 	}
 	if err := undo(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if got := mustGet(t, s, task.ID); got.Size != domain.SizeNone || got.Priority != 2 {
+	if got := mustGet(t, s, task.ID); got.Size != domain.SizeNone || got.Impact != 2 {
 		t.Errorf("undo of SetSize: %+v", got)
 	}
+	undo = must(s.SetDue(ctx, task.ID, "2026-10-30"))
+	if got := mustGet(t, s, task.ID); got.Due != "2026-10-30" {
+		t.Errorf("after SetDue: %+v", got)
+	}
+	if err := undo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	must(s.SetDue(ctx, task.ID, "2026-10-30"))
+	must(s.SetDue(ctx, task.ID, ""))
+	if got := mustGet(t, s, task.ID); got.Due != "" {
+		t.Errorf("SetDue(\"\") clears it: %+v", got)
+	}
 
-	for _, p := range []int{-1, 4} {
-		if _, err := s.SetPriority(ctx, task.ID, p); !errors.Is(err, ErrInvalidValue) {
-			t.Errorf("SetPriority(%d) error = %v; want ErrInvalidValue", p, err)
+	for _, n := range []int{-1, 4} {
+		if _, err := s.SetImpact(ctx, task.ID, n); !errors.Is(err, ErrInvalidValue) {
+			t.Errorf("SetImpact(%d) error = %v; want ErrInvalidValue", n, err)
+		}
+	}
+	for _, due := range []domain.Day{"fri", "2026-02-30"} {
+		if _, err := s.SetDue(ctx, task.ID, due); !errors.Is(err, ErrInvalidValue) {
+			t.Errorf("SetDue(%q) error = %v; want ErrInvalidValue", due, err)
 		}
 	}
 	for _, size := range []domain.Size{"x", "xs"} {
@@ -177,8 +194,8 @@ func TestTriageSetters(t *testing.T) {
 			t.Errorf("SetSize(%q) error = %v; want ErrInvalidValue", size, err)
 		}
 	}
-	if _, err := s.SetPriority(ctx, 999, 1); !errors.Is(err, ErrNotFound) {
-		t.Errorf("SetPriority on missing task error = %v; want ErrNotFound", err)
+	if _, err := s.SetImpact(ctx, 999, 1); !errors.Is(err, ErrNotFound) {
+		t.Errorf("SetImpact on missing task error = %v; want ErrNotFound", err)
 	}
 }
 
@@ -288,5 +305,20 @@ func TestCloseKeepsExistingClosedAt(t *testing.T) {
 	got := mustGet(t, s, task.ID)
 	if got.Status != domain.StatusDropped || !got.ClosedAt.Equal(first) {
 		t.Errorf("Done then Drop: %+v; want dropped with ClosedAt %v", got, first)
+	}
+}
+
+// Review Focus: ^dates count from the planning day (D19, D73), so at 02:00
+// with day_start 04:00 "today" is still yesterday's date.
+func TestDueDatesFollowThePlanningDay(t *testing.T) {
+	s, clock := newService(t)
+	clock.now = time.Date(2026, 10, 13, 2, 0, 0, 0, time.UTC) // Tue 02:00: still Monday's planning day
+	task := mustAdd(t, s, "Late night ^tom !1 ~s")
+	if got := mustGet(t, s, task.ID).Due; got != "2026-10-13" {
+		t.Errorf("^tom at 02:00 = %q; want the day after Monday's planning day", got)
+	}
+	task = mustAdd(t, s, "Same night ^today !1 ~s")
+	if got := mustGet(t, s, task.ID).Due; got != "2026-10-12" {
+		t.Errorf("^today at 02:00 = %q; want Monday", got)
 	}
 }

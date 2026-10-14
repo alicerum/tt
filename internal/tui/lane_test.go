@@ -50,10 +50,11 @@ func TestReviewsLaneOnToday(t *testing.T) {
 	h.keys("w")
 	h.mustSee("j/k move · p pin · o open PR · w back")
 	h.keys("j", "p") // #877
-	h.mustSee(`pinned "Review #877: Bump go" · P2 S`, "REVIEWS · 3 waiting", "Review #877: Bump go")
+	// Impact 1, due 3 days after the request a day ago (D75).
+	h.mustSee(`pinned "Review #877: Bump go" · 50 S`, "REVIEWS · 3 waiting", "Review #877: Bump go")
 	h.keys("k") // up to #915, the newest
-	if l := h.lineWith("Review #877"); !strings.Contains(l, "[P2 S]") {
-		t.Errorf("the review is a candidate with D48's defaults: %q", l)
+	if l := h.lineWith("Review #877"); !strings.Contains(l, "[ 50 S]") {
+		t.Errorf("the review is a candidate with D48's and D75's defaults: %q", l)
 	}
 	h.keys("ctrl+z")
 	h.mustSee(`undid pin "Review #877: Bump go"`, "REVIEWS · 3 waiting")
@@ -74,7 +75,7 @@ func TestReviewsLaneOnToday(t *testing.T) {
 	if h.m.lane.focused || h.m.today.focus != focusTimeline {
 		t.Errorf("tab leaves the lane for the timeline: lane %v, focus %v", h.m.lane.focused, h.m.today.focus)
 	}
-	h.pinned("A candidate !1 ~s") // tab skips an empty candidates pane (D57)
+	h.pinned("A candidate !3 ~s") // tab skips an empty candidates pane (D57)
 	h.keys("tab")                 // tab stays between timeline and candidates
 	if h.m.lane.focused || h.m.today.focus != focusCandidates {
 		t.Errorf("tab: lane %v, focus %v", h.m.lane.focused, h.m.today.focus)
@@ -98,7 +99,8 @@ func TestReviewsLaneInTheLog(t *testing.T) {
 	}
 	h.mustSee("w reviews · ⏎ open")
 	h.keys("w", "j", "j", "p") // #901, the longest waiting, is last (D60)
-	h.mustSee(`pinned "Review #901: Add idempotency key" · P2 S`)
+	// Requested 3 days ago: due today (D75).
+	h.mustSee(`pinned "Review #901: Add idempotency key" · 53 S`)
 	if l := h.lineWith("Review #901"); !strings.Contains(l, "│") || strings.Index(l, "Review #901") < strings.Index(l, "│") {
 		t.Errorf("the pinned review is a candidate (right), not in the backlog: %q", l)
 	}
@@ -158,7 +160,7 @@ func TestReviewsLaneHeight(t *testing.T) {
 	h.setReviews(items...)
 	h.send(tea.WindowSizeMsg{Width: 140, Height: 24})
 	for n := range 6 {
-		h.add("Candidate " + string(rune('A'+n)) + " !1 ~s")
+		h.add("Candidate " + string(rune('A'+n)) + " !3 ~s")
 	}
 	for range 6 {
 		h.keys("L", "p", "B", "esc") // pin the first backlog task, back to Today
@@ -234,7 +236,7 @@ func TestReviewsWithATaskAreMarked(t *testing.T) {
 	h := newGHHarness(t, config.Default())
 	threeReviews(h)
 	h.keys("w", "j", "p")                                                    // #877
-	h.mustSee(`pinned "Review #877: Bump go" · P2 S`, "REVIEWS · 3 waiting") // it stays in the lane (D51)
+	h.mustSee(`pinned "Review #877: Bump go" · 50 S`, "REVIEWS · 3 waiting") // it stays in the lane (D51)
 	if l := h.lineWith("#877 photos"); !strings.HasSuffix(strings.TrimRight(l, " │"), "@tom  1d · #1") {
 		t.Errorf("a review with a task names it: %q", l)
 	}

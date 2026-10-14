@@ -32,8 +32,8 @@ func TestPinSourceCreatesTheTask(t *testing.T) {
 	got := mustGet(t, s, task.ID)
 	if got.Title != "Review #901: Add idempotency key" || got.Link != "https://github.com/acme/api/pull/901" ||
 		got.Source == nil || *got.Source != (domain.SourceRef{Kind: "github", ID: "acme/api#901"}) ||
-		got.Priority != 2 || got.Size != domain.SizeS || got.Requester != "" || got.Status != domain.StatusOpen {
-		t.Errorf("task = %+v; want D20b's wrapper with D48's P2 S and no requester", got)
+		got.Impact != 1 || got.Due != "2026-10-15" || got.Size != domain.SizeS || got.Requester != "" || got.Status != domain.StatusOpen {
+		t.Errorf("task = %+v; want D20b's wrapper with D75's impact 1, due 3 days after the request, S and no requester", got)
 	}
 	if !pinned(t, s, task.ID) {
 		t.Error("the review is a candidate now")
@@ -59,7 +59,7 @@ func TestPinSourceUsesTheConfiguredDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	cfg, err := config.Parse([]byte("[github]\npriority = \"P1\"\nsize = \"\"\n"))
+	cfg, err := config.Parse([]byte("[github]\nimpact = 2\ndue = \"0d\"\nsize = \"\"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,8 +68,17 @@ func TestPinSourceUsesTheConfiguredDefaults(t *testing.T) {
 	src.Set([]domain.SourceItem{review(901, "Add idempotency key", time.Time{})}, nil)
 	mustSyncSources(t, s)
 	task, _ := mustPinSource(t, s, "acme/api#901")
-	if got := mustGet(t, s, task.ID); got.Priority != 1 || got.Size != domain.SizeNone {
-		t.Errorf("task = P%d %q; want P1 unsized", got.Priority, got.Size)
+	if got := mustGet(t, s, task.ID); got.Impact != 2 || got.Due != "2026-10-12" || got.Size != domain.SizeNone {
+		t.Errorf("task = impact %d, due %q, %q; want 2, due the day it was first seen (no request time), unsized", got.Impact, got.Due, got.Size)
+	}
+
+	cfg, _ = config.Parse([]byte("[github]\ndue = \"\"\n"))
+	s = New(st, &fakeClock{now: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}, cfg).WithSource(src)
+	src.Set([]domain.SourceItem{review(877, "Bump go", time.Time{})}, nil)
+	mustSyncSources(t, s)
+	task, _ = mustPinSource(t, s, "acme/api#877")
+	if got := mustGet(t, s, task.ID); got.Due != "" {
+		t.Errorf("due = \"\": task due %q; want none", got.Due)
 	}
 }
 

@@ -1,6 +1,7 @@
 package search
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ var now = time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 
 func filter(t *testing.T, line string) dsl.Filter {
 	t.Helper()
-	f, err := dsl.ParseFilter(line, 3)
+	f, err := dsl.ParseFilter(line)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +23,7 @@ func filter(t *testing.T, line string) dsl.Filter {
 func TestMatch(t *testing.T) {
 	task := domain.Task{
 		ID: 1, Title: "Review schema-migration for Photos", Requester: "ana", Tags: []string{"impl"},
-		Priority: 2, Size: domain.SizeM, Status: domain.StatusOpen, CreatedAt: now.Add(-3 * 24 * time.Hour),
+		Impact: 2, Size: domain.SizeM, Status: domain.StatusOpen, CreatedAt: now.Add(-3 * 24 * time.Hour),
 	}
 	cases := map[string]bool{
 		"":                  true,
@@ -63,8 +64,8 @@ func TestMatch(t *testing.T) {
 }
 
 func TestMatchChildUsesEffectiveFields(t *testing.T) {
-	parent := domain.Task{ID: 1, Title: "Auth", Tags: []string{"auth"}, Priority: 1, Status: domain.StatusOpen, CreatedAt: now}
-	child := domain.Task{ID: 2, Title: "Rollback plan", Tags: []string{"ops"}, Priority: 3, ParentID: 1, Status: domain.StatusOpen, CreatedAt: now}
+	parent := domain.Task{ID: 1, Title: "Auth", Tags: []string{"auth"}, Impact: 1, Status: domain.StatusOpen, CreatedAt: now}
+	child := domain.Task{ID: 2, Title: "Rollback plan", Tags: []string{"ops"}, Impact: 3, ParentID: 1, Status: domain.StatusOpen, CreatedAt: now}
 	for line, want := range map[string]bool{"!1": true, "!3": false, "#auth #ops": true, "auth": true} {
 		if got := Match(filter(t, line), child, &parent, now); got != want {
 			t.Errorf("child Match(%q) = %v; want %v", line, got, want)
@@ -87,32 +88,27 @@ func TestMatchClosedTasks(t *testing.T) {
 }
 
 func TestGroupOf(t *testing.T) {
-	levels := []string{"P1 · blocked", "P2 · soon", "P3 · later"}
 	days := func(n int) time.Time { return now.Add(-time.Duration(n) * 24 * time.Hour) }
-	parent := domain.Task{ID: 1, Priority: 2}
 	cases := []struct {
-		by     GroupBy
-		task   domain.Task
-		parent *domain.Task
-		want   Group
+		by   GroupBy
+		task domain.Task
+		want Group
 	}{
-		{ByPriority, domain.Task{Priority: 1}, nil, Group{1, "P1 · blocked"}},
-		{ByPriority, domain.Task{Priority: 3, ParentID: 1}, &parent, Group{2, "P2 · soon"}},
-		{ByPriority, domain.Task{Priority: 5}, nil, Group{4, "P? · above the configured levels"}},
-		{ByPriority, domain.Task{}, nil, Group{5, "unset"}},
-		{BySize, domain.Task{Size: domain.SizeS}, nil, Group{0, "S"}},
-		{BySize, domain.Task{Size: domain.SizeXL}, nil, Group{3, "XL"}},
-		{BySize, domain.Task{}, nil, Group{4, "unsized"}},
-		{ByCreated, domain.Task{CreatedAt: now}, nil, Group{0, "this week"}},
-		{ByCreated, domain.Task{CreatedAt: days(7)}, nil, Group{1, "this month"}},
-		{ByCreated, domain.Task{CreatedAt: days(29)}, nil, Group{1, "this month"}},
-		{ByCreated, domain.Task{CreatedAt: days(30)}, nil, Group{2, "older"}},
-		{ByCreated, domain.Task{CreatedAt: days(90)}, nil, Group{3, "ancient"}},
-		{ByRequester, domain.Task{Requester: "ana"}, nil, Group{0, "@ana"}},
-		{ByRequester, domain.Task{}, nil, Group{1, "no requester"}},
+		{ByUrgency, domain.Task{Impact: 3}, Group{}},
+		{ByImpact, domain.Task{Impact: 1}, Group{}},
+		{BySize, domain.Task{Size: domain.SizeS}, Group{0, "S"}},
+		{BySize, domain.Task{Size: domain.SizeXL}, Group{3, "XL"}},
+		{BySize, domain.Task{}, Group{4, "unsized"}},
+		{ByCreated, domain.Task{CreatedAt: now}, Group{0, "this week"}},
+		{ByCreated, domain.Task{CreatedAt: days(7)}, Group{1, "this month"}},
+		{ByCreated, domain.Task{CreatedAt: days(29)}, Group{1, "this month"}},
+		{ByCreated, domain.Task{CreatedAt: days(30)}, Group{2, "older"}},
+		{ByCreated, domain.Task{CreatedAt: days(90)}, Group{3, "ancient"}},
+		{ByRequester, domain.Task{Requester: "ana"}, Group{0, "@ana"}},
+		{ByRequester, domain.Task{}, Group{1, "no requester"}},
 	}
 	for _, c := range cases {
-		if got := GroupOf(c.by, c.task, c.parent, now, levels); got != c.want {
+		if got := GroupOf(c.by, c.task, now); got != c.want {
 			t.Errorf("GroupOf(%s, %+v) = %+v; want %+v", c.by, c.task, got, c.want)
 		}
 	}
@@ -122,19 +118,19 @@ func TestGroupOf(t *testing.T) {
 }
 
 func TestGroupByCycle(t *testing.T) {
-	g := ByPriority
+	g := ByUrgency
 	var seen []GroupBy
 	for range GroupBys {
 		g = g.Next()
 		seen = append(seen, g)
 	}
-	want := []GroupBy{BySize, ByCreated, ByRequester, ByPriority}
+	want := []GroupBy{ByImpact, BySize, ByCreated, ByRequester, ByUrgency}
 	for i := range want {
 		if seen[i] != want[i] {
 			t.Fatalf("cycle = %v; want %v", seen, want)
 		}
 	}
-	for s, want := range map[string]GroupBy{"size": BySize, "requester": ByRequester, "": ByPriority, "bogus": ByPriority} {
+	for s, want := range map[string]GroupBy{"size": BySize, "impact": ByImpact, "": ByUrgency, "priority": ByUrgency, "bogus": ByUrgency} {
 		if got := ParseGroupBy(s); got != want {
 			t.Errorf("ParseGroupBy(%q) = %s; want %s", s, got, want)
 		}
@@ -162,5 +158,55 @@ func TestMatchName(t *testing.T) {
 		if got := MatchName(c.query, c.name); got != c.want {
 			t.Errorf("MatchName(%q, %q) = %v; want %v", c.query, c.name, got, c.want)
 		}
+	}
+}
+
+func TestSorter(t *testing.T) {
+	const today = domain.Day("2026-10-14")
+	day := func(n int) time.Time { return now.Add(time.Duration(n) * time.Hour) }
+	tasks := []domain.Task{
+		{ID: 1, Title: "undated stream task", Impact: 3, CreatedAt: day(1)},                         // 0.50
+		{ID: 2, Title: "ask due today", Impact: 1, Due: today, CreatedAt: day(2)},                   // 0.53
+		{ID: 3, Title: "team task due in 10 days", Impact: 2, Due: "2026-10-24", CreatedAt: day(3)}, // 0.51
+		{ID: 4, Title: "untriaged", CreatedAt: day(0)},
+		{ID: 5, Title: "older undated stream task", Impact: 3, CreatedAt: day(0)}, // 0.50, older
+		{ID: 6, Title: "child of #3", ParentID: 3, Due: today, CreatedAt: day(4)}, // impact 2, due today: 0.70
+	}
+	byID := map[int64]domain.Task{}
+	for _, tk := range tasks {
+		byID[tk.ID] = tk
+	}
+	parentOf := func(tk domain.Task) *domain.Task {
+		if p, ok := byID[tk.ParentID]; ok {
+			return &p
+		}
+		return nil
+	}
+	order := func(g GroupBy, w domain.Weights) []int64 {
+		got := slices.Clone(tasks)
+		slices.SortFunc(got, Sorter(g, parentOf, today, w))
+		var ids []int64
+		for _, tk := range got {
+			ids = append(ids, tk.ID)
+		}
+		return ids
+	}
+	cases := []struct {
+		g    GroupBy
+		w    domain.Weights
+		want []int64
+	}{
+		{ByUrgency, domain.DefaultWeights, []int64{6, 2, 3, 5, 1, 4}},
+		{ByImpact, domain.DefaultWeights, []int64{5, 1, 6, 3, 2, 4}},
+		{ByUrgency, domain.Weights{Impact: 1, Due: 0}, []int64{5, 1, 3, 6, 2, 4}}, // impact only: ties oldest first
+		{BySize, domain.DefaultWeights, []int64{4, 5, 1, 2, 3, 6}},                // a grouping: oldest first
+	}
+	for _, c := range cases {
+		if got := order(c.g, c.w); !slices.Equal(got, c.want) {
+			t.Errorf("%s with %+v: %v; want %v", c.g, c.w, got, c.want)
+		}
+	}
+	if !ByUrgency.Flat() || !ByImpact.Flat() || BySize.Flat() || ByRequester.Flat() {
+		t.Error("urgency and impact are flat sorts; the rest are groupings (D72)")
 	}
 }

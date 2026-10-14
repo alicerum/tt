@@ -7,22 +7,9 @@
 # previous day.
 day_start = "04:00"
 
-# Priority levels, most urgent first (1 to 9 of them). Quick-add's !1, !2, …
-# pick them by position.
-[[priorities]]
-name = "P1"
-definition = "someone is blocked / committed this week"
-
-[[priorities]]
-name = "P2"
-definition = "important this month"
-
-[[priorities]]
-name = "P3"
-definition = "worth doing eventually"
-
-# Urgency (D70), the number tasks are sorted by: impact and the due date,
-# weighted. Raise due if deadlines should count more, impact if what matters
+# Urgency (D70), the number tasks are sorted by: impact (!1 to !3, who
+# notices if it slips: a person, one team, more than one team) and the due
+# date (^fri), weighted. Raise due if deadlines should count more, impact if what matters
 # should; each 0 or more, not both 0.
 [urgency]
 impact = 1
@@ -57,7 +44,6 @@ poll = "2m" # how often the calendar is fetched; 10s or more
 enabled = true  # false: no fetch, no Reviews lane
 host = ""       # a GitHub Enterprise host; empty: gh's default (github.com)
 poll = "5m"     # how often GitHub is fetched; 30s or more
-priority = "P2" # a pinned review's priority: one of the [[priorities]] names
 size = "s"      # a pinned review's size: s, m, l, xl, or "" for unsized (D48)
 impact = 1      # a pinned review's impact, 1 to 3 (D75)
 due = "3d"      # a pinned review is due this many days after the request; "" = no due

@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"tt/internal/app"
-	"tt/internal/config"
 	"tt/internal/domain"
 )
 
@@ -91,24 +90,34 @@ func byUse(counts map[string]int) []string {
 	return out
 }
 
-// badge renders "[P1 M]": the effective priority's configured name and the size.
+// badge renders "[ 73 M]": the task's urgency today and its size (D71).
 func (m *Model) badge(t domain.Task) string {
-	return badgeOf(m.svc.Config().Priorities, domain.EffectivePriority(t, m.state.Snapshot.ParentOf(t)), t.Size)
+	u, ok := m.urgency(t, m.state.Snapshot.ParentOf(t))
+	return badgeOf(u, ok, t.Size)
 }
 
-// badgeOf renders "[P1 M]" for priority level p of levels and size.
-func badgeOf(levels []config.PriorityLevel, p int, size domain.Size) string {
-	name := "—"
-	if p > 0 && p <= len(levels) {
-		name = levels[p-1].Name
-	} else if p > 0 {
-		name = "P?"
+// urgency is t's urgency today (D70); ok is false while t is untriaged.
+func (m *Model) urgency(t domain.Task, parent *domain.Task) (float64, bool) {
+	return domain.Urgency(t, parent, m.svc.Today(), m.svc.Config().Urgency)
+}
+
+// badgeOf renders "[ 73 M]" for urgency u (0 to 1; ok false: "  —") and a
+// size: the score padded to three cells, so 100 lines up with the rest.
+func badgeOf(u float64, ok bool, size domain.Size) string {
+	score := "  —"
+	if ok {
+		score = fmt.Sprintf("%3d", domain.UrgencyScore(u))
 	}
+	return "[" + score + " " + sizeLabel(size) + "]"
+}
+
+// sizeLabel is "M" for a size, "—" for none.
+func sizeLabel(size domain.Size) string {
 	s := "—"
 	if size != domain.SizeNone {
 		s = strings.ToUpper(string(size))
 	}
-	return "[" + name + " " + s + "]"
+	return s
 }
 
 // closedToday reports whether t was closed on the plan's day (D29 wins stay visible).
@@ -205,7 +214,7 @@ func (m *Model) hintsText() string {
 		if t, ok := m.state.Snapshot.Get(m.inbox.current); ok && t.ParentID != 0 {
 			return "s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help"
 		}
-		return fmt.Sprintf("1-%d priority · s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help", len(m.svc.Config().Priorities))
+		return "1-3 impact · s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help"
 	}
 	if m.screen == screenPeople {
 		return m.peopleHints()

@@ -33,22 +33,16 @@ func TestNormalizeTags(t *testing.T) {
 }
 
 func TestEffectiveFields(t *testing.T) {
-	parent := Task{ID: 1, Priority: 1, Tags: []string{"photos"}}
-	child := Task{ID: 2, ParentID: 1, Priority: 3, Tags: []string{"impl"}}
+	parent := Task{ID: 1, Impact: 1, Tags: []string{"photos"}}
+	child := Task{ID: 2, ParentID: 1, Tags: []string{"impl"}}
 
-	if got := EffectivePriority(child, &parent); got != 1 {
-		t.Errorf("child priority = %d; want parent's 1", got)
-	}
-	if got := EffectivePriority(child, nil); got != 3 {
-		t.Errorf("top-level priority = %d; want own 3", got)
-	}
 	if diff := cmp.Diff([]string{"impl", "photos"}, EffectiveTags(child, &parent)); diff != "" {
 		t.Errorf("child tags (-want +got):\n%s", diff)
 	}
 }
 
 func TestInInbox(t *testing.T) {
-	triagedParent := &Task{Priority: 2}
+	triagedParent := &Task{ID: 1, Impact: 2}
 	cases := []struct {
 		name   string
 		task   Task
@@ -56,11 +50,14 @@ func TestInInbox(t *testing.T) {
 		want   bool
 	}{
 		{"title only", Task{Status: StatusOpen}, nil, true},
-		{"priority only", Task{Status: StatusOpen, Priority: 1}, nil, true},
+		{"impact only", Task{Status: StatusOpen, Impact: 1}, nil, true},
 		{"size only", Task{Status: StatusOpen, Size: SizeS}, nil, true},
-		{"priority and size", Task{Status: StatusOpen, Priority: 1, Size: SizeS}, nil, false},
-		{"child with size inherits priority", Task{Status: StatusOpen, Size: SizeM}, triagedParent, false},
-		{"child of untriaged parent", Task{Status: StatusOpen, Size: SizeM}, &Task{}, true},
+		{"impact and size", Task{Status: StatusOpen, Impact: 1, Size: SizeS}, nil, false},
+		{"a due doesn't count", Task{Status: StatusOpen, Due: "2026-10-16", Size: SizeS}, nil, true},
+		{"child with size inherits impact", Task{Status: StatusOpen, ParentID: 1, Size: SizeM}, triagedParent, false},
+		{"child of untriaged parent: the parent is triaged instead (D74)", Task{Status: StatusOpen, ParentID: 1, Size: SizeM}, &Task{ID: 1}, false},
+		{"child without a size", Task{Status: StatusOpen, ParentID: 1}, triagedParent, true},
+		{"child without a size, untriaged parent", Task{Status: StatusOpen, ParentID: 1}, &Task{ID: 1}, true},
 		{"done", Task{Status: StatusDone}, nil, false},
 		{"source-linked, unsized", Task{Status: StatusOpen, Source: &SourceRef{Kind: "github", ID: "a/b#1"}}, nil, false},
 	}
@@ -75,7 +72,7 @@ func TestSnapshotInboxOrderAndParent(t *testing.T) {
 	t0 := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 	snap := NewSnapshot([]Task{
 		{ID: 3, Status: StatusOpen, CreatedAt: t0.Add(2 * time.Hour)},
-		{ID: 1, Status: StatusOpen, Priority: 1, Size: SizeXL, CreatedAt: t0},
+		{ID: 1, Status: StatusOpen, Impact: 1, Size: SizeXL, CreatedAt: t0},
 		{ID: 2, Status: StatusOpen, CreatedAt: t0.Add(time.Hour)},
 		{ID: 4, Status: StatusOpen, ParentID: 1, Size: SizeS, CreatedAt: t0},
 	})

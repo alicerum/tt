@@ -15,20 +15,20 @@ import (
 var ErrNoMove = errors.New("no sibling in that direction")
 
 // ParseChild parses an add-child line for parentID. Children inherit their
-// parent's priority (D6), so !n is refused (D32).
+// parent's impact (D68), so !n is refused (D32, D73); ^date is their own.
 func (s *Service) ParseChild(parentID int64, line string) (dsl.Draft, error) {
-	d, err := dsl.ParseAdd(line, len(s.cfg.Priorities))
+	d, err := dsl.ParseAdd(line, s.Today())
 	if err != nil {
 		return dsl.Draft{}, err
 	}
-	if d.Priority != 0 {
-		return dsl.Draft{}, inheritedPriority(parentID, d.Priority)
+	if d.Impact != 0 {
+		return dsl.Draft{}, inheritedImpact(parentID, d.Impact)
 	}
 	return d, nil
 }
 
-func inheritedPriority(parentID int64, p int) error {
-	return fmt.Errorf("%w: children inherit priority from #%d; drop !%d", ErrInvalidValue, parentID, p)
+func inheritedImpact(parentID int64, n int) error {
+	return fmt.Errorf("%w: children inherit impact from #%d; drop !%d", ErrInvalidValue, parentID, n)
 }
 
 // AddChild captures a task from line as the last child of parentID. Under a
@@ -41,7 +41,7 @@ func (s *Service) AddChild(ctx context.Context, parentID int64, line string) (do
 	}
 	now := s.clock.Now()
 	t := domain.Task{
-		Title: d.Title, Note: d.Note, Link: d.Link, Requester: d.Requester, Tags: d.Tags, Size: d.Size,
+		Title: d.Title, Note: d.Note, Link: d.Link, Requester: d.Requester, Tags: d.Tags, Due: d.Due, Size: d.Size,
 		ParentID: parentID, Status: domain.StatusOpen, CreatedAt: now, UpdatedAt: now,
 	}
 	err = s.store.InTx(ctx, func(x *store.Tx) error {

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -10,7 +11,8 @@ import (
 
 // TestMigration006 runs 006 on a database as Plan 9 left it (D76): no task
 // gets an impact except open pinned reviews (impact 1, due 3 days after the
-// request, or after first seen without one); priority stays as it was.
+// request, or after first seen without one); priority stays as it was,
+// unread.
 func TestMigration006(t *testing.T) {
 	s, path := openTemp(t)
 	for _, q := range []string{
@@ -80,9 +82,13 @@ func TestMigration006(t *testing.T) {
 	}
 	for id, w := range want {
 		got, _ := snap.Get(id)
-		if got.Impact != w.impact || got.Due != w.due || got.Priority != w.priority {
+		var priority sql.NullInt64
+		if err := again.db.QueryRow("SELECT priority FROM tasks WHERE id = ?", id).Scan(&priority); err != nil {
+			t.Fatal(err)
+		}
+		if got.Impact != w.impact || got.Due != w.due || int(priority.Int64) != w.priority {
 			t.Errorf("task #%d: impact %d, due %q, priority %d; want %d, %q, %d",
-				id, got.Impact, got.Due, got.Priority, w.impact, w.due, w.priority)
+				id, got.Impact, got.Due, priority.Int64, w.impact, w.due, w.priority)
 		}
 	}
 }

@@ -207,10 +207,11 @@ func (m *Model) pinReview() tea.Cmd {
 		}
 	}
 	label := fmt.Sprintf("%q", domain.ReviewTitle(i))
-	svc, ctx, levels := m.svc, m.ctx, m.svc.Config().Priorities
+	svc, ctx := m.svc, m.ctx
 	return func() tea.Msg {
 		t, undo, err := svc.PinSource(ctx, i.Kind, i.ExternalID)
-		badge := strings.Trim(badgeOf(levels, t.Priority, t.Size), "[]")
+		u, ok := domain.Urgency(t, nil, svc.Today(), svc.Config().Urgency) // a review's task is top-level
+		badge := strings.TrimSpace(strings.Trim(badgeOf(u, ok, t.Size), "[]"))
 		return actionMsg{label: "pin " + label, status: "pinned " + label + " · " + badge, undo: undo, err: err}
 	}
 }

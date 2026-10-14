@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -56,12 +57,12 @@ func TestAddChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := mustGet(t, s, a.ID)
-	if got.ParentID != parent.ID || got.Size != domain.SizeS || got.Note != "try the new lib" || got.Priority != 0 ||
+	if got.ParentID != parent.ID || got.Size != domain.SizeS || got.Note != "try the new lib" || got.Impact != 0 ||
 		!slices.Equal(got.Tags, []string{"ops"}) {
 		t.Errorf("child: %+v", got)
 	}
 	if domain.InInbox(got, &parent) {
-		t.Error("a sized child inherits priority and skips the Inbox")
+		t.Error("a sized child inherits impact and skips the Inbox")
 	}
 	if order := childOrder(t, s, parent.ID); !slices.Equal(order, []int64{a.ID, b.ID}) {
 		t.Errorf("children appended last: %v", order)
@@ -81,7 +82,7 @@ func TestAddChildRules(t *testing.T) {
 	child := mustAddChild(t, s, parent.ID, "Child ~s")
 
 	_, _, err := s.AddChild(ctx, parent.ID, "Urgent bit !1 ~s")
-	if !errors.Is(err, ErrInvalidValue) || !strings.Contains(err.Error(), "children inherit priority from #1; drop !1") {
+	if !errors.Is(err, ErrInvalidValue) || !strings.Contains(err.Error(), "children inherit impact from #1; drop !1") {
 		t.Errorf("!n on a child: %v", err)
 	}
 	if _, _, err := s.AddChild(ctx, child.ID, "Grandchild ~s"); !errors.Is(err, ErrInvalidParent) {
@@ -149,32 +150,46 @@ func TestReorder(t *testing.T) {
 	}
 }
 
-func TestChildPriorityIsRefusedInEdits(t *testing.T) {
+func TestChildImpactIsRefusedInEdits(t *testing.T) {
 	must := mustUndo(t)
 	s, clock := newService(t)
 	ctx := context.Background()
-	parent := mustAdd(t, s, "Parent !1 ~l")
-	child := mustAdd(t, s, "Child !3 ~s") // own priority from before it became a child
+	parent := mustAdd(t, s, "Parent !3 ^fri ~l")
+	child := mustAdd(t, s, "Child !1 ~s") // own impact from before it became a child
 	clock.Advance(time.Minute)
 	must(s.SetParent(ctx, child.ID, parent.ID))
 	got := mustGet(t, s, child.ID)
 
 	if line := EditLine(got); line != "Child ~s" {
-		t.Errorf("EditLine of a child = %q; want no priority (D32)", line)
+		t.Errorf("EditLine of a child = %q; want no impact, and no inherited due (D32, D73)", line)
 	}
-	if line := EditLine(mustGet(t, s, parent.ID)); line != "Parent !1 ~l" {
+	if line := EditLine(mustGet(t, s, parent.ID)); line != "Parent !3 ^2026-10-16 ~l" {
 		t.Errorf("EditLine of a parent = %q", line)
 	}
-	if _, err := s.ParseEdit(got, "Child !2 ~s"); !errors.Is(err, ErrInvalidValue) {
+	if _, err := s.ParseEdit(got, "Child !2 ~s"); !errors.Is(err, ErrInvalidValue) ||
+		!strings.Contains(err.Error(), fmt.Sprintf("children inherit impact from #%d", parent.ID)) {
 		t.Errorf("ParseEdit with !n on a child: %v", err)
 	}
 	if _, err := s.Edit(ctx, child.ID, "Child !2 ~s"); !errors.Is(err, ErrInvalidValue) {
 		t.Errorf("Edit with !n on a child: %v", err)
 	}
+	if _, err := s.SetImpact(ctx, child.ID, 2); !errors.Is(err, ErrInvalidValue) {
+		t.Errorf("SetImpact on a child: %v; want ErrInvalidValue", err)
+	}
 	clock.Advance(time.Minute)
-	must(s.Edit(ctx, child.ID, "Child renamed ~m"))
-	if got := mustGet(t, s, child.ID); got.Title != "Child renamed" || got.Size != domain.SizeM {
-		t.Errorf("edited child: %+v", got)
+	must(s.Edit(ctx, child.ID, "Child renamed ^tom ~m"))
+	if got := mustGet(t, s, child.ID); got.Title != "Child renamed" || got.Size != domain.SizeM || got.Due != "2026-10-13" {
+		t.Errorf("edited child: %+v; want its own due", got)
+	}
+	if line := EditLine(mustGet(t, s, child.ID)); line != "Child renamed ^2026-10-13 ~m" {
+		t.Errorf("EditLine of a child with its own due = %q", line)
+	}
+	kid := mustAddChild(t, s, parent.ID, "Kid ^3d ~s")
+	if got := mustGet(t, s, kid.ID); got.Due != "2026-10-15" || got.Impact != 0 {
+		t.Errorf("AddChild with ^3d: %+v", got)
+	}
+	if _, _, err := s.AddChild(ctx, parent.ID, "Kid !2 ~s"); !errors.Is(err, ErrInvalidValue) {
+		t.Errorf("AddChild with !n: %v", err)
 	}
 }
 

@@ -79,7 +79,7 @@ func (m *Model) refreshRows() {
 // applyFilter makes text the backlog filter (D26a). On a parse error the
 // current filter stays and the error is returned.
 func (m *Model) applyFilter(text string) error {
-	f, err := dsl.ParseFilter(text, len(m.svc.Config().Priorities))
+	f, err := dsl.ParseFilter(text)
 	if err != nil {
 		return err
 	}
@@ -95,8 +95,8 @@ func (m *Model) applyFilter(text string) error {
 // the parent is expanded; filtered: always). A child whose parent isn't listed
 // (closed, in the Inbox, missing, or not matching) is listed top-level with
 // ↳ #parent so it never vanishes; the children of a pinned parent live under
-// it in Today instead. Top-level tasks are grouped (D26), oldest first within
-// a group.
+// it in Today instead. Top-level tasks are sorted by urgency or impact, with
+// no headings (D72), or grouped, oldest first within a group (D26).
 func (m *Model) backlogRows() []row {
 	snap := m.state.Snapshot
 	now := m.svc.Now()
@@ -110,7 +110,6 @@ func (m *Model) backlogRows() []row {
 			listed[t.ID] = true
 		}
 	}
-	headings := m.priorityHeadings()
 	groups := map[search.Group][]domain.Task{}
 	orphanOf := map[int64]int64{}
 	for _, t := range snap.Tasks() {
@@ -126,14 +125,17 @@ func (m *Model) backlogRows() []row {
 			}
 			orphanOf[t.ID] = t.ParentID
 		}
-		g := search.GroupOf(m.pick.group, t, snap.ParentOf(t), now, headings)
+		g := search.GroupOf(m.pick.group, t, now)
 		groups[g] = append(groups[g], t)
 	}
+	order := search.Sorter(m.pick.group, snap.ParentOf, m.svc.Today(), m.svc.Config().Urgency)
 	var rows []row
 	for _, g := range slices.SortedFunc(maps.Keys(groups), search.Compare) {
 		items := groups[g]
-		slices.SortFunc(items, search.Oldest)
-		rows = append(rows, row{kind: rowHeader, text: g.Label})
+		slices.SortFunc(items, order)
+		if !m.pick.group.Flat() {
+			rows = append(rows, row{kind: rowHeader, text: g.Label})
+		}
 		for _, t := range items {
 			var kids []domain.Task
 			for _, c := range m.idx.children[t.ID] {
@@ -153,17 +155,6 @@ func (m *Model) backlogRows() []row {
 		}
 	}
 	return rows
-}
-
-// priorityHeadings are the priority groups' headings, one per configured
-// level: "P1 · someone is blocked" (D26).
-func (m *Model) priorityHeadings() []string {
-	levels := m.svc.Config().Priorities
-	headings := make([]string, len(levels))
-	for i, l := range levels {
-		headings[i] = l.Name + " · " + l.Definition
-	}
-	return headings
 }
 
 // todayRows: today's candidates in plan order. A pinned parent lists its open
@@ -453,7 +444,11 @@ func (m *Model) pickKey(key string) tea.Cmd {
 	case "g":
 		p.group, p.groupChosen = p.group.Next(), true
 		m.refreshRows()
-		m.setStatus("grouped by " + string(p.group))
+		verb := "grouped by "
+		if p.group.Flat() {
+			verb = "sorted by "
+		}
+		m.setStatus(verb + string(p.group))
 		return m.saveGroup()
 	case "esc":
 		if p.filtered() {

@@ -17,7 +17,7 @@ const shortHeight = 17
 func TestHalfPageInTheLog(t *testing.T) {
 	h := newLogHarness(t, config.Default())
 	for i := 1; i <= 20; i++ {
-		h.add(fmt.Sprintf("Task %02d !1 ~s", i))
+		h.add(fmt.Sprintf("Task %02d !3 ~s", i))
 	}
 	h.send(tea.WindowSizeMsg{Width: 140, Height: shortHeight})
 	title := func() string {
@@ -54,7 +54,7 @@ func TestHalfPageOnToday(t *testing.T) {
 		t.Errorf("ctrl+u past the top: %v; want the first row", at)
 	}
 
-	h.pinned("Alpha !1 ~s")
+	h.pinned("Alpha !3 ~s")
 	h.keys("tab", "b", "ctrl+d") // a picked-up ghost moves too
 	if at := h.m.today.at; at != 12*time.Hour {
 		t.Errorf("ctrl+d while placing: %v; want 12:00", at)
@@ -67,7 +67,7 @@ func TestHalfPageInTaskDetail(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		lines = append(lines, fmt.Sprintf("Kid %02d ~s", i))
 	}
-	_, kids := h.family("Parent !1 ~xl", lines...)
+	_, kids := h.family("Parent !3 ~xl", lines...)
 	h.send(tea.WindowSizeMsg{Width: 140, Height: shortHeight})
 	h.keys("enter", "ctrl+d")
 	if h.m.screen != screenDetail || h.m.detail.selected != kids[5].ID {

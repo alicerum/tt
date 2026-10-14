@@ -19,7 +19,7 @@ func TestParseAdd(t *testing.T) {
 		{
 			"Reply to Ana re schema @Ana #photos #Impl !1 ~s https://x.slack.com/archives/C1/p2",
 			Draft{Title: "Reply to Ana re schema", Requester: "ana", Tags: []string{"impl", "photos"},
-				Priority: 1, Size: domain.SizeS, Link: "https://x.slack.com/archives/C1/p2"},
+				Impact: 1, Size: domain.SizeS, Link: "https://x.slack.com/archives/C1/p2"},
 		},
 		{"tokens #a anywhere ~xl in @bob the line", Draft{Title: "tokens anywhere in the line", Requester: "bob", Tags: []string{"a"}, Size: domain.SizeXL}},
 		{"~X alias", Draft{Title: "alias", Size: domain.SizeXL}},
@@ -40,7 +40,12 @@ func TestParseAdd(t *testing.T) {
 		{"Ping @ana, about schema", Draft{Title: "Ping about schema", Requester: "ana"}},
 		{"Ask @ana.", Draft{Title: "Ask", Requester: "ana"}},
 		{"Tag it #photos.", Draft{Title: "Tag it", Tags: []string{"photos"}}},
-		{"x !1.", Draft{Title: "x", Priority: 1}},
+		{"x !1.", Draft{Title: "x", Impact: 1}},
+		// Due dates (D73).
+		{"Ship it ^fri !3", Draft{Title: "Ship it", Due: "2026-10-16", Impact: 3}},
+		{"last ^tom date ^2026-11-02 wins", Draft{Title: "last date wins", Due: "2026-11-02"}},
+		{"Send it ^fri, then rest", Draft{Title: "Send it then rest", Due: "2026-10-16"}},
+		{"x^2 and ^_^ and ^ and ^someday stay", Draft{Title: "x^2 and ^_^ and ^ and ^someday stay"}},
 		// Notes.
 		{"Call Ivan -- he needs it before Friday's sync", Draft{Title: "Call Ivan", Note: "he needs it before Friday's sync", HasNote: true}},
 		{"Ping #infra -- see https://x.io #not-a-tag !1 -- twice", Draft{Title: "Ping", Tags: []string{"infra"}, Note: "see https://x.io #not-a-tag !1 -- twice", HasNote: true}},
@@ -49,7 +54,7 @@ func TestParseAdd(t *testing.T) {
 		{"en--dash stays", Draft{Title: "en--dash stays"}},
 	}
 	for _, c := range cases {
-		got, err := ParseAdd(c.line, 3)
+		got, err := ParseAdd(c.line, wednesday)
 		if err != nil {
 			t.Errorf("ParseAdd(%q) error: %v", c.line, err)
 			continue
@@ -65,14 +70,19 @@ func tagsEqual(a, b []string) bool { return strings.Join(a, ",") == strings.Join
 
 func TestParseAddErrors(t *testing.T) {
 	for _, line := range []string{"", "   ", "@ana #x !1 ~s", "https://only.a.link", "-- just a note"} {
-		if _, err := ParseAdd(line, 3); !errors.Is(err, ErrEmptyTitle) {
+		if _, err := ParseAdd(line, wednesday); !errors.Is(err, ErrEmptyTitle) {
 			t.Errorf("ParseAdd(%q) error = %v; want ErrEmptyTitle", line, err)
 		}
 	}
 	for _, line := range []string{"x !0", "x !4", "x !99999999999999999999"} {
-		_, err := ParseAdd(line, 3)
-		if err == nil || !strings.Contains(err.Error(), "use !1 to !3") {
-			t.Errorf("ParseAdd(%q) error = %v; want priority range error", line, err)
+		_, err := ParseAdd(line, wednesday)
+		if err == nil || !strings.Contains(err.Error(), "out of range: use !1 to !3") || !strings.HasPrefix(err.Error(), "impact !") {
+			t.Errorf("ParseAdd(%q) error = %v; want the impact range error", line, err)
+		}
+	}
+	for _, line := range []string{"x ^31feb", "x ^2026-13-01"} {
+		if _, err := ParseAdd(line, wednesday); err == nil || !strings.Contains(err.Error(), "no such date") {
+			t.Errorf("ParseAdd(%q) error = %v; want no such date", line, err)
 		}
 	}
 }
@@ -80,14 +90,15 @@ func TestParseAddErrors(t *testing.T) {
 func TestFormatAddRoundTrip(t *testing.T) {
 	drafts := []Draft{
 		{Title: "Just a title"},
-		{Title: "Review PR #482", Requester: "ana", Tags: []string{"impl", "photos"}, Priority: 2, Size: domain.SizeXL, Link: "https://x.io/a?b=c#d"},
+		{Title: "Review PR #482", Requester: "ana", Tags: []string{"impl", "photos"}, Impact: 2, Due: "2026-10-30", Size: domain.SizeXL, Link: "https://x.io/a?b=c#d"},
+		{Title: "Overdue", Due: "2026-01-02"},
 		{Title: "With note", Note: "multi -- separators", HasNote: true},
 		{Title: "Empty note", HasNote: true},
 		{Title: "two links https://b.io", Link: "https://a.io"},
 	}
 	for _, d := range drafts {
 		line := FormatAdd(d)
-		got, err := ParseAdd(line, 3)
+		got, err := ParseAdd(line, wednesday)
 		if err != nil {
 			t.Errorf("ParseAdd(FormatAdd(%+v)) = %q: %v", d, line, err)
 			continue
@@ -115,7 +126,7 @@ func TestWithNoteLines(t *testing.T) {
 		{"Ship it", []string{"#not-a-tag !1 @nobody"}, Draft{Title: "Ship it", Note: "#not-a-tag !1 @nobody", HasNote: true}},
 	}
 	for _, c := range cases {
-		got, err := ParseAdd(WithNoteLines(c.line, c.rest), 3)
+		got, err := ParseAdd(WithNoteLines(c.line, c.rest), wednesday)
 		if err != nil {
 			t.Errorf("WithNoteLines(%q, %q): %v", c.line, c.rest, err)
 			continue

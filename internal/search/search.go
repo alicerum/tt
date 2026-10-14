@@ -1,5 +1,5 @@
-// Package search evaluates filters (D26a–D26d) and groups tasks for the
-// backlog (D26) over an in-memory snapshot. It does no I/O.
+// Package search evaluates filters (D26a–D26d) and sorts or groups tasks
+// for the backlog (D26, D72) over an in-memory snapshot. It does no I/O.
 package search
 
 import (
@@ -14,7 +14,7 @@ import (
 )
 
 // Match reports whether t passes f at now. parent is t's parent (nil if none):
-// children are matched on their effective priority and tags.
+// children are matched on their effective impact and tags.
 func Match(f dsl.Filter, t domain.Task, parent *domain.Task, now time.Time) bool {
 	statuses := f.Statuses
 	if statuses == nil {
@@ -32,7 +32,7 @@ func Match(f dsl.Filter, t domain.Task, parent *domain.Task, now time.Time) bool
 			return false
 		}
 	}
-	if len(f.Priorities) > 0 && !slices.Contains(f.Priorities, domain.EffectivePriority(t, parent)) {
+	if len(f.Impacts) > 0 && !slices.Contains(f.Impacts, domain.EffectiveImpact(t, parent)) {
 		return false
 	}
 	if len(f.Sizes) > 0 && !slices.Contains(f.Sizes, t.Size) {
@@ -97,25 +97,52 @@ func anchoredSubsequence(w, word []rune) bool {
 	return i == len(w)
 }
 
-// GroupBy is a backlog grouping (D26).
+// GroupBy is a backlog grouping (D26) or, for urgency and impact, a flat
+// sort (D72).
 type GroupBy string
 
 const (
-	ByPriority  GroupBy = "priority"
+	ByUrgency   GroupBy = "urgency"
+	ByImpact    GroupBy = "impact"
 	BySize      GroupBy = "size"
 	ByCreated   GroupBy = "created"
 	ByRequester GroupBy = "requester"
 )
 
 // GroupBys lists the groupings in the order `g` cycles through them.
-var GroupBys = []GroupBy{ByPriority, BySize, ByCreated, ByRequester}
+var GroupBys = []GroupBy{ByUrgency, ByImpact, BySize, ByCreated, ByRequester}
 
-// ParseGroupBy returns the grouping named s; anything unknown is ByPriority.
+// ParseGroupBy returns the grouping named s; anything unknown (a remembered
+// "priority" among them) is ByUrgency.
 func ParseGroupBy(s string) GroupBy {
 	if g := GroupBy(s); slices.Contains(GroupBys, g) {
 		return g
 	}
-	return ByPriority
+	return ByUrgency
+}
+
+// Flat reports whether g is a sort with no headings (D72).
+func (g GroupBy) Flat() bool { return g == ByUrgency || g == ByImpact }
+
+// Sorter is the order of tasks within g's list (flat) or within one of its
+// groups, on today with weights w (D72): ByUrgency most urgent first,
+// ByImpact biggest effective impact first, then most urgent; an untriaged
+// task after the triaged ones; then oldest first. The groupings sort oldest
+// first (D26). parentOf finds a task's parent (nil for none).
+func Sorter(g GroupBy, parentOf func(domain.Task) *domain.Task, today domain.Day, w domain.Weights) func(a, b domain.Task) int {
+	if !g.Flat() {
+		return Oldest
+	}
+	return func(a, b domain.Task) int {
+		pa, pb := parentOf(a), parentOf(b)
+		ua, oka := domain.Urgency(a, pa, today, w)
+		ub, okb := domain.Urgency(b, pb, today, w)
+		byImpact := 0
+		if g == ByImpact {
+			byImpact = cmp.Compare(domain.EffectiveImpact(b, pb), domain.EffectiveImpact(a, pa))
+		}
+		return cmp.Or(byImpact, domain.CompareUrgency(ua, oka, ub, okb), Oldest(a, b))
+	}
 }
 
 // Next is the grouping after g in the `g` cycle.
@@ -150,9 +177,9 @@ var ageBuckets = []struct {
 	{90 * 24 * time.Hour, "older"},
 }
 
-// GroupOf returns the group t lands in. priorities holds one heading per
-// configured level (e.g. "P1 · someone is blocked").
-func GroupOf(by GroupBy, t domain.Task, parent *domain.Task, now time.Time, priorities []string) Group {
+// GroupOf returns the group t lands in at now. A flat sort (D72) has one
+// group, Group{}, shown without a heading.
+func GroupOf(by GroupBy, t domain.Task, now time.Time) Group {
 	switch by {
 	case BySize:
 		if i := slices.Index(domain.Sizes, t.Size); i >= 0 {
@@ -173,12 +200,5 @@ func GroupOf(by GroupBy, t domain.Task, parent *domain.Task, now time.Time, prio
 		}
 		return Group{Label: "@" + t.Requester}
 	}
-	switch p := domain.EffectivePriority(t, parent); {
-	case p == 0:
-		return Group{Rank: len(priorities) + 2, Label: "unset"}
-	case p > len(priorities) || p < 0:
-		return Group{Rank: len(priorities) + 1, Label: "P? · above the configured levels"}
-	default:
-		return Group{Rank: p, Label: priorities[p-1]}
-	}
+	return Group{}
 }

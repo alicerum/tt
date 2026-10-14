@@ -36,7 +36,7 @@ func TestTodayIsTheHomeScreen(t *testing.T) {
 	h.mustSee("tt · Today")
 
 	// esc in the Log clears a filter first, then goes back to Today.
-	h.add("Alpha !1 ~s")
+	h.add("Alpha !3 ~s")
 	h.keys("L", "/")
 	h.typeText("zzz")
 	h.keys("enter", "esc")
@@ -63,18 +63,18 @@ func TestTodayIsTheHomeScreen(t *testing.T) {
 
 func TestTimelineShowsBlocks(t *testing.T) {
 	h := newHarness(t, config.Default())
-	a := h.add("Alpha !1 ~s")
+	a := h.add("Alpha !3 ~s")
 	b := h.add("Beta !2 ~m")
 	h.block(a.ID, 10*time.Hour, time.Hour)
 	h.block(b.ID, 11*time.Hour+10*time.Minute, 45*time.Minute)
-	h.mustSee("TIMELINE · 0/2 done", " 10:00 ▓ Alpha [P1 S]", " 10:30 ▓ ", " 11:00 ▓ 11:10–11:55 Beta [P2 M]", " 11:30 ▓ ")
-	h.mustSee("CANDIDATES", "[P1 S] Alpha ▓") // blocking pins (D12a)
+	h.mustSee("TIMELINE · 0/2 done", " 10:00 ▓ Alpha [ 50 S]", " 10:30 ▓ ", " 11:00 ▓ 11:10–11:55 Beta [ 33 M]", " 11:30 ▓ ")
+	h.mustSee("CANDIDATES", "[ 50 S] Alpha ▓") // blocking pins (D12a)
 
 	if _, err := h.svc.Done(context.Background(), a.ID); err != nil {
 		t.Fatal(err)
 	}
 	h.keys("R")
-	h.mustSee("TIMELINE · 1/2 done", " 10:00 ▓ Alpha [P1 S] ✓") // P3: done blocks stay
+	h.mustSee("TIMELINE · 1/2 done", " 10:00 ▓ Alpha [ 50 S] ✓") // P3: done blocks stay
 }
 
 // blockDirectly puts a block on today's timeline behind the service's back:
@@ -112,9 +112,9 @@ func TestTimelineShowsOnlyWorkingHours(t *testing.T) {
 	}
 
 	// A block outside the hours (placed before D39) keeps a row of its own.
-	late := h.add("Late one !1 ~s")
+	late := h.add("Late one !3 ~s")
 	h.blockDirectly(late.ID, 21*time.Hour, time.Hour)
-	h.mustSee(" 21:00 ▓ 21:00–22:00 Late one [P1 S] · outside of working hours", "TIMELINE · 0/1 done")
+	h.mustSee(" 21:00 ▓ 21:00–22:00 Late one [ 50 S] · outside of working hours", "TIMELINE · 0/1 done")
 	h.mustNotSee(" 21:30 ")
 	for range 30 {
 		h.keys("j")
@@ -133,19 +133,19 @@ func TestTimelineShowsOnlyWorkingHours(t *testing.T) {
 // A block whose task has a note shows ✎ after the title, like the rows (D62).
 func TestTimelineMarksBlocksWithANote(t *testing.T) {
 	h := newHarness(t, config.Default())
-	a := h.add("Alpha !1 ~s")
+	a := h.add("Alpha !3 ~s")
 	b := h.add("Beta !2 ~m")
 	if _, err := h.svc.SetNote(context.Background(), a.ID, "context"); err != nil {
 		t.Fatal(err)
 	}
 	h.block(a.ID, 10*time.Hour, time.Hour)
 	h.block(b.ID, 11*time.Hour+10*time.Minute, 45*time.Minute)
-	h.mustSee(" 10:00 ▓ Alpha ✎ [P1 S]", " 11:00 ▓ 11:10–11:55 Beta [P2 M]")
+	h.mustSee(" 10:00 ▓ Alpha ✎ [ 50 S]", " 11:00 ▓ 11:10–11:55 Beta [ 33 M]")
 }
 
 func TestTimelineCursorAndBlockKeys(t *testing.T) {
 	h := newHarness(t, config.Default())
-	a := h.add("Alpha !1 ~s")
+	a := h.add("Alpha !3 ~s")
 	h.block(a.ID, 10*time.Hour, time.Hour)
 	if got := h.m.today.at; got != 9*time.Hour {
 		t.Fatalf("the cursor starts on the now row: %v", got)
@@ -173,7 +173,7 @@ func TestTimelineCursorAndBlockKeys(t *testing.T) {
 func TestPinningAParentInTheTUIWithChildren(t *testing.T) {
 	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
-	parent, _, err := h.svc.Add(ctx, "Parent !1 ~xl")
+	parent, _, err := h.svc.Add(ctx, "Parent !3 ~xl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestPinningAParentInTheTUIWithChildren(t *testing.T) {
 func TestScreensShareTheHeightBudget(t *testing.T) {
 	h := newHarness(t, config.Default())
 	for i := range 8 {
-		h.add("Task " + string(rune('A'+i)) + " !1 ~s")
+		h.add("Task " + string(rune('A'+i)) + " !3 ~s")
 	}
 	h.add("Untriaged @ana #x https://example.com -- a note")
 	for _, height := range []int{6, 10, 16} {

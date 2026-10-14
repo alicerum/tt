@@ -3,7 +3,6 @@ package tui
 import (
 	"cmp"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 
@@ -108,25 +107,23 @@ func (m *Model) peopleFilterLines() []string {
 // namesWidth is People's left column for a terminal width cells wide.
 func namesWidth(width int) int { return width / 3 }
 
-// personRows lists name's tasks (D52): the open ones grouped by priority
-// like the backlog, pinned ones too, oldest first within a group; then a
-// closed heading over the done and dropped ones, newest first. Every task
+// personRows lists name's tasks (D52): the open ones, pinned ones too, in
+// the urgency order, flat (D72); then a closed heading over the done and
+// dropped ones, newest first. Every task
 // is a row of its own: a child shows ↳ #parent, a parent its progress.
 func (m *Model) personRows(name string) []row {
 	if name == "" {
 		return nil
 	}
-	snap, now, headings := m.state.Snapshot, m.svc.Now(), m.priorityHeadings()
-	groups := map[search.Group][]domain.Task{}
-	var closed []domain.Task
+	snap := m.state.Snapshot
+	var open, closed []domain.Task
 	for _, t := range snap.Tasks() {
 		switch {
 		case t.Requester != name:
 		case t.Status != domain.StatusOpen:
 			closed = append(closed, t)
 		default:
-			g := search.GroupOf(search.ByPriority, t, snap.ParentOf(t), now, headings)
-			groups[g] = append(groups[g], t)
+			open = append(open, t)
 		}
 	}
 	var rows []row
@@ -137,12 +134,9 @@ func (m *Model) personRows(name string) []row {
 		}
 		rows = append(rows, r)
 	}
-	for _, g := range slices.SortedFunc(maps.Keys(groups), search.Compare) {
-		slices.SortFunc(groups[g], search.Oldest)
-		rows = append(rows, row{kind: rowHeader, text: g.Label})
-		for _, t := range groups[g] {
-			add(t)
-		}
+	slices.SortFunc(open, search.Sorter(search.ByUrgency, snap.ParentOf, m.svc.Today(), m.svc.Config().Urgency))
+	for _, t := range open {
+		add(t)
 	}
 	if len(closed) > 0 {
 		slices.SortFunc(closed, func(a, b domain.Task) int {

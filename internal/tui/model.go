@@ -107,7 +107,7 @@ type Model struct {
 
 func New(ctx context.Context, svc *app.Service, opts Options) *Model {
 	now := svc.Now()
-	return &Model{svc: svc, opts: opts, ctx: ctx, width: 100, height: 30, pick: pickState{group: search.ByPriority},
+	return &Model{svc: svc, opts: opts, ctx: ctx, width: 100, height: 30, pick: pickState{group: search.ByUrgency},
 		notify: notifyState{launched: now, checked: now}}
 }
 

@@ -39,7 +39,7 @@ type quickAdd struct {
 }
 
 func (m *Model) openQuickAdd() tea.Cmd {
-	m.overlay = &quickAdd{in: newTokenInput("add › ", "title @who #tag !1 ~s link -- note", m.width)}
+	m.overlay = &quickAdd{in: newTokenInput("add › ", "title @who #tag !1 ^fri ~s link -- note", m.width)}
 	return nil
 }
 
@@ -55,7 +55,7 @@ func (q *quickAdd) update(m *Model, k tea.KeyPressMsg) tea.Cmd {
 		return nil
 	case "enter":
 		line := q.in.line()
-		if _, err := dsl.ParseAdd(line, len(m.svc.Config().Priorities)); err != nil {
+		if _, err := dsl.ParseAdd(line, m.svc.Today()); err != nil {
 			q.err = err
 			return nil
 		}
@@ -257,7 +257,7 @@ func (helpOverlay) update(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 
 func (helpOverlay) view(m *Model) string {
 	global := []string{
-		"a        quick-add: title @who #tag !1 ~s link -- note (tab completes @/#)",
+		"a        quick-add: title @who #tag !1 ^fri ~s link -- note (!1-!3 impact, ^ due; tab completes @/#)",
 		"ctrl+z   undo (refuses if the task changed since)",
 		"ctrl+d / ctrl+u   half a page down / up",
 		"R        reload, and fetch the calendar and GitHub now · q quit · ? this help",
@@ -268,9 +268,9 @@ func (helpOverlay) view(m *Model) string {
 		local = []string{
 			"j k      move between the task and its children",
 			"⏎        open the child under the cursor · esc back (child → parent → where you came from)",
-			"e / E    edit the line (title @who #tag !1 ~s link) / the note in $EDITOR",
+			"e / E    edit the line (title @who #tag !1 ^fri ~s link) / the note in $EDITOR",
 			"o        open the link",
-			"a        add children, one per line (title ~s #tag -- note; priority is the parent's)",
+			"a        add children, one per line (title ~s ^fri #tag -- note; impact is the parent's)",
 			"J / K    move the selected child down / up",
 			"p / u    pin to today / unpin",
 			"x        done (again: reopen)",
@@ -278,8 +278,8 @@ func (helpOverlay) view(m *Model) string {
 		}
 	case screenInbox:
 		local = []string{
-			fmt.Sprintf("1-%d      set priority", len(m.svc.Config().Priorities)),
-			"s m l x  set size (x = XL); a card with priority and size leaves the inbox",
+			"1-3      set impact: who notices if it slips (a person, one team, more than one team)",
+			"s m l x  set size (x = XL); a card with impact and size leaves the inbox",
 			"n        skip (stays in the inbox)",
 			"d / D    drop with optional reason / delete",
 			"esc      back",
@@ -298,7 +298,7 @@ func (helpOverlay) view(m *Model) string {
 			"x        done (again: reopen)",
 			"d / D    drop with optional reason / delete",
 			"/        filter: @who #tag !1 ~s <7d >30d is:done|dropped|all words (live; esc on the list clears)",
-			"g        group by priority → size → created → requester (remembered)",
+			"g        sort by urgency → impact, group by size → created → requester (remembered)",
 			"B        done picking: block today's candidates in Today",
 			"w        the Reviews lane: p pins a review (a task Review #n), o opens the PR · w or tab back",
 			"esc      back to Today (when no filter is set) · i inbox · P people (who asked for what)",

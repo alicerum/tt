@@ -59,7 +59,7 @@ func testEnv(t *testing.T) map[string]string {
 
 func TestAddReportsWhereTaskLanded(t *testing.T) {
 	env := testEnv(t)
-	if r := runTT(t, env, "add", "Reply to Ana @ana !1 ~s"); r.code != 0 || r.stdout != "added #1 to backlog\n" {
+	if r := runTT(t, env, "add", "Reply to Ana @ana !3 ~s"); r.code != 0 || r.stdout != "added #1 to backlog\n" {
 		t.Errorf("triaged add: %+v", r)
 	}
 	// Unquoted words are joined, as a shell would split them.
@@ -91,7 +91,7 @@ func TestUsageErrors(t *testing.T) {
 func TestAddErrorsExitNonZero(t *testing.T) {
 	env := testEnv(t)
 	if r := runTT(t, env, "add", "x !9"); r.code != 1 || !strings.Contains(r.stderr, "use !1 to !3") {
-		t.Errorf("bad priority: %+v", r)
+		t.Errorf("bad impact: %+v", r)
 	}
 	if r := runTT(t, env, "add", "@ana #only-tokens"); r.code != 1 || !strings.Contains(r.stderr, "title is required") {
 		t.Errorf("no title: %+v", r)
@@ -100,11 +100,18 @@ func TestAddErrorsExitNonZero(t *testing.T) {
 
 func TestConfigIsHonoured(t *testing.T) {
 	env := testEnv(t)
+	// A config from before D68 says what replaced the P-levels (D76).
 	if err := os.WriteFile(env["TT_CONFIG"], []byte("[[priorities]]\nname = \"Now\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if r := runTT(t, env, "add", "x !2"); r.code != 1 || !strings.Contains(r.stderr, "use !1 to !1") {
-		t.Errorf("one configured level: %+v", r)
+	if r := runTT(t, env, "add", "x !2"); r.code != 1 || !strings.Contains(r.stderr, "[[priorities]] was replaced by impact (D68): remove it, see config.example.toml") {
+		t.Errorf("an old config: %+v", r)
+	}
+	if err := os.WriteFile(env["TT_CONFIG"], []byte("[urgency]\ndue = 3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := runTT(t, env, "add", "x !2 ^tom"); r.code != 0 {
+		t.Errorf("weights from the config: %+v", r)
 	}
 	if err := os.WriteFile(env["TT_CONFIG"], []byte("bogus = 1\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -280,7 +287,7 @@ func TestAddFromAPipeOverTheLimit(t *testing.T) {
 
 func TestAddFromAPipe(t *testing.T) {
 	env := testEnv(t)
-	in := input{r: strings.NewReader("Look at the schema !1 ~m -- from Slack\r\nAna: can you check\r\n\r\nthe migration?\r\n")}
+	in := input{r: strings.NewReader("Look at the schema !3 ~m -- from Slack\r\nAna: can you check\r\n\r\nthe migration?\r\n")}
 	if r := runWithInput(t, env, in, "add"); r.code != 0 || r.stdout != "added #1 to backlog\n" || r.stderr != "" {
 		t.Fatalf("piped add: %+v", r)
 	}

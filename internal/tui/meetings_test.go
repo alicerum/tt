@@ -25,7 +25,7 @@ func ev(title string, from, to time.Duration) domain.Event {
 
 func TestMeetingsOnToday(t *testing.T) {
 	h := newCalHarness(t, config.Default())
-	fix := h.pinned("Fix CI !1 ~s")
+	fix := h.pinned("Fix CI !3 ~s")
 	h.block(fix.ID, 12*time.Hour, time.Hour)
 	h.meetings(
 		ev("Early", 6*time.Hour, 7*time.Hour),                                   // outside the working hours: not shown
@@ -39,7 +39,7 @@ func TestMeetingsOnToday(t *testing.T) {
 		" 08:00 ■ Breakfast",           // named on its first row inside the hours
 		" 09:30 ■ 09:30–09:45 Standup", // off the grid: exact times (D41)
 		" 10:00 ■ 10:00–11:15 Review +1", " 10:30 ■", " 11:00 ■",
-		" 12:00 ▓ Fix CI [P1 S] ⚠ · ■ Lunch", " 12:30 ▓ · ■", // the block first, then the meeting
+		" 12:00 ▓ Fix CI [ 50 S] ⚠ · ■ Lunch", " 12:30 ▓ · ■", // the block first, then the meeting
 		"TIMELINE · 0/1 done · ⚠ 1",
 	)
 	h.mustNotSee("Early", " 11:30 ■")
@@ -73,25 +73,25 @@ func TestPlacementAroundMeetings(t *testing.T) {
 		ev("Standup", 9*time.Hour, 9*time.Hour+30*time.Minute),
 		ev("Review", 10*time.Hour, 11*time.Hour),
 	)
-	h.pinned("Alpha !1 ~s")
+	h.pinned("Alpha !3 ~s")
 	h.keys("tab", "b")
 	h.mustSee(" 09:30 ░ Alpha 30m") // D42: the first row free of meetings; the length stops at Review
 	h.keys("j")
 	h.mustSee(" 10:00 ░ Alpha 1h ⚠ · ■ Review") // over a meeting: the whole length, with ⚠
 	h.keys("enter")
 	h.mustSee(`blocked "Alpha" 10:00–11:00 · ⚠ overlaps meeting "Review" 10:00–11:00`,
-		" 10:00 ▓ Alpha [P1 S] ⚠ · ■ Review", "⚠ 1")
+		" 10:00 ▓ Alpha [ 50 S] ⚠ · ■ Review", "⚠ 1")
 
 	beta := h.pinned("Beta !2 ~s")
 	h.block(beta.ID, 14*time.Hour, time.Hour)
-	h.mustSee(" 14:00 ▓ Beta [P2 S]")
-	h.mustNotSee("Beta [P2 S] ⚠")
+	h.mustSee(" 14:00 ▓ Beta [ 33 S]")
+	h.mustNotSee("Beta [ 33 S] ⚠")
 	h.meetings( // a meeting that lands on a block later (D18)
 		ev("Standup", 9*time.Hour, 9*time.Hour+30*time.Minute),
 		ev("Review", 10*time.Hour, 11*time.Hour),
 		ev("Escalation", 14*time.Hour+30*time.Minute, 15*time.Hour),
 	)
-	h.mustSee(" 14:00 ▓ Beta [P2 S] ⚠", " 14:30 ▓ · ■ Escalation", "⚠ 2")
+	h.mustSee(" 14:00 ▓ Beta [ 33 S] ⚠", " 14:30 ▓ · ■ Escalation", "⚠ 2")
 	if b := h.blocks(); len(b) != 2 || b[1].Start != 14*time.Hour {
 		t.Fatalf("the block keeps its time (D18): %+v", b)
 	}

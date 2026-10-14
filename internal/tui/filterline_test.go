@@ -15,7 +15,7 @@ func (h *harness) lineOf(s string) int {
 
 func TestTheAppliedFilterStaysVisibleInTheLog(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	h.add("Schema review !1 ~s")
+	h.add("Schema review !3 ~s")
 	h.add("Deploy fix !2 ~m")
 	h.keys("/")
 	h.typeText("schema")
@@ -24,7 +24,7 @@ func TestTheAppliedFilterStaysVisibleInTheLog(t *testing.T) {
 		t.Errorf("the input is the first row inside the backlog's frame: line %d", got)
 	}
 	h.keys("enter")
-	h.mustSee("BACKLOG · by priority · 1 match ─", "filter › schema · esc clears")
+	h.mustSee("BACKLOG · by urgency · 1 match ─", "filter › schema · esc clears")
 	h.mustNotSee("1 match · schema") // the title keeps only the count
 	if got := h.lineOf("filter › schema · esc clears"); got != 2 {
 		t.Errorf("the applied filter keeps the input's row: line %d", got)
@@ -48,8 +48,8 @@ func TestTheAppliedFilterStaysVisibleInTheLog(t *testing.T) {
 
 func TestTheAppliedFilterStaysVisibleInPeople(t *testing.T) {
 	h := newHarness(t, config.Default())
-	h.add("Ask @ana !1 ~s")
-	h.add("Ask @bob !1 ~s")
+	h.add("Ask @ana !3 ~s")
+	h.add("Ask @bob !3 ~s")
 	h.keys("P", "/")
 	h.typeText("an")
 	if got := h.lineOf("filter › an"); got != 2 {

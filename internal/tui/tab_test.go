@@ -10,7 +10,7 @@ import (
 func TestTabSkipsAnEmptyPaneInTheLog(t *testing.T) {
 	h := newLogHarness(t, config.Default())
 	ctx := context.Background()
-	a := h.add("Alpha !1 ~s")
+	a := h.add("Alpha !3 ~s")
 	h.keys("tab")
 	h.mustSee("nothing pinned yet · p pins a task")
 	if h.m.pick.focus != paneBacklog {
@@ -53,7 +53,7 @@ func TestTabSkipsAnEmptyPaneOnToday(t *testing.T) {
 	if h.m.today.focus != focusTimeline {
 		t.Fatal("tab into empty candidates keeps the focus on the timeline")
 	}
-	a := h.pinned("Alpha !1 ~s")
+	a := h.pinned("Alpha !3 ~s")
 	h.keys("tab")
 	if h.m.today.focus != focusCandidates {
 		t.Fatal("tab moves to the candidates once there are some")
@@ -74,7 +74,7 @@ func TestTabSkipsAnEmptyPaneInPeople(t *testing.T) {
 	if h.m.people.onTasks {
 		t.Fatal("tab with nobody listed keeps the focus on the names")
 	}
-	a := h.add("Ask @ana !1 ~s")
+	a := h.add("Ask @ana !3 ~s")
 	h.keys("tab")
 	if !h.m.people.onTasks {
 		t.Fatal("tab moves to ana's tasks")
@@ -91,7 +91,7 @@ func TestTabSkipsAnEmptyPaneInPeople(t *testing.T) {
 
 func TestARefocusLeavesScreensNotOnShowAlone(t *testing.T) {
 	h := newHarness(t, config.Default())
-	a := h.add("Alpha !1 ~s")
+	a := h.add("Alpha !3 ~s")
 	h.keys("L") // the Log's focus is on the backlog
 	h.keys("esc")
 	if _, err := h.svc.Pin(context.Background(), a.ID); err != nil {
@@ -105,7 +105,7 @@ func TestARefocusLeavesScreensNotOnShowAlone(t *testing.T) {
 
 func TestTypingAFilterKeepsTheFocusThroughAReload(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	a := h.add("Alpha !1 ~s")
+	a := h.add("Alpha !3 ~s")
 	h.pinned("Beta !2 ~s")
 	if h.m.pick.focus != paneBacklog {
 		t.Fatal("the focus starts on the backlog")

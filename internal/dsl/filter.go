@@ -14,7 +14,7 @@ import (
 type Filter struct {
 	Requesters []string        // any of; lowercase
 	Tags       []string        // all of; normalized
-	Priorities []int           // any of (effective priority)
+	Impacts    []int           // any of (effective impact)
 	Sizes      []domain.Size   // any of
 	NewerThan  time.Duration   // created less than this long ago; 0 = no bound
 	OlderThan  time.Duration   // created more than this long ago; 0 = no bound
@@ -24,23 +24,23 @@ type Filter struct {
 
 // Empty reports whether the line had no tokens at all.
 func (f Filter) Empty() bool {
-	return len(f.Requesters) == 0 && len(f.Tags) == 0 && len(f.Priorities) == 0 && len(f.Sizes) == 0 &&
+	return len(f.Requesters) == 0 && len(f.Tags) == 0 && len(f.Impacts) == 0 && len(f.Sizes) == 0 &&
 		f.NewerThan == 0 && f.OlderThan == 0 && len(f.Statuses) == 0 && len(f.Words) == 0
 }
 
 const day = 24 * time.Hour
 
-// ParseFilter parses a filter-bar line. levels is the number of configured
-// priority levels; !n outside 1..levels is an error, like in ParseAdd.
+// ParseFilter parses a filter-bar line. !n outside 1..3 is an error, like
+// in ParseAdd.
 //
 //	@name        requester (repeats: any of)
 //	#tag         tag, own or inherited (repeats: all of)
-//	!n  ~size    effective priority / size (repeats: any of)
+//	!n  ~size    effective impact / size (repeats: any of)
 //	<7d  >30d    created within / more than N days (or w weeks) ago
 //	is:open|done|dropped|all
 //	a lone sigil (@ # ! ~ < >) is ignored: it's a token still being typed
 //	anything else is a fuzzy word
-func ParseFilter(line string, levels int) (Filter, error) {
+func ParseFilter(line string) (Filter, error) {
 	var f Filter
 	var tags []string
 	for _, tok := range strings.Fields(line) {
@@ -62,11 +62,11 @@ func ParseFilter(line string, levels int) (Filter, error) {
 		case sigil == '#' && !isDigits(rest):
 			tags = append(tags, rest)
 		case sigil == '!' && isDigits(rest):
-			n, err := strconv.Atoi(rest)
-			if err != nil || n < 1 || n > levels {
-				return Filter{}, fmt.Errorf("priority %s out of range: use !1 to !%d", tok, levels)
+			n, err := parseImpact(tok)
+			if err != nil {
+				return Filter{}, err
 			}
-			f.Priorities = appendNew(f.Priorities, n)
+			f.Impacts = appendNew(f.Impacts, n)
 		case sigil == '~' && isSize(rest):
 			s, _ := domain.ParseSize(rest)
 			f.Sizes = appendNew(f.Sizes, s)

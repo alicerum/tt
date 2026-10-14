@@ -117,8 +117,9 @@ func (s *Service) SyncSources(ctx context.Context) ([]domain.Task, error) {
 }
 
 // PinSource pins the review request kind/extID to today (D20, D49). It
-// creates the request's task (D20b, D48: "Review #n: <title>", the PR link,
-// the configured priority and size, no requester) or, when that task exists
+// creates the request's task (D20b, D48, D75: "Review #n: <title>", the PR
+// link, the configured size and impact, due the configured days after the
+// request, no requester) or, when that task exists
 // but is closed, reopens it, keeping its history. The undo deletes the task
 // it created, or closes the reopened one again as it was; it refuses
 // (ErrConflict) once the task changed, was blocked today, or the day moved on.
@@ -145,8 +146,11 @@ func (s *Service) PinSource(ctx context.Context, kind, extID string) (domain.Tas
 		case !ok:
 			ref := item.Ref()
 			after = domain.Task{Title: domain.ReviewTitle(item), Link: item.URL, Source: &ref,
-				Priority: min(s.cfg.ReviewPriority, len(s.cfg.Priorities)), Size: s.cfg.ReviewSize,
+				Impact: s.cfg.ReviewImpact, Size: s.cfg.ReviewSize,
 				Status: domain.StatusOpen, CreatedAt: now, UpdatedAt: now}
+			if s.cfg.ReviewDue >= 0 {
+				after.Due = s.DayOf(item.WaitingSince()).AddDays(s.cfg.ReviewDue)
+			}
 			if after.ID, err = x.InsertTask(ctx, after); err != nil {
 				return err
 			}

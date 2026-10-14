@@ -180,8 +180,8 @@ func TestPlanOrderAndAlert(t *testing.T) {
 	ctx := context.Background()
 	unset := mustAdd(t, s, "No priority")
 	p2 := mustAdd(t, s, "Second !2 ~s")
-	p1 := mustAdd(t, s, "First !1 ~s")
-	parent := mustAdd(t, s, "Parent !1 ~xl")
+	p1 := mustAdd(t, s, "First !3 ~s")
+	parent := mustAdd(t, s, "Parent !3 ~xl")
 	child := mustAdd(t, s, "Child ~s")
 	if _, err := s.SetParent(ctx, child.ID, parent.ID); err != nil {
 		t.Fatal(err)
@@ -201,7 +201,8 @@ func TestPlanOrderAndAlert(t *testing.T) {
 		ids = append(ids, c.Task.ID)
 		alerts = append(alerts, c.Alert)
 	}
-	// child inherits P1 from its parent, so it sorts with p1 (by id).
+	// Most urgent first (D72): child inherits impact 3 from its parent, so it
+	// sorts with p1 (by id); the untriaged one last.
 	if diff := cmp.Diff([]int64{p1.ID, child.ID, p2.ID, unset.ID}, ids); diff != "" {
 		t.Errorf("candidate order (-want +got):\n%s", diff)
 	}

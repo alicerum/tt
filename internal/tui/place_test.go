@@ -32,7 +32,7 @@ func (h *harness) blocks() []domain.Block {
 
 func TestPlaceACandidate(t *testing.T) {
 	h := newHarness(t, config.Default())
-	a := h.pinned("Alpha !1 ~s")
+	a := h.pinned("Alpha !3 ~s")
 	h.keys("tab", "b")
 	if h.m.today.focus != focusTimeline || h.m.today.at != 9*time.Hour {
 		t.Fatalf("b moves to the timeline's first free row from now: focus %d at %v", h.m.today.focus, h.m.today.at)
@@ -41,7 +41,7 @@ func TestPlaceACandidate(t *testing.T) {
 	h.keys("j")
 	h.mustSee(" 09:30 ░ Alpha 1h", " 10:00 ░")
 	h.keys("enter")
-	h.mustSee(`blocked "Alpha" 09:30–10:30`, " 09:30 ▓ Alpha [P1 S]")
+	h.mustSee(`blocked "Alpha" 09:30–10:30`, " 09:30 ▓ Alpha [ 50 S]")
 	if b := h.blocks(); len(b) != 1 || b[0].TaskID != a.ID || b[0].Start != 9*time.Hour+30*time.Minute || b[0].Duration != time.Hour {
 		t.Fatalf("blocks = %+v", b)
 	}
@@ -54,12 +54,12 @@ func TestPlaceACandidate(t *testing.T) {
 
 func TestPlacementLengthAndFreeRows(t *testing.T) {
 	h := newHarness(t, config.Default())
-	busy := h.pinned("Busy !1 ~s")
+	busy := h.pinned("Busy !3 ~s")
 	h.block(busy.ID, 9*time.Hour, time.Hour)
-	later := h.pinned("Later !1 ~s")
+	later := h.pinned("Later !3 ~s")
 	h.block(later.ID, 11*time.Hour, time.Hour)
 	h.pinned("Medium !2 ~m")
-	h.pinned("Unsized !3")
+	h.pinned("Unsized !1")
 
 	h.keys("tab", "j", "j", "b") // Medium (candidates in plan order: Busy, Later, Medium, Unsized)
 	if h.m.today.at != 10*time.Hour {
@@ -80,9 +80,9 @@ func TestPlacementLengthAndFreeRows(t *testing.T) {
 
 func TestDropOntoABlockIsRefused(t *testing.T) {
 	h := newHarness(t, config.Default())
-	busy := h.pinned("Busy !1 ~s")
+	busy := h.pinned("Busy !3 ~s")
 	h.block(busy.ID, 10*time.Hour, time.Hour)
-	h.pinned("Alpha !1 ~s")
+	h.pinned("Alpha !3 ~s")
 	h.keys("tab", "j", "b") // at 09:00: Alpha would need 09:00–10:00, which fits
 	h.keys("j", "j")        // 10:00 is inside Busy
 	h.keys("enter")
@@ -96,12 +96,12 @@ func TestDropOntoABlockIsRefused(t *testing.T) {
 
 func TestPlanningNudges(t *testing.T) {
 	h := newHarness(t, config.Default())
-	h.pinned("Large !1 ~l")
+	h.pinned("Large !3 ~l")
 	h.keys("tab", "b", "enter")
 	h.mustSee(`blocked "Large" 09:00–17:00 · big task · consider splitting`) // D37
 
 	ctx := context.Background()
-	parent := h.pinned("Parent !1 ~xl")
+	parent := h.pinned("Parent !3 ~xl")
 	if _, _, err := h.svc.AddChild(ctx, parent.ID, "Child ~s"); err != nil {
 		t.Fatal(err)
 	}
@@ -134,9 +134,9 @@ func TestPlanningNudges(t *testing.T) {
 
 func TestMoveResizeFineTuneUnblock(t *testing.T) {
 	h := newHarness(t, config.Default())
-	a := h.pinned("Alpha !1 ~s")
+	a := h.pinned("Alpha !3 ~s")
 	h.block(a.ID, 10*time.Hour, time.Hour)
-	other := h.pinned("Other !1 ~s")
+	other := h.pinned("Other !3 ~s")
 	h.block(other.ID, 13*time.Hour, time.Hour)
 
 	h.keys("j", "j", "m") // on Alpha at 10:00
@@ -174,7 +174,7 @@ func TestMoveResizeFineTuneUnblock(t *testing.T) {
 	}
 	h.typeText("10:10 45m")
 	h.keys("enter")
-	h.mustSee(`"Alpha" now 10:10–10:55`, " 10:00 ▓ 10:10–10:55 Alpha [P1 S]")
+	h.mustSee(`"Alpha" now 10:10–10:55`, " 10:00 ▓ 10:10–10:55 Alpha [ 50 S]")
 	h.keys("ctrl+z")
 	if b := h.blocks()[0]; b.Start != 10*time.Hour || b.Duration != 30*time.Minute {
 		t.Errorf("fine-tune undoes in one step: %+v", b)
@@ -192,7 +192,7 @@ func TestMoveResizeFineTuneUnblock(t *testing.T) {
 
 func TestAMovedBlockThatVanishesStopsTheMove(t *testing.T) {
 	h := newHarness(t, config.Default())
-	a := h.pinned("Alpha !1 ~s")
+	a := h.pinned("Alpha !3 ~s")
 	b := h.block(a.ID, 10*time.Hour, time.Hour)
 	h.keys("j", "j", "m")
 	if _, err := h.svc.Unblock(context.Background(), b.ID); err != nil { // e.g. from another tt
@@ -209,7 +209,7 @@ func TestAMovedBlockThatVanishesStopsTheMove(t *testing.T) {
 // no hint or help line offers it.
 func TestNoCommitStep(t *testing.T) {
 	h := newHarness(t, config.Default())
-	a := h.pinned("Alpha !1 ~s")
+	a := h.pinned("Alpha !3 ~s")
 	h.block(a.ID, 10*time.Hour, 90*time.Minute)
 	for _, focus := range []string{"timeline", "candidates"} {
 		h.keys("c")
@@ -226,7 +226,7 @@ func TestNoCommitStep(t *testing.T) {
 func TestUnpinningABlockedParentIsRefusedInTheTUI(t *testing.T) {
 	h := newHarness(t, config.Default())
 	ctx := context.Background()
-	parent := h.pinned("Parent !1 ~xl")
+	parent := h.pinned("Parent !3 ~xl")
 	if _, _, err := h.svc.AddChild(ctx, parent.ID, "Child ~s"); err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func (h *harness) unpinDirectly(id int64) {
 func TestPinRepairsAParentPinnedBeforeD34(t *testing.T) {
 	h := newHarness(t, config.Default())
 	ctx := context.Background()
-	parent := h.pinned("Parent !1 ~xl")
+	parent := h.pinned("Parent !3 ~xl")
 	kid, _, err := h.svc.AddChild(ctx, parent.ID, "Child ~s")
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func TestPinRepairsAParentPinnedBeforeD34(t *testing.T) {
 
 func TestBlockingOutsideWorkingHours(t *testing.T) {
 	h := newHarness(t, config.Default()) // working hours 08:00–19:00 (D39)
-	late := h.pinned("Late !1 ~s")
+	late := h.pinned("Late !3 ~s")
 	h.clock.now = time.Date(2026, 10, 13, 0, 20, 0, 0, time.UTC) // past midnight: still the 12th's planning day
 	h.m.today.placed = false                                     // as when tt starts now
 	h.keys("R")
@@ -329,7 +329,7 @@ func TestBlockingOutsideWorkingHours(t *testing.T) {
 
 func TestMovingAnOffGridBlockKeepsItsStart(t *testing.T) {
 	h := newHarness(t, config.Default())
-	a := h.pinned("Alpha !1 ~s")
+	a := h.pinned("Alpha !3 ~s")
 	h.block(a.ID, 10*time.Hour+10*time.Minute, 45*time.Minute)
 	undos := len(h.m.undo)
 	h.keys("j", "j", "m", "enter") // m ⏎ leaves it where it was

@@ -22,10 +22,10 @@ func busyHarness(t *testing.T) *harness {
 	t.Helper()
 	h := newGHHarness(t, config.Default())
 	ctx := context.Background()
-	a := h.pinned("Fix CI on the release branch @ana !1 ~s")
+	a := h.pinned("Fix CI on the release branch @ana !3 ~s")
 	h.pinned("Write the schema RFC !2 ~m")
 	h.block(a.ID, 10*time.Hour, time.Hour)
-	parent := h.add("Profiles migration #photos !1 ~l -- a note\nline two")
+	parent := h.add("Profiles migration #photos !3 ~l -- a note\nline two")
 	for _, kid := range []string{"Import flow ~s", "Report export ~m"} {
 		if _, _, err := h.svc.AddChild(ctx, parent.ID, kid); err != nil {
 			t.Fatal(err)

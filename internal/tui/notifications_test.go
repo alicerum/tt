@@ -49,7 +49,7 @@ func (h *harness) wantNotes(want ...note) {
 
 func TestMeetingAndBlockAlerts(t *testing.T) {
 	h := newCalHarness(t, notifyCfg(config.Notify{Meetings: true, Blocks: true}))
-	rfc := h.pinned("Write RFC !1 ~s")
+	rfc := h.pinned("Write RFC !3 ~s")
 	h.block(rfc.ID, 10*time.Hour, time.Hour)
 	h.meetings(ev("Standup", 10*time.Hour, 10*time.Hour+15*time.Minute))
 	if !h.m.View().ReportFocus {
@@ -72,20 +72,20 @@ func TestMeetingAndBlockAlerts(t *testing.T) {
 
 func TestAlertsOnlyForMomentsPassedWhileRunning(t *testing.T) {
 	h := newHarness(t, notifyCfg(config.Notify{Blocks: true}))
-	early := h.pinned("Early !1 ~s")
+	early := h.pinned("Early !3 ~s")
 	h.block(early.ID, 8*time.Hour+30*time.Minute, 30*time.Minute) // started before launch
 	h.tickAt(9*time.Hour + 20*time.Second)
 	h.wantNotes()
 
 	h.clock.now = dayAt(9*time.Hour + 27*time.Minute)
-	late := h.pinned("Late !1 ~s")
+	late := h.pinned("Late !3 ~s")
 	h.block(late.ID, 9*time.Hour+30*time.Minute, 30*time.Minute) // its 5-minute moment passed already
-	moved := h.pinned("Moved !1 ~s")
+	moved := h.pinned("Moved !3 ~s")
 	b := h.block(moved.ID, 10*time.Hour, 30*time.Minute)
 	if _, err := h.svc.MoveBlock(context.Background(), b.ID, 11*time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	done := h.pinned("Done !1 ~s")
+	done := h.pinned("Done !3 ~s")
 	h.block(done.ID, 12*time.Hour, 30*time.Minute)
 	if _, err := h.svc.Done(context.Background(), done.ID); err != nil {
 		t.Fatal(err)
@@ -105,13 +105,13 @@ func TestAlertsOnlyForMomentsPassedWhileRunning(t *testing.T) {
 	h.wantNotes(note{"tt · now", "Late"}, note{"tt · in 5 min", "Moved"})
 
 	// Asleep from 12:00 to 13:58: the moments it slept through stay quiet.
-	again := h.pinned("Again !1 ~s")
+	again := h.pinned("Again !3 ~s")
 	h.block(again.ID, 13*time.Hour, 30*time.Minute)
 	h.tickAt(13*time.Hour + 58*time.Minute)
 	h.wantNotes(note{"tt · now", "Late"}, note{"tt · in 5 min", "Moved"})
 
 	// Quit and start again at 15:55:30: the 15:55 moment was before launch.
-	last := h.pinned("Last !1 ~s")
+	last := h.pinned("Last !3 ~s")
 	h.block(last.ID, 16*time.Hour, 30*time.Minute)
 	h.clock.now = dayAt(15*time.Hour + 55*time.Minute + 30*time.Second)
 	h.relaunch()
@@ -122,7 +122,7 @@ func TestAlertsOnlyForMomentsPassedWhileRunning(t *testing.T) {
 
 func TestNoAlertsWhileFocused(t *testing.T) {
 	h := newHarness(t, notifyCfg(config.Notify{Blocks: true}))
-	rfc := h.pinned("Write RFC !1 ~s")
+	rfc := h.pinned("Write RFC !3 ~s")
 	h.block(rfc.ID, 10*time.Hour, time.Hour)
 	h.send(tea.FocusMsg{})
 	h.tickAt(9*time.Hour + 55*time.Minute)
@@ -136,7 +136,7 @@ func TestNoAlertsWhileFocused(t *testing.T) {
 
 func TestNotificationsAreOffByDefault(t *testing.T) {
 	h := newCalHarness(t, config.Default())
-	rfc := h.pinned("Write RFC !1 ~s")
+	rfc := h.pinned("Write RFC !3 ~s")
 	h.block(rfc.ID, 10*time.Hour, time.Hour)
 	h.meetings(ev("Standup", 10*time.Hour, 10*time.Hour+15*time.Minute))
 	h.tickAt(9*time.Hour + 55*time.Minute)
@@ -193,7 +193,7 @@ func TestNewReviewRequestsNotify(t *testing.T) {
 func TestAFailedSendSaysSoOnce(t *testing.T) {
 	h := newHarness(t, notifyCfg(config.Notify{Blocks: true}))
 	h.notifyErr = errors.New("exec: \"osascript\": executable file not found in $PATH")
-	rfc := h.pinned("Write RFC !1 ~s")
+	rfc := h.pinned("Write RFC !3 ~s")
 	h.block(rfc.ID, 10*time.Hour, time.Hour)
 	h.tickAt(9*time.Hour + 55*time.Minute)
 	h.mustSee(`can't notify: exec: "osascript": executable file not found`)
@@ -232,9 +232,9 @@ func TestAStaleLoadIsNotANewFetch(t *testing.T) {
 func TestABatchTriesEveryNote(t *testing.T) {
 	h := newHarness(t, notifyCfg(config.Notify{Blocks: true}))
 	h.notifyErr = errors.New("no osascript")
-	x := h.pinned("X !1 ~s")
+	x := h.pinned("X !3 ~s")
 	h.block(x.ID, 10*time.Hour, 5*time.Minute)
-	y := h.pinned("Y !1 ~s")
+	y := h.pinned("Y !3 ~s")
 	h.block(y.ID, 10*time.Hour+5*time.Minute, 30*time.Minute)
 	h.tickAt(9*time.Hour + 59*time.Minute)
 	h.tickAt(10 * time.Hour) // "now" X and "in 5 min" Y in one tick

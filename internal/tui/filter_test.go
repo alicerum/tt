@@ -15,7 +15,7 @@ import (
 
 func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	h.add("Schema review !1 ~s @ana")
+	h.add("Schema review !3 ~s @ana")
 	h.add("Deploy fix !2 ~m")
 
 	h.keys("/")
@@ -23,11 +23,11 @@ func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
 		t.Errorf("the filter line is the first row inside the backlog's frame (D56):\n%s", h.screen())
 	}
 	h.typeText("sch")
-	h.mustSee("BACKLOG · by priority · 1 match ─", "filter › sch", "Schema review")
+	h.mustSee("BACKLOG · by urgency · 1 match ─", "filter › sch", "Schema review")
 	h.mustNotSee("Deploy fix")
 
 	h.typeText(" !9")
-	h.mustSee("✗ priority !9 out of range", "BACKLOG · by priority · 1 match", "Schema review") // the last valid filter ("sch !") stays
+	h.mustSee("✗ impact !9 out of range", "BACKLOG · by urgency · 1 match", "Schema review") // the last valid filter ("sch !") stays
 	h.keys("enter")
 	if _, ok := h.m.overlay.(*filterBar); !ok {
 		t.Fatal("enter on a bad filter must keep the line open")
@@ -62,7 +62,7 @@ func TestFilterBarNarrowsLiveAndKeepsTypingOnError(t *testing.T) {
 
 func TestReloadWhileFilteringKeepsTheFilter(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	h.add("Schema review !1 ~s")
+	h.add("Schema review !3 ~s")
 	h.keys("/")
 	h.typeText("schema")
 	other, err := store.Open(context.Background(), h.path) // `tt add` from another shell
@@ -70,17 +70,17 @@ func TestReloadWhileFilteringKeepsTheFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	if _, _, err := app.New(other, h.clock, config.Default()).Add(context.Background(), "Schema follow-up !1 ~s"); err != nil {
+	if _, _, err := app.New(other, h.clock, config.Default()).Add(context.Background(), "Schema follow-up !3 ~s"); err != nil {
 		t.Fatal(err)
 	}
 	h.send(watchTickMsg{})
-	h.mustSee("filter › schema", "2 matches", "[P1 S] Schema follow-up")
+	h.mustSee("filter › schema", "2 matches", "[ 50 S] Schema follow-up")
 }
 
 func TestTokenInputCompletesAtTheCursor(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	h.add("one @ana #photos !1 ~s")
-	h.add("two @andrei !1 ~s")
+	h.add("one @ana #photos !3 ~s")
+	h.add("two @andrei !3 ~s")
 
 	h.keys("a")
 	h.typeText("x @an #ph")
@@ -118,7 +118,7 @@ func TestOverlayInputFollowsResize(t *testing.T) {
 
 func TestDropKeyKeepsTheReasonOfADroppedTask(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	a := h.add("Alpha !1 ~s")
+	a := h.add("Alpha !3 ~s")
 	h.keys("d")
 	h.typeText("handed to @marko")
 	h.keys("enter")
@@ -139,7 +139,7 @@ func TestDropKeyKeepsTheReasonOfADroppedTask(t *testing.T) {
 func TestMatchCountSurvivesNarrowLeftPane(t *testing.T) {
 	h := newLogHarness(t, config.Default())
 	h.send(tea.WindowSizeMsg{Width: 100, Height: 30})
-	h.add("Schema migration !1 ~s @ana #impl")
+	h.add("Schema migration !3 ~s @ana #impl")
 	h.add("Deploy fix !2 ~m")
 	h.keys("/")
 	h.typeText("@ana #impl schema migration")
@@ -148,7 +148,7 @@ func TestMatchCountSurvivesNarrowLeftPane(t *testing.T) {
 
 func TestEscHintHiddenWhileFilterLineOpen(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	h.add("Schema review !1 ~s")
+	h.add("Schema review !3 ~s")
 	h.keys("/")
 	h.typeText("sch")
 	h.keys("enter")

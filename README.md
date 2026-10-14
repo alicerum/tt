@@ -19,9 +19,12 @@ Make sure `~/.local/bin` is on your `PATH`.
 ## Use
 
 ```sh
-tt                                # open the planner (press ? for keys)
-tt add 'Reply to Ana @ana !1 ~s'  # capture a task
+tt                                    # open the planner (press ? for keys)
+tt add 'Reply to Ana @ana !2 ~s ^fri' # capture a task
 ```
+
+In a task line, `!1`–`!3` is impact (who notices if it slips: a person, one
+team, more than one team), `^fri` the due date, `~s` the size.
 
 ## Config
 

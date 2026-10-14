@@ -22,7 +22,7 @@ type editLine struct {
 }
 
 func (m *Model) openEdit(t domain.Task) tea.Cmd {
-	in := newTokenInput(fmt.Sprintf("edit #%d › ", t.ID), "title @who #tag !1 ~s link -- note (replaces it)", m.width)
+	in := newTokenInput(fmt.Sprintf("edit #%d › ", t.ID), "title @who #tag !1 ^fri ~s link -- note (replaces it)", m.width)
 	in.input.SetValue(app.EditLine(t))
 	in.input.CursorEnd()
 	m.overlay = &editLine{in: in, task: t}

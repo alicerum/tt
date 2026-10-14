@@ -23,7 +23,7 @@ func (h *harness) childIDs(parentID int64) []int64 {
 
 func TestAddChildrenOneAfterAnother(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	parent := h.add("Auth migration !1 ~xl #auth")
+	parent := h.add("Auth migration !3 ~xl #auth")
 	h.keys("enter")
 	h.mustSee("no children · a adds one")
 
@@ -31,7 +31,7 @@ func TestAddChildrenOneAfterAnother(t *testing.T) {
 	h.mustSee("child of #1 › ")
 	h.typeText("Token spike ~s")
 	h.keys("enter")
-	h.mustSee("added #2 under #1", "CHILDREN ░░░░░░░░ 0/1", "  [P1 S] Token spike")
+	h.mustSee("added #2 under #1", "CHILDREN ░░░░░░░░ 0/1", "  [ 50 S] Token spike")
 	if _, ok := h.m.overlay.(*addChild); !ok {
 		t.Fatal("the add-child input stays open for the next child")
 	}
@@ -40,9 +40,9 @@ func TestAddChildrenOneAfterAnother(t *testing.T) {
 	h.keys("enter")
 	h.mustSee("added #3 under #1", "0/2")
 
-	h.typeText("Urgent bit !1 ~s") // priority is the parent's (D32)
+	h.typeText("Urgent bit !3 ~s") // impact is the parent's (D32, D73)
 	h.keys("enter")
-	h.mustSee("✗ invalid value: children inherit priority from #1; drop !1", "child of #1 › Urgent bit !1 ~s")
+	h.mustSee("✗ invalid value: children inherit impact from #1; drop !3", "child of #1 › Urgent bit !3 ~s")
 	h.keys("esc")
 	if h.m.overlay != nil {
 		t.Fatal("esc closes the input")
@@ -75,7 +75,7 @@ func TestAddChildrenOneAfterAnother(t *testing.T) {
 
 func TestAddChildKeepsTheLineWhenItFails(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	parent := h.add("Auth migration !1 ~xl")
+	parent := h.add("Auth migration !3 ~xl")
 	h.keys("enter", "a")
 	if err := h.svc.Delete(context.Background(), parent.ID); err != nil { // behind the TUI's back
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestAddChildKeepsTheLineWhenItFails(t *testing.T) {
 
 func TestReorderChildren(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	parent, kids := h.family("Parent !1 ~l", "A ~s", "B ~s", "C ~s")
+	parent, kids := h.family("Parent !3 ~l", "A ~s", "B ~s", "C ~s")
 	a, b, c := kids[0].ID, kids[1].ID, kids[2].ID
 	h.keys("enter", "J")
 	h.mustSee("J/K move a child · j selects one")
@@ -132,8 +132,8 @@ func TestReorderChildren(t *testing.T) {
 func TestMultiLinePasteBecomesTheNote(t *testing.T) {
 	h := newLogHarness(t, config.Default())
 	h.keys("a")
-	h.send(tea.PasteMsg{Content: "Look at the schema @ana !1 ~s\r\nAna: can you check\r\n\r\nthe migration?\r\n"})
-	h.mustSee("add › Look at the schema @ana !1 ~s", "+ 3 lines → note")
+	h.send(tea.PasteMsg{Content: "Look at the schema @ana !3 ~s\r\nAna: can you check\r\n\r\nthe migration?\r\n"})
+	h.mustSee("add › Look at the schema @ana !3 ~s", "+ 3 lines → note")
 	h.keys("enter")
 	h.mustSee("added #1 to backlog")
 	if got := h.task(1); got.Title != "Look at the schema" || got.Note != "Ana: can you check\n\nthe migration?" {

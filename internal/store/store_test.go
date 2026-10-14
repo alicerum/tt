@@ -33,7 +33,7 @@ func sampleTask() domain.Task {
 	now := time.Date(2026, 10, 12, 9, 30, 0, 123, time.UTC)
 	return domain.Task{
 		Title: "Review PR #482", Note: "line 1\nline 2", Link: "https://github.com/a/b/pull/482",
-		Requester: "ivan", Tags: []string{"impl", "photos"}, Priority: 2, Impact: 2, Due: "2026-10-16", Size: domain.SizeM,
+		Requester: "ivan", Tags: []string{"impl", "photos"}, Impact: 2, Due: "2026-10-16", Size: domain.SizeM,
 		Status: domain.StatusOpen, CreatedAt: now, UpdatedAt: now,
 	}
 }
@@ -92,7 +92,7 @@ func TestTaskRoundTrip(t *testing.T) {
 	want.Status, want.ClosedBy, want.DropReason = domain.StatusDropped, domain.ClosedByUser, "handed to @marko"
 	want.ClosedAt = want.CreatedAt.Add(time.Hour)
 	want.Tags = []string{"org"}
-	want.Priority, want.Impact, want.Due, want.Size = 0, 0, "", domain.SizeNone
+	want.Impact, want.Due, want.Size = 0, "", domain.SizeNone
 	want.Source = &domain.SourceRef{Kind: "github", ID: "a/b#482"}
 	err = s.InTx(context.Background(), func(x *Tx) error { return x.UpdateTask(context.Background(), want) })
 	if err != nil {

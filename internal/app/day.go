@@ -3,7 +3,6 @@ package app
 import (
 	"cmp"
 	"context"
-	"math"
 	"slices"
 
 	"tt/internal/domain"
@@ -148,18 +147,11 @@ func (s *Service) buildPlan(today domain.Day, snap domain.Snapshot, state store.
 			Alert:      t.Status == domain.StatusOpen && t.RolloverCount >= s.cfg.RolloverAlert,
 		})
 	}
+	// Most urgent first, untriaged last, then by id (D72).
 	slices.SortFunc(plan.Candidates, func(a, b domain.Candidate) int {
-		pa := domain.EffectivePriority(a.Task, snap.ParentOf(a.Task))
-		pb := domain.EffectivePriority(b.Task, snap.ParentOf(b.Task))
-		return cmp.Or(cmp.Compare(unsetLast(pa), unsetLast(pb)), cmp.Compare(a.Task.ID, b.Task.ID))
+		ua, oka := domain.Urgency(a.Task, snap.ParentOf(a.Task), today, s.cfg.Urgency)
+		ub, okb := domain.Urgency(b.Task, snap.ParentOf(b.Task), today, s.cfg.Urgency)
+		return cmp.Or(domain.CompareUrgency(ua, oka, ub, okb), cmp.Compare(a.Task.ID, b.Task.ID))
 	})
 	return plan
-}
-
-// unsetLast sorts priority 0 (unset) after every real level.
-func unsetLast(p int) int {
-	if p == 0 {
-		return math.MaxInt
-	}
-	return p
 }

@@ -28,9 +28,9 @@ func (h *harness) before(parts ...string) {
 
 func TestPeopleOpensFromTodayAndTheLog(t *testing.T) {
 	h := newHarness(t, config.Default())
-	h.add("Fix login @ana !1 ~s")
+	h.add("Fix login @ana !3 ~s")
 	h.keys("P")
-	h.mustSee("tt · People", "PEOPLE · 1", "ana · 1 open", "@ana", "[P1 S] Fix login")
+	h.mustSee("tt · People", "PEOPLE · 1", "ana · 1 open", "@ana", "[ 50 S] Fix login")
 	h.keys("esc")
 	if h.m.screen != screenToday {
 		t.Fatalf("esc from People opened from Today: screen %d", h.m.screen)
@@ -54,7 +54,7 @@ func TestPeopleOpensFromTodayAndTheLog(t *testing.T) {
 
 func TestPeopleFromTheReviewsLane(t *testing.T) {
 	h := newGHHarness(t, config.Default())
-	h.add("Fix login @ana !1 ~s")
+	h.add("Fix login @ana !3 ~s")
 	threeReviews(h)
 	h.keys("w", "P") // a screen key leaves the lane (D49)
 	h.mustSee("tt · People")
@@ -67,11 +67,11 @@ func TestPeopleFromTheReviewsLane(t *testing.T) {
 func TestPeopleListsEveryRequester(t *testing.T) {
 	h := newHarness(t, config.Default())
 	ctx := context.Background()
-	h.add("Schema review @ana !1 ~s")
+	h.add("Schema review @ana !3 ~s")
 	h.add("Later ask @ana !2 ~m")
-	old := h.add("Old ask @ana !1 ~s")
-	idea := h.add("Raff's idea @raff !3 ~s")
-	h.add("Nobody asked !1 ~s")
+	old := h.add("Old ask @ana !3 ~s")
+	idea := h.add("Raff's idea @raff !1 ~s")
+	h.add("Nobody asked !3 ~s")
 	if _, err := h.svc.Done(ctx, old.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -93,15 +93,15 @@ func TestPeopleListsEveryRequester(t *testing.T) {
 func TestPeopleShowsAPersonsTasks(t *testing.T) {
 	h := newHarness(t, config.Default())
 	ctx := context.Background()
-	login := h.add("Fix login @ana !1 ~s")
+	login := h.add("Fix login @ana !3 ~s")
 	h.add("Write RFC @ana !2 ~m")
-	parent := h.add("Profiles !1 ~l")
+	parent := h.add("Profiles !3 ~l")
 	if _, _, err := h.svc.AddChild(ctx, parent.ID, "Import flow @ana ~s"); err != nil {
 		t.Fatal(err)
 	}
-	bug := h.add("Old bug @ana !1 ~s")
-	idea := h.add("Idea @ana !3 ~s")
-	h.add("Bob's ask @bob !1 ~s")
+	bug := h.add("Old bug @ana !3 ~s")
+	idea := h.add("Idea @ana !1 ~s")
+	h.add("Bob's ask @bob !3 ~s")
 	if _, err := h.svc.Pin(ctx, login.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -113,18 +113,17 @@ func TestPeopleShowsAPersonsTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.keys("R", "P")
-	h.before("@ana",
-		"P1 · someone is blocked", "[P1 S] Fix login 📌", fmt.Sprintf("[P1 S] Import flow ↳ #%d", parent.ID),
-		"P2 · important this month", "[P2 M] Write RFC",
+	h.before("@ana", // the urgency order, flat (D72)
+		"[ 50 S] Fix login 📌", fmt.Sprintf("[ 50 S] Import flow ↳ #%d", parent.ID), "[ 33 M] Write RFC",
 		"closed", "Idea ✗ Mon 12 Oct", "Old bug ✓ Mon 12 Oct") // newest first
 	h.mustNotSee("Fix login @ana", "Bob's ask", "Profiles")
 }
 
 func TestPeopleTaskKeys(t *testing.T) {
 	h := newHarness(t, config.Default())
-	login := h.add("Fix login @ana !1 ~s")
+	login := h.add("Fix login @ana !3 ~s")
 	h.add("Write RFC @ana !2 ~m")
-	h.add("Bob's ask @bob !1 ~s")
+	h.add("Bob's ask @bob !3 ~s")
 	h.keys("P", "tab")
 	h.keys("x")
 	h.mustSee(`✓ "Fix login"`)
@@ -132,10 +131,10 @@ func TestPeopleTaskKeys(t *testing.T) {
 	h.keys("ctrl+z")
 	h.mustSee(`undid done "Fix login"`, "ana · 2 open")
 	h.keys("p")
-	h.mustSee(`pinned "Fix login"`, "[P1 S] Fix login 📌")
+	h.mustSee(`pinned "Fix login"`, "[ 50 S] Fix login 📌")
 
 	h.keys("e", "ctrl+u") // the edit line, cleared
-	h.typeText("Fix login @bob !1 ~s")
+	h.typeText("Fix login @bob !3 ~s")
 	h.keys("enter")
 	if got := h.task(login.ID).Requester; got != "bob" {
 		t.Fatalf("requester after e = %q", got)
@@ -144,7 +143,7 @@ func TestPeopleTaskKeys(t *testing.T) {
 		t.Errorf("the cursor stays on the person: %q", h.m.people.selected)
 	}
 	h.mustSee("ana · 1 open", "bob · 2 open", "@ana", "Write RFC", `edited "Fix login"`)
-	h.mustNotSee("[P1 S] Fix login")
+	h.mustNotSee("[ 50 S] Fix login")
 	h.keys("enter")
 	h.mustSee("tt · Detail", "Write RFC")
 }
@@ -152,7 +151,7 @@ func TestPeopleTaskKeys(t *testing.T) {
 func TestPeopleFilter(t *testing.T) {
 	h := newHarness(t, config.Default())
 	for _, who := range []string{"ana", "anabel", "raff", "bob"} {
-		h.add(fmt.Sprintf("Ask from %s @%s !1 ~s", who, who))
+		h.add(fmt.Sprintf("Ask from %s @%s !3 ~s", who, who))
 	}
 	h.keys("P", "/")
 	h.typeText("an")
@@ -186,15 +185,15 @@ func TestPeopleFilter(t *testing.T) {
 func TestPeopleCursorAcrossReloads(t *testing.T) {
 	h := newHarness(t, config.Default())
 	ctx := context.Background()
-	h.add("Ana's @ana !1 ~s")
-	h.add("Bob's @bob !1 ~s")
+	h.add("Ana's @ana !3 ~s")
+	h.add("Bob's @bob !3 ~s")
 	h.add("Cat's first @cat !2 ~s")
 	second := h.add("Cat's second @cat !2 ~s")
 	h.keys("P", "j", "j", "tab", "j")
 	if r, _ := h.m.people.tasks.selectedRow(); r.task.ID != second.ID {
 		t.Fatalf("on cat's second task, got #%d", r.task.ID)
 	}
-	h.add("Cat's urgent @cat !1 ~s") // sorts above both
+	h.add("Cat's urgent @cat !3 ~s") // sorts above both
 	if r, _ := h.m.people.tasks.selectedRow(); r.task.ID != second.ID {
 		t.Errorf("a reload keeps the task under the cursor, got #%d", r.task.ID)
 	}
@@ -213,8 +212,8 @@ func TestPeopleCursorAcrossReloads(t *testing.T) {
 func TestPeopleFitsAShortTerminal(t *testing.T) {
 	h := newHarness(t, config.Default())
 	for i := 1; i <= 12; i++ {
-		h.add(fmt.Sprintf("Ask %02d @p%02d !1 ~s", i, i))
-		h.add(fmt.Sprintf("Task %02d @p01 !1 ~s", i))
+		h.add(fmt.Sprintf("Ask %02d @p%02d !3 ~s", i, i))
+		h.add(fmt.Sprintf("Task %02d @p01 !3 ~s", i))
 	}
 	h.send(tea.WindowSizeMsg{Width: 100, Height: 8})
 	h.keys("P")
@@ -245,7 +244,7 @@ func TestPeopleFitsAShortTerminal(t *testing.T) {
 
 func TestPeopleWithNobody(t *testing.T) {
 	h := newHarness(t, config.Default())
-	h.add("Nobody asked !1 ~s")
+	h.add("Nobody asked !3 ~s")
 	h.keys("P")
 	h.mustSee("PEOPLE · 0", "nobody yet · @who names who asked")
 	h.keys("tab", "x", "enter", "j") // nothing to act on

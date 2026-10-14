@@ -16,15 +16,9 @@ import (
 	"tt/internal/domain"
 )
 
-type PriorityLevel struct {
-	Name       string `toml:"name"`
-	Definition string `toml:"definition"`
-}
-
 type Config struct {
-	DayStart   time.Duration // offset from midnight when a new planning day begins (D19)
-	Priorities []PriorityLevel
-	Sizes      map[domain.Size]time.Duration
+	DayStart time.Duration // offset from midnight when a new planning day begins (D19)
+	Sizes    map[domain.Size]time.Duration
 	// UnsizedBlock is the default block length for unsized tasks such as PR reviews (D24).
 	UnsizedBlock time.Duration
 	// RolloverAlert is the rollover count at which planning flags a task (D10a).
@@ -43,12 +37,10 @@ type Config struct {
 	GitHubHost string
 	// GitHubPoll is how often GitHub is fetched (D3).
 	GitHubPoll time.Duration
-	// ReviewPriority (a level index) and ReviewSize are what the task of a
-	// pinned review request starts with (D48).
-	ReviewPriority int
-	ReviewSize     domain.Size
-	// ReviewImpact and ReviewDue are the impact and the days after the
-	// request a pinned review's task is due (D75); ReviewDue -1 is no due.
+	// ReviewSize, ReviewImpact and ReviewDue are what the task of a pinned
+	// review request starts with (D48, D75): its size, its impact, and how
+	// many days after the request it is due; ReviewDue -1 is no due.
+	ReviewSize   domain.Size
 	ReviewImpact int
 	ReviewDue    int
 	// Urgency weighs impact against the due date (D70).
@@ -73,39 +65,32 @@ func (n Notify) On() bool { return n.Meetings || n.Blocks || n.Reviews }
 func Default() Config {
 	return Config{
 		DayStart: 4 * time.Hour,
-		Priorities: []PriorityLevel{
-			{Name: "P1", Definition: "someone is blocked / committed this week"},
-			{Name: "P2", Definition: "important this month"},
-			{Name: "P3", Definition: "worth doing eventually"},
-		},
 		Sizes: map[domain.Size]time.Duration{
 			domain.SizeS:  time.Hour,
 			domain.SizeM:  4 * time.Hour,
 			domain.SizeL:  8 * time.Hour,
 			domain.SizeXL: 40 * time.Hour,
 		},
-		UnsizedBlock:   30 * time.Minute,
-		RolloverAlert:  3,
-		WorkStart:      8 * time.Hour,
-		WorkEnd:        19 * time.Hour,
-		CalendarPoll:   2 * time.Minute,
-		GitHub:         true,
-		GitHubPoll:     5 * time.Minute,
-		ReviewPriority: 2,
-		ReviewSize:     domain.SizeS,
-		ReviewImpact:   1,
-		ReviewDue:      3,
-		Urgency:        domain.DefaultWeights,
-		Notify:         Notify{Alerts: []int{5, 0}, Sound: "Glass"},
+		UnsizedBlock:  30 * time.Minute,
+		RolloverAlert: 3,
+		WorkStart:     8 * time.Hour,
+		WorkEnd:       19 * time.Hour,
+		CalendarPoll:  2 * time.Minute,
+		GitHub:        true,
+		GitHubPoll:    5 * time.Minute,
+		ReviewSize:    domain.SizeS,
+		ReviewImpact:  1,
+		ReviewDue:     3,
+		Urgency:       domain.DefaultWeights,
+		Notify:        Notify{Alerts: []int{5, 0}, Sound: "Glass"},
 	}
 }
 
 // file mirrors the TOML layout; every field is optional.
 type file struct {
-	DayStart   *string           `toml:"day_start"`
-	Priorities []PriorityLevel   `toml:"priorities"`
-	Sizes      map[string]string `toml:"sizes"`
-	Planning   struct {
+	DayStart *string           `toml:"day_start"`
+	Sizes    map[string]string `toml:"sizes"`
+	Planning struct {
 		UnsizedBlock  *string `toml:"unsized_block"`
 		RolloverAlert *int    `toml:"rollover_alert"`
 	} `toml:"planning"`
@@ -118,13 +103,12 @@ type file struct {
 		Poll      *string  `toml:"poll"`
 	} `toml:"calendar"`
 	GitHub struct {
-		Enabled  *bool   `toml:"enabled"`
-		Host     *string `toml:"host"`
-		Poll     *string `toml:"poll"`
-		Priority *string `toml:"priority"`
-		Size     *string `toml:"size"`
-		Impact   *int    `toml:"impact"`
-		Due      *string `toml:"due"`
+		Enabled *bool   `toml:"enabled"`
+		Host    *string `toml:"host"`
+		Poll    *string `toml:"poll"`
+		Size    *string `toml:"size"`
+		Impact  *int    `toml:"impact"`
+		Due     *string `toml:"due"`
 	} `toml:"github"`
 	Urgency struct {
 		Impact *float64 `toml:"impact"`
@@ -163,7 +147,7 @@ func Parse(data []byte) (Config, error) {
 		return Config{}, err
 	}
 	if und := md.Undecoded(); len(und) > 0 {
-		return Config{}, fmt.Errorf("unknown config key %q", und[0].String())
+		return Config{}, unknownKey(und[0].String())
 	}
 
 	cfg := Default()
@@ -171,17 +155,6 @@ func Parse(data []byte) (Config, error) {
 		if cfg.DayStart, err = parseClock(*f.DayStart); err != nil {
 			return Config{}, fmt.Errorf("day_start: %w", err)
 		}
-	}
-	if f.Priorities != nil {
-		if n := len(f.Priorities); n < 1 || n > 9 {
-			return Config{}, fmt.Errorf("priorities: need 1 to 9 levels, got %d", n)
-		}
-		for i, p := range f.Priorities {
-			if strings.TrimSpace(p.Name) == "" {
-				return Config{}, fmt.Errorf("priorities[%d]: name is required", i)
-			}
-		}
-		cfg.Priorities = f.Priorities
 	}
 	for key, val := range f.Sizes {
 		size, ok := domain.ParseSize(key)
@@ -252,9 +225,19 @@ func Parse(data []byte) (Config, error) {
 	return cfg, nil
 }
 
-// parseGitHub applies [github] (D48, D50). Without a priority the reviews
-// get the level named P2, else the last level, so configuring other
-// priorities never fails over a key that was never set.
+// unknownKey is the error for a key tt doesn't know (typos surface). The
+// keys priority had before D68 say what replaced them (D76).
+func unknownKey(key string) error {
+	switch {
+	case key == "priorities" || strings.HasPrefix(key, "priorities."):
+		return fmt.Errorf("[[priorities]] was replaced by impact (D68): remove it, see config.example.toml")
+	case key == "github.priority":
+		return fmt.Errorf("[github] priority was replaced by impact and due (D75): remove it, see config.example.toml")
+	}
+	return fmt.Errorf("unknown config key %q", key)
+}
+
+// parseGitHub applies [github] (D48, D50, D75).
 func parseGitHub(f file, cfg *Config) error {
 	g := f.GitHub
 	if g.Enabled != nil {
@@ -269,17 +252,6 @@ func parseGitHub(f file, cfg *Config) error {
 			return fmt.Errorf("github.poll: want a duration of 30s or more, like \"5m\", got %q", *p)
 		}
 		cfg.GitHubPoll = d
-	}
-	name := "P2"
-	if g.Priority != nil {
-		name = strings.TrimSpace(*g.Priority)
-	}
-	cfg.ReviewPriority = slices.IndexFunc(cfg.Priorities, func(l PriorityLevel) bool { return strings.EqualFold(l.Name, name) }) + 1
-	if cfg.ReviewPriority == 0 {
-		if g.Priority != nil {
-			return fmt.Errorf("github.priority: no priority level named %q", name)
-		}
-		cfg.ReviewPriority = len(cfg.Priorities)
 	}
 	if g.Size != nil {
 		p := strings.TrimSpace(*g.Size)

@@ -67,7 +67,7 @@ func TestRealProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	if _, _, err := app.New(other, clock, cfg).Add(ctx, "From another shell !1 ~s"); err != nil {
+	if _, _, err := app.New(other, clock, cfg).Add(ctx, "From another shell !3 ~s"); err != nil {
 		t.Fatal(err)
 	}
 	for !sawTask.Load() { // only the watch loop can bring it in

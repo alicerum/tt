@@ -45,13 +45,13 @@ func TestUndoAddRefusesWhenTaskChangedSince(t *testing.T) {
 		t.Fatal(err)
 	}
 	clock.Advance(time.Minute)
-	if _, err := s.SetPriority(ctx, task.ID, 2); err != nil {
+	if _, err := s.SetImpact(ctx, task.ID, 2); err != nil {
 		t.Fatal(err)
 	}
 	if err := addUndo(ctx); !errors.Is(err, ErrConflict) {
 		t.Errorf("undo Add after a later change: error = %v; want ErrConflict", err)
 	}
-	if got := mustGet(t, s, task.ID); got.Priority != 2 {
+	if got := mustGet(t, s, task.ID); got.Impact != 2 {
 		t.Errorf("task must survive a refused undo: %+v", got)
 	}
 }

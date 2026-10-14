@@ -35,7 +35,7 @@ func TestParseRequester(t *testing.T) {
 // typed as @who in a quick-add line (D53).
 func TestParseRequesterAgreesWithTheToken(t *testing.T) {
 	for _, name := range []string{"ana", "Ana", "ana,", "ANA.", "@ana", "ana-maria", "bob@x.com", "Ünïcode"} {
-		d, err := ParseAdd("Ask @"+name, 3)
+		d, err := ParseAdd("Ask @"+name, wednesday)
 		if err != nil {
 			t.Fatal(err)
 		}

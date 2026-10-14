@@ -18,7 +18,8 @@ type Draft struct {
 	Title     string
 	Requester string // lowercase
 	Tags      []string
-	Priority  int // 0 = not given
+	Impact    int        // 0 = not given; 1–3 (D68)
+	Due       domain.Day // "" = not given (D69)
 	Size      domain.Size
 	Link      string
 	Note      string
@@ -30,16 +31,18 @@ const noteSep = " -- "
 // trailingPunct is stripped from the end of sigil tokens ("@ana," is @ana).
 const trailingPunct = ".,;:!?)]}'\""
 
-// ParseAdd parses a quick-add line. levels is the number of configured
-// priority levels; !n outside 1..levels is an error.
+// ParseAdd parses a quick-add line; today (a planning day) resolves ^dates.
 //
 //	@name   requester (last one wins)
 //	#tag    tag, repeatable (#123 stays in the title: it's an issue ref)
-//	!n      priority
+//	!n      impact, 1 to 3 (D68); out of range is an error
+//	^date   due (D73): today, tom, fri, 3d, 2w, 30oct, 2026-10-30 (last one
+//	        wins; a date that doesn't exist is an error; ^anything-else
+//	        stays in the title)
 //	~size   s, m, l, xl or x (~anything-else stays in the title)
 //	URL     first http(s) URL becomes the link; later URLs stay in the title
 //	 -- …   everything after the first " -- " is the note, verbatim
-func ParseAdd(line string, levels int) (Draft, error) {
+func ParseAdd(line string, today domain.Day) (Draft, error) {
 	var d Draft
 	// Padding lets " -- " also match a leading "-- " and a trailing " --".
 	head := line
@@ -51,7 +54,7 @@ func ParseAdd(line string, levels int) (Draft, error) {
 	var title, tags []string
 	for _, tok := range strings.Fields(head) {
 		orig := tok
-		if strings.ContainsRune("@#!~", rune(tok[0])) {
+		if strings.ContainsRune("@#!~^", rune(tok[0])) {
 			stripped := strings.TrimRight(tok, trailingPunct)
 			// "#482." stays whole (issue ref); "@." has nothing left to classify.
 			if len(stripped) <= 1 || (stripped[0] == '#' && isDigits(stripped[1:])) {
@@ -66,11 +69,21 @@ func ParseAdd(line string, levels int) (Draft, error) {
 		case sigil == '#' && rest != "" && !isDigits(rest):
 			tags = append(tags, rest)
 		case sigil == '!' && isDigits(rest):
-			n, err := strconv.Atoi(rest)
-			if err != nil || n < 1 || n > levels {
-				return Draft{}, fmt.Errorf("priority %s out of range: use !1 to !%d", tok, levels)
+			n, err := parseImpact(tok)
+			if err != nil {
+				return Draft{}, err
 			}
-			d.Priority = n
+			d.Impact = n
+		case sigil == '^':
+			due, ok, err := dueWord(rest, today)
+			if err != nil {
+				return Draft{}, err
+			}
+			if !ok {
+				title = append(title, orig)
+				continue
+			}
+			d.Due = due
 		case sigil == '~' && isSize(rest):
 			d.Size, _ = domain.ParseSize(rest)
 		case d.Link == "" && isURL(tok):
@@ -103,8 +116,11 @@ func FormatAdd(d Draft) string {
 	for _, t := range d.Tags {
 		parts = append(parts, "#"+t)
 	}
-	if d.Priority > 0 {
-		parts = append(parts, "!"+strconv.Itoa(d.Priority))
+	if d.Impact > 0 {
+		parts = append(parts, "!"+strconv.Itoa(d.Impact))
+	}
+	if d.Due != "" {
+		parts = append(parts, "^"+string(d.Due)) // absolute: an edit doesn't drift (D73)
 	}
 	if d.Size != domain.SizeNone {
 		parts = append(parts, "~"+string(d.Size))
@@ -117,6 +133,15 @@ func FormatAdd(d Draft) string {
 		s += noteSep + d.Note
 	}
 	return s
+}
+
+// parseImpact reads !n (tok, all digits after the !) as impact 1–3 (D68).
+func parseImpact(tok string) (int, error) {
+	n, err := strconv.Atoi(tok[1:])
+	if err != nil || n < 1 || n > domain.MaxImpact {
+		return 0, fmt.Errorf("impact %s out of range: use !1 to !%d", tok, domain.MaxImpact)
+	}
+	return n, nil
 }
 
 func isDigits(s string) bool {

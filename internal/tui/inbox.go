@@ -67,19 +67,18 @@ func (m *Model) inboxKey(key string) tea.Cmd {
 		return nil
 	}
 	label := fmt.Sprintf("%q", t.Title)
-	levels := len(m.svc.Config().Priorities)
 	switch {
 	case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
 		n := int(key[0] - '0')
-		if n > levels {
-			m.setStatus(fmt.Sprintf("there are %d priority levels", levels))
+		if n > domain.MaxImpact {
+			m.setStatus(fmt.Sprintf("impact is 1 to %d", domain.MaxImpact))
 			return nil
 		}
-		if parent := m.state.Snapshot.ParentOf(t); parent != nil {
-			m.setStatus(fmt.Sprintf("priority comes from parent #%d %q", parent.ID, parent.Title))
+		if t.ParentID != 0 {
+			m.setStatus(fmt.Sprintf("children inherit impact from #%d", t.ParentID)) // D73
 			return nil
 		}
-		return m.act("priority "+label, "", func(ctx context.Context) (app.Undo, error) { return m.svc.SetPriority(ctx, t.ID, n) })
+		return m.act("impact "+label, "", func(ctx context.Context) (app.Undo, error) { return m.svc.SetImpact(ctx, t.ID, n) })
 	case key == "s" || key == "m" || key == "l" || key == "x":
 		size, _ := domain.ParseSize(key)
 		return m.act("size "+label, "", func(ctx context.Context) (app.Undo, error) { return m.svc.SetSize(ctx, t.ID, size) })
@@ -134,18 +133,19 @@ func (m *Model) inboxView() (string, []string) {
 	}
 	b.WriteString("\n")
 	if parent != nil {
-		fmt.Fprintf(&b, "  priority  %s\n", styleDim.Render(fmt.Sprintf("from parent: %s", m.badge(*parent))))
+		impact := "not set"
+		if parent.Impact > 0 {
+			impact = domain.ImpactNames[parent.Impact-1]
+		}
+		fmt.Fprintf(&b, "  impact    %s\n", styleDim.Render(fmt.Sprintf("from parent #%d: %s", parent.ID, impact)))
 	} else {
-		for i, lvl := range cfg.Priorities {
+		fmt.Fprintf(&b, "  impact    %s\n", styleDim.Render("who notices if it slips?"))
+		for i, name := range domain.ImpactNames {
 			mark := " "
-			if t.Priority == i+1 {
+			if t.Impact == i+1 {
 				mark = "●"
 			}
-			lead := "          "
-			if i == 0 {
-				lead = "  priority"
-			}
-			fmt.Fprintf(&b, "%s %s [%d] %s · %s\n", lead, mark, i+1, lvl.Name, lvl.Definition)
+			fmt.Fprintf(&b, "           %s [%d] %s · %s\n", mark, i+1, name, domain.ImpactExamples[i])
 		}
 	}
 	var sizes []string

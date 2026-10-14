@@ -61,7 +61,6 @@ type Task struct {
 	Link          string
 	Requester     string   // lowercase; "" = none
 	Tags          []string // normalized: lowercase, unique, sorted
-	Priority      int      // 0 = unset; 1 = highest
 	Impact        int      // 0 = unset; 1–3, who notices if it slips (D68)
 	Due           Day      // "" = none (D69)
 	Size          Size

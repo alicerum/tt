@@ -16,10 +16,10 @@ import (
 
 func TestEditLine(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	a := h.add("Old title @ana #a !1 ~s https://x.io -- keep me")
+	a := h.add("Old title @ana #a !3 ~s https://x.io -- keep me")
 
 	h.keys("e")
-	h.mustSee("edit #1 › Old title @ana #a !1 ~s https://x.io")
+	h.mustSee("edit #1 › Old title @ana #a !3 ~s https://x.io")
 	h.typeText(" #b @bob")
 	h.keys("enter")
 	h.mustSee(`edited "Old title"`)
@@ -39,33 +39,33 @@ func TestEditLine(t *testing.T) {
 	if _, ok := h.m.overlay.(*editLine); !ok {
 		t.Fatal("a bad edit must keep the overlay open")
 	}
-	h.mustSee("edit #1 › Old title @ana #a !1 ~s https://x.io !9", "✗ priority !9 out of range")
+	h.mustSee("edit #1 › Old title @ana #a !3 ~s https://x.io !9", "✗ impact !9 out of range")
 	h.keys("esc")
-	if got := h.task(a.ID); got.Priority != 1 {
+	if got := h.task(a.ID); got.Impact != 3 {
 		t.Errorf("a refused edit changed the task: %+v", got)
 	}
 }
 
-func TestEditLineOfAChildRefusesPriority(t *testing.T) {
+func TestEditLineOfAChildRefusesImpact(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	parent, kids := h.family("Parent !1 ~l", "Child ~s")
+	parent, kids := h.family("Parent !3 ~l", "Child ~s")
 	h.keys("enter", "j", "e")
 	h.mustSee("edit #2 › Child ~s")
 	h.typeText(" !2")
 	h.keys("enter")
-	h.mustSee("✗ invalid value: children inherit priority from #1; drop !2")
+	h.mustSee("✗ invalid value: children inherit impact from #1; drop !2")
 	if _, ok := h.m.overlay.(*editLine); !ok {
 		t.Fatal("the overlay stays open")
 	}
 	h.keys("esc")
-	if got := h.task(kids[0].ID); got.Priority != 0 || got.ParentID != parent.ID {
+	if got := h.task(kids[0].ID); got.Impact != 0 || got.ParentID != parent.ID {
 		t.Errorf("child: %+v", got)
 	}
 }
 
 func TestNoteInTheEditor(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	a := h.add("Task !1 ~s -- first line")
+	a := h.add("Task !3 ~s -- first line")
 	var seen string
 	h.editor = func(path string) error {
 		data, err := os.ReadFile(path)
@@ -139,7 +139,7 @@ func TestNoteInTheEditor(t *testing.T) {
 
 func TestNoteChangedElsewhereKeepsYourText(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	a := h.add("Task !1 ~s -- original")
+	a := h.add("Task !3 ~s -- original")
 	var path string
 	h.editor = func(p string) error {
 		path = p
@@ -168,7 +168,7 @@ func TestNoteChangedElsewhereKeepsYourText(t *testing.T) {
 // so the part the user needs survives the cut (D29a).
 func TestNoteConflictPathFitsANarrowPane(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	a := h.add("Task !1 ~s -- original")
+	a := h.add("Task !3 ~s -- original")
 	h.send(tea.WindowSizeMsg{Width: 100, Height: 40})
 	var path string
 	h.editor = func(p string) error {
@@ -186,7 +186,7 @@ func TestNoteConflictPathFitsANarrowPane(t *testing.T) {
 
 func TestEditorTempFilesAreRemoved(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	h.add("Task !1 ~s -- x")
+	h.add("Task !3 ~s -- x")
 	var paths []string
 	h.editor = func(p string) error {
 		paths = append(paths, p)
@@ -207,7 +207,7 @@ func TestEditorTempFilesAreRemoved(t *testing.T) {
 
 func TestOpenLink(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	h.add("With link !1 ~s https://x.io/pr/482")
+	h.add("With link !3 ~s https://x.io/pr/482")
 	h.add("Without !2 ~s")
 	h.keys("o")
 	h.mustSee("opened https://x.io/pr/482")
@@ -247,7 +247,7 @@ func TestEditorCommand(t *testing.T) {
 // Task detail points at E for writing or reading the whole note.
 func TestDetailNoteHints(t *testing.T) {
 	h := newLogHarness(t, config.Default())
-	h.add("No note !1 ~s")
+	h.add("No note !3 ~s")
 	h.add("Long note !2 ~s -- " + strings.Repeat("line\n", 7) + "last")
 	h.keys("enter")
 	h.mustSee("no note · E to write one")
