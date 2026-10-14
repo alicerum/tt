@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +47,12 @@ type Config struct {
 	// pinned review request starts with (D48).
 	ReviewPriority int
 	ReviewSize     domain.Size
+	// ReviewImpact and ReviewDue are the impact and the days after the
+	// request a pinned review's task is due (D75); ReviewDue -1 is no due.
+	ReviewImpact int
+	ReviewDue    int
+	// Urgency weighs impact against the due date (D70).
+	Urgency domain.Weights
 	// Notify is what the running TUI notifies about (D63) and when (D64).
 	Notify Notify
 }
@@ -86,6 +93,9 @@ func Default() Config {
 		GitHubPoll:     5 * time.Minute,
 		ReviewPriority: 2,
 		ReviewSize:     domain.SizeS,
+		ReviewImpact:   1,
+		ReviewDue:      3,
+		Urgency:        domain.DefaultWeights,
 		Notify:         Notify{Alerts: []int{5, 0}, Sound: "Glass"},
 	}
 }
@@ -113,7 +123,13 @@ type file struct {
 		Poll     *string `toml:"poll"`
 		Priority *string `toml:"priority"`
 		Size     *string `toml:"size"`
+		Impact   *int    `toml:"impact"`
+		Due      *string `toml:"due"`
 	} `toml:"github"`
+	Urgency struct {
+		Impact *float64 `toml:"impact"`
+		Due    *float64 `toml:"due"`
+	} `toml:"urgency"`
 	Notify struct {
 		Meetings *bool   `toml:"meetings"`
 		Blocks   *bool   `toml:"blocks"`
@@ -224,6 +240,9 @@ func Parse(data []byte) (Config, error) {
 	if err := parseNotify(f, &cfg); err != nil {
 		return Config{}, err
 	}
+	if err := parseUrgency(f, &cfg); err != nil {
+		return Config{}, err
+	}
 	switch {
 	case cfg.WorkEnd <= cfg.WorkStart:
 		return Config{}, fmt.Errorf("work_hours.end must be after work_hours.start")
@@ -269,6 +288,47 @@ func parseGitHub(f file, cfg *Config) error {
 			return fmt.Errorf("github.size: want s, m, l, xl, or \"\" for unsized, got %q", p)
 		}
 		cfg.ReviewSize = size
+	}
+	if p := g.Impact; p != nil {
+		if *p < 1 || *p > domain.MaxImpact {
+			return fmt.Errorf("github.impact: want 1 to %d, got %d", domain.MaxImpact, *p)
+		}
+		cfg.ReviewImpact = *p
+	}
+	if p := g.Due; p != nil {
+		v := strings.TrimSpace(*p)
+		n, err := strconv.Atoi(strings.TrimSuffix(v, "d"))
+		switch {
+		case v == "":
+			cfg.ReviewDue = -1
+		case !strings.HasSuffix(v, "d") || err != nil || n < 0 || n > 365:
+			return fmt.Errorf("github.due: want whole days like \"3d\" (0d to 365d), or \"\" for no due, got %q", *p)
+		default:
+			cfg.ReviewDue = n
+		}
+	}
+	return nil
+}
+
+// parseUrgency applies [urgency] (D70): two weights, each 0 or more, not
+// both 0.
+func parseUrgency(f file, cfg *Config) error {
+	u := f.Urgency
+	for _, w := range []struct {
+		name string
+		from *float64
+		to   *float64
+	}{{"impact", u.Impact, &cfg.Urgency.Impact}, {"due", u.Due, &cfg.Urgency.Due}} {
+		if w.from == nil {
+			continue
+		}
+		if *w.from < 0 {
+			return fmt.Errorf("urgency.%s: want a weight of 0 or more, got %v", w.name, *w.from)
+		}
+		*w.to = *w.from
+	}
+	if cfg.Urgency.Impact+cfg.Urgency.Due == 0 {
+		return fmt.Errorf("urgency: impact and due can't both be 0")
 	}
 	return nil
 }
