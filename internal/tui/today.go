@@ -696,10 +696,11 @@ func (m *Model) blockText(b domain.Block, times bool) string {
 	if !ok {
 		return fmt.Sprintf("#%d", b.TaskID)
 	}
-	s := t.Title + " " + m.badge(t)
+	s := t.Title
 	if t.Note != "" {
-		s = t.Title + " ✎ " + m.badge(t) // like the rows (D62)
+		s += " ✎" // like the rows (D62)
 	}
+	s += " " + m.badge(t)
 	if times {
 		s = span(b) + " " + s
 	}
