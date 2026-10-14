@@ -52,6 +52,13 @@ func TestPriorityKeysAreGone(t *testing.T) {
 	}
 }
 
+func TestBothPriorityKeysReportedAtOnce(t *testing.T) {
+	_, err := Parse([]byte("[[priorities]]\nname = \"P1\"\n[github]\npriority = \"P2\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "[[priorities]] was replaced") || !strings.Contains(err.Error(), "[github] priority was replaced") {
+		t.Errorf("both old keys: error = %v; want both messages", err)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	cases := map[string]string{
 		`day_start = "4am"`:     "day_start",

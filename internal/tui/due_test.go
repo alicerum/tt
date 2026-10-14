@@ -16,6 +16,7 @@ func TestDueMarker(t *testing.T) {
 	const today = domain.Day("2026-10-12")
 	cases := map[domain.Day]string{
 		"":           "",
+		"garbage":    "",
 		"2026-10-12": "→today",
 		"2026-10-13": "→tue",
 		"2026-10-16": "→fri",
@@ -143,6 +144,11 @@ func TestInboxHeldCardLeavesWhenDropped(t *testing.T) {
 	h.keys("enter")
 	h.mustSee("INBOX · 1 of 1", "Next one", `dropped "Doomed"`)
 	h.mustNotSee("triaged · ⏎ next card")
+	h.keys("ctrl+z")
+	h.mustNotSee("triaged · ⏎ next card")
+	if got := h.task(1); got.Status != domain.StatusOpen {
+		t.Fatalf("Doomed after undo: %v", got.Status)
+	}
 }
 
 // n on a triaged (held) card moves on like ⏎, even when it was the only

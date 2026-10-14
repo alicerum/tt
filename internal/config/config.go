@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -147,7 +148,7 @@ func Parse(data []byte) (Config, error) {
 		return Config{}, err
 	}
 	if und := md.Undecoded(); len(und) > 0 {
-		return Config{}, unknownKey(und[0].String())
+		return Config{}, unknownKeys(und)
 	}
 
 	cfg := Default()
@@ -225,6 +226,25 @@ func Parse(data []byte) (Config, error) {
 	return cfg, nil
 }
 
+// unknownKeys reports every D76 key present at once (so an old config needs
+// one edit, not two), else the first unknown key.
+func unknownKeys(und []toml.Key) error {
+	var gone []string
+	for _, wantPriorities := range []bool{true, false} {
+		for _, k := range und {
+			key := k.String()
+			if wantPriorities == (key == "priorities" || strings.HasPrefix(key, "priorities.")) && (wantPriorities || key == "github.priority") {
+				gone = append(gone, unknownKey(key).Error())
+				break
+			}
+		}
+	}
+	if len(gone) > 0 {
+		return errors.New(strings.Join(gone, "; "))
+	}
+	return unknownKey(und[0].String())
+}
+
 // unknownKey is the error for a key tt doesn't know (typos surface). The
 // keys priority had before D68 say what replaced them (D76).
 func unknownKey(key string) error {
@@ -294,7 +314,7 @@ func parseUrgency(f file, cfg *Config) error {
 		if w.from == nil {
 			continue
 		}
-		if *w.from < 0 {
+		if *w.from < 0 || math.IsNaN(*w.from) || math.IsInf(*w.from, 0) {
 			return fmt.Errorf("urgency.%s: want a weight of 0 or more, got %v", w.name, *w.from)
 		}
 		*w.to = *w.from

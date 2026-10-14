@@ -178,3 +178,40 @@ func TestPinSourceReopensItsTask(t *testing.T) {
 		t.Errorf("reopened after a drop: %+v", mustGet(t, s, first.ID))
 	}
 }
+
+// A reopened review gets its due counted from the new request, and an impact
+// when it has none (a review closed before migration 006).
+func TestPinSourceReopenRecountsDueAndImpact(t *testing.T) {
+	s, clock, src, _ := srcService(t)
+	ctx := context.Background()
+	a := review(901, "Add idempotency key", clock.now)
+	src.Set([]domain.SourceItem{a}, nil)
+	mustSyncSources(t, s)
+	first, _ := mustPinSource(t, s, "acme/api#901")
+	oldDue := mustGet(t, s, first.ID).Due
+	if _, err := s.SetImpact(ctx, first.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Done(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	before := mustGet(t, s, first.ID)
+
+	clock.Advance(48 * time.Hour)
+	a.RequestedAt = clock.now
+	src.Set([]domain.SourceItem{a}, nil)
+	mustSyncSources(t, s)
+	again, undo := mustPinSource(t, s, "acme/api#901")
+	got := mustGet(t, s, again.ID)
+	wantDue := s.DayOf(clock.now).AddDays(3)
+	if got.Status != domain.StatusOpen || got.Due != wantDue || got.Due == oldDue || got.Impact != 1 {
+		t.Errorf("reopened = status %v due %q impact %d; want open, due %q (new request + 3d), impact 1", got.Status, got.Due, got.Impact, wantDue)
+	}
+	if err := undo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got = mustGet(t, s, first.ID)
+	if got.Status != domain.StatusDone || got.Due != before.Due || got.Impact != before.Impact {
+		t.Errorf("after the undo: %+v; want the closed task with due %q and impact %d", got, before.Due, before.Impact)
+	}
+}

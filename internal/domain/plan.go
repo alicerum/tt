@@ -101,6 +101,6 @@ type Candidate struct {
 // Plan is one planning day: its candidates and its timeline blocks.
 type Plan struct {
 	Day        Day
-	Candidates []Candidate // effective priority first (unset last), then task id
+	Candidates []Candidate // most urgent first (untriaged last), then task id (D72)
 	Blocks     []Block     // by start time
 }

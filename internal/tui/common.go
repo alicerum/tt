@@ -119,11 +119,12 @@ func dueMarker(today, due domain.Day) string {
 	if due == "" {
 		return ""
 	}
-	d := domain.DaysBetween(today, due)
 	date, err := time.Parse(time.DateOnly, string(due))
-	switch {
-	case err != nil:
+	if err != nil {
 		return ""
+	}
+	d := domain.DaysBetween(today, due)
+	switch {
 	case d < 0:
 		return styleAlert.Render(fmt.Sprintf("%dd late", -d))
 	case d == 0:

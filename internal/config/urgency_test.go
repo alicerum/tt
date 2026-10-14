@@ -23,6 +23,8 @@ func TestParseUrgency(t *testing.T) {
 		"[urgency]\ndue = -0.5":          "urgency.due: want a weight of 0 or more, got -0.5",
 		"[urgency]\nimpact = 0\ndue = 0": "urgency: impact and due can't both be 0",
 		"[urgency]\nimpact = \"high\"":   "urgency.impact",
+		"[urgency]\nimpact = nan":        "urgency.impact",
+		"[urgency]\ndue = inf":           "urgency.due",
 		"[urgency]\nsize = 1":            "unknown config key",
 	}
 	for input, wantErr := range cases {

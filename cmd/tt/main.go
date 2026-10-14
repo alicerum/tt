@@ -26,7 +26,7 @@ import (
 const usage = `usage:
   tt               open the planner (TUI)
   tt add <line>    capture a task, e.g. tt add 'Reply to Ana @ana #photos !1 ^fri ~s -- before Friday'
-                   quote the line with single quotes: ! and ~ are special in zsh/bash
+                   quote the line with single quotes: ! ~ and ^ are special in zsh/bash
   tt add           no line: type it at the add › prompt (no quoting needed), or pipe it in;
                    piped lines after the first become the note, e.g. pbpaste | tt add
 

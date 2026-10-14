@@ -158,6 +158,12 @@ func (s *Service) PinSource(ctx context.Context, kind, extID string) (domain.Tas
 		case t.Status != domain.StatusOpen:
 			before, after = t, t
 			after.Status, after.ClosedAt, after.ClosedBy, after.DropReason, after.UpdatedAt = domain.StatusOpen, time.Time{}, "", "", now
+			if s.cfg.ReviewDue >= 0 {
+				after.Due = s.DayOf(item.WaitingSince()).AddDays(s.cfg.ReviewDue)
+			}
+			if after.Impact == 0 {
+				after.Impact = s.cfg.ReviewImpact
+			}
 			if err := x.UpdateTask(ctx, after); err != nil {
 				return err
 			}

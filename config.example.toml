@@ -9,8 +9,8 @@ day_start = "04:00"
 
 # Urgency (D70), the number tasks are sorted by: impact (!1 to !3, who
 # notices if it slips: a person, one team, more than one team) and the due
-# date (^fri), weighted. Raise due if deadlines should count more, impact if what matters
-# should; each 0 or more, not both 0.
+# date (^fri), weighted. Raise due if deadlines should count more, impact if
+# what matters should; each 0 or more, not both 0.
 [urgency]
 impact = 1
 due = 1

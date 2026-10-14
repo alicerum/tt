@@ -120,8 +120,10 @@ func (m *Model) inboxKey(key string) tea.Cmd {
 		}
 		in.current = in.order(m)[0].ID
 	case key == "d":
+		in.held = 0 // undoing the drop shows an ordinary card, not a held one
 		return m.openDropPrompt(t)
 	case key == "D":
+		in.held = 0
 		return m.openDeleteConfirm(t)
 	}
 	return nil
