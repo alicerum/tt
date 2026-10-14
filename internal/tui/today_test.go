@@ -130,6 +130,19 @@ func TestTimelineShowsOnlyWorkingHours(t *testing.T) {
 	h.mustNotSee(" 21:00 ▓")
 }
 
+// A block whose task has a note shows ✎ after the title, like the rows (D62).
+func TestTimelineMarksBlocksWithANote(t *testing.T) {
+	h := newHarness(t, config.Default())
+	a := h.add("Alpha !1 ~s")
+	b := h.add("Beta !2 ~m")
+	if _, err := h.svc.SetNote(context.Background(), a.ID, "context"); err != nil {
+		t.Fatal(err)
+	}
+	h.block(a.ID, 10*time.Hour, time.Hour)
+	h.block(b.ID, 11*time.Hour+10*time.Minute, 45*time.Minute)
+	h.mustSee(" 10:00 ▓ Alpha ✎ [P1 S]", " 11:00 ▓ 11:10–11:55 Beta [P2 M]")
+}
+
 func TestTimelineCursorAndBlockKeys(t *testing.T) {
 	h := newHarness(t, config.Default())
 	a := h.add("Alpha !1 ~s")

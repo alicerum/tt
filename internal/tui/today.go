@@ -684,7 +684,8 @@ func (m *Model) meetingParts(r tlRow) []string {
 }
 
 // blockLabel is a block's text on its first row: exact times when it is off
-// the half-hour grid, the task's title and badge, struck through when closed.
+// the half-hour grid, the task's title (✎ when it has a note) and badge, struck
+// through when closed.
 func (m *Model) blockLabel(b domain.Block) string {
 	return m.blockText(b, b.Start%rowLen != 0 || b.Duration%rowLen != 0)
 }
@@ -696,6 +697,9 @@ func (m *Model) blockText(b domain.Block, times bool) string {
 		return fmt.Sprintf("#%d", b.TaskID)
 	}
 	s := t.Title + " " + m.badge(t)
+	if t.Note != "" {
+		s = t.Title + " ✎ " + m.badge(t) // like the rows (D62)
+	}
 	if times {
 		s = span(b) + " " + s
 	}
