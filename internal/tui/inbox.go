@@ -10,24 +10,33 @@ import (
 
 	"tt/internal/app"
 	"tt/internal/domain"
+	"tt/internal/dsl"
 )
 
 // inboxState shows one card at a time (D11a). Skipped cards move to the end
-// for this session; they stay in the Inbox.
+// for this session; they stay in the Inbox. A card stays on screen once
+// triaged, until ⏎ moves on (D73): held is that card.
 type inboxState struct {
 	current int64
+	held    int64 // the card being triaged: shown until ⏎ even once it left the Inbox
 	skipped map[int64]bool
 	from    screen // esc returns here
 }
 
 // openInbox shows the Inbox; esc returns to the current screen.
 func (m *Model) openInbox() {
-	m.inbox.from, m.screen = m.screen, screenInbox
+	m.inbox.from, m.screen, m.inbox.held = m.screen, screenInbox, 0
 	m.inbox.sync(m)
 }
 
+// order is the cards: the held one first while it is triaged but still
+// open, then the Inbox, skipped ones last.
 func (in *inboxState) order(m *Model) []domain.Task {
 	tasks := m.state.Snapshot.Inbox()
+	if t, ok := m.state.Snapshot.Get(in.held); ok && t.Status == domain.StatusOpen &&
+		!slices.ContainsFunc(tasks, func(x domain.Task) bool { return x.ID == t.ID }) {
+		tasks = append([]domain.Task{t}, tasks...)
+	}
 	slices.SortStableFunc(tasks, func(a, b domain.Task) int {
 		switch sa, sb := in.skipped[a.ID], in.skipped[b.ID]; {
 		case sa == sb:
@@ -63,11 +72,25 @@ func (m *Model) inboxKey(key string) tea.Cmd {
 		return nil
 	}
 	t, ok := m.state.Snapshot.Get(in.current)
-	if !ok || !m.idx.inInbox[t.ID] {
+	if !ok || !m.idx.inInbox[t.ID] && t.ID != in.held {
 		return nil
 	}
 	label := fmt.Sprintf("%q", t.Title)
 	switch {
+	case key == "enter":
+		if domain.InInbox(t, m.state.Snapshot.ParentOf(t)) {
+			if t.ParentID != 0 {
+				m.setStatus("set the size first · n skips")
+			} else {
+				m.setStatus("set impact and size first · n skips")
+			}
+			return nil
+		}
+		in.held = 0
+		in.sync(m)
+	case key == "^":
+		in.held = t.ID
+		return m.openDuePrompt(t)
 	case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
 		n := int(key[0] - '0')
 		if n > domain.MaxImpact {
@@ -78,11 +101,14 @@ func (m *Model) inboxKey(key string) tea.Cmd {
 			m.setStatus(fmt.Sprintf("children inherit impact from #%d", t.ParentID)) // D73
 			return nil
 		}
+		in.held = t.ID
 		return m.act("impact "+label, "", func(ctx context.Context) (app.Undo, error) { return m.svc.SetImpact(ctx, t.ID, n) })
 	case key == "s" || key == "m" || key == "l" || key == "x":
 		size, _ := domain.ParseSize(key)
+		in.held = t.ID
 		return m.act("size "+label, "", func(ctx context.Context) (app.Undo, error) { return m.svc.SetSize(ctx, t.ID, size) })
 	case key == "n":
+		in.held = 0
 		in.skipped[t.ID] = true
 		order := in.order(m)
 		if in.skipped[order[0].ID] { // everything skipped: start over
@@ -132,6 +158,15 @@ func (m *Model) inboxView() (string, []string) {
 		fmt.Fprintf(&b, "  %s\n", styleDim.Render("note: "+note))
 	}
 	b.WriteString("\n")
+	// The optional due comes first (D73).
+	switch due := domain.EffectiveDue(t, parent); {
+	case due == "":
+		fmt.Fprintf(&b, "  due       %s\n", styleDim.Render("— · ^ to set"))
+	case t.Due == "":
+		fmt.Fprintf(&b, "  due       %s %s\n", dayLabel(due), styleDim.Render(fmt.Sprintf("from parent #%d · ^ to set its own", parent.ID)))
+	default:
+		fmt.Fprintf(&b, "  due       %s %s\n", dayLabel(due), styleDim.Render(dueMarker(m.svc.Today(), due)+" · ^ to change"))
+	}
 	if parent != nil {
 		impact := "not set"
 		if parent.Impact > 0 {
@@ -161,5 +196,27 @@ func (m *Model) inboxView() (string, []string) {
 		sizes = append(sizes, item)
 	}
 	fmt.Fprintf(&b, "  size       %s", strings.Join(sizes, "  "))
+	if !domain.InInbox(t, parent) {
+		fmt.Fprintf(&b, "\n\n  %s", styleDim.Render("triaged · ⏎ next card"))
+	}
 	return title, strings.Split(b.String(), "\n")
+}
+
+// openDuePrompt asks for t's due date (D73): the ^ forms, with or without
+// the ^; empty clears it.
+func (m *Model) openDuePrompt(t domain.Task) tea.Cmd {
+	label := fmt.Sprintf("%q", t.Title)
+	today := m.svc.Today()
+	in := newInput("due › ", "fri · tom · 3d · 30oct · 2026-10-30 · empty clears", m.width)
+	in.SetValue(string(t.Due))
+	in.CursorEnd()
+	m.overlay = &prompt{
+		input: in,
+		check: func(v string) error { _, err := dsl.ParseDue(v, today); return err },
+		onEnter: func(v string) tea.Cmd {
+			due, _ := dsl.ParseDue(v, today) // check passed
+			return m.act("due "+label, "", func(ctx context.Context) (app.Undo, error) { return m.svc.SetDue(ctx, t.ID, due) })
+		},
+	}
+	return nil
 }

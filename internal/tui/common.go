@@ -111,6 +111,39 @@ func badgeOf(u float64, ok bool, size domain.Size) string {
 	return "[" + score + " " + sizeLabel(size) + "]"
 }
 
+// dueMarker is the marker after an open task's title when it has a due
+// (D71), worded against today: "→today"; "→fri" within the next 6 days;
+// "→30 oct" later, with the year when it is more than a year away; "2d late"
+// once overdue, in the alert colour. "" without a due.
+func dueMarker(today, due domain.Day) string {
+	if due == "" {
+		return ""
+	}
+	d := domain.DaysBetween(today, due)
+	date, err := time.Parse(time.DateOnly, string(due))
+	switch {
+	case err != nil:
+		return ""
+	case d < 0:
+		return styleAlert.Render(fmt.Sprintf("%dd late", -d))
+	case d == 0:
+		return "→today"
+	case d < 7:
+		return "→" + strings.ToLower(date.Format("Mon"))
+	case d > 365:
+		return "→" + strings.ToLower(date.Format("2 Jan 2006"))
+	}
+	return "→" + strings.ToLower(date.Format("2 Jan"))
+}
+
+// due is t's due marker today (D71): its effective due, open tasks only.
+func (m *Model) due(t domain.Task) string {
+	if t.Status != domain.StatusOpen {
+		return ""
+	}
+	return dueMarker(m.svc.Today(), domain.EffectiveDue(t, m.state.Snapshot.ParentOf(t)))
+}
+
 // sizeLabel is "M" for a size, "—" for none.
 func sizeLabel(size domain.Size) string {
 	s := "—"
@@ -212,9 +245,9 @@ func (m *Model) hintsText() string {
 	}
 	if m.screen == screenInbox {
 		if t, ok := m.state.Snapshot.Get(m.inbox.current); ok && t.ParentID != 0 {
-			return "s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help"
+			return "^ due · s/m/l/x size · ⏎ next · n skip · d drop · esc back · a add · ctrl+z undo · ? help"
 		}
-		return "1-3 impact · s/m/l/x size · n skip · d drop · esc back · a add · ctrl+z undo · ? help"
+		return "^ due · 1-3 impact · s/m/l/x size · ⏎ next · n skip · d drop · esc back · a add · ctrl+z undo · ? help"
 	}
 	if m.screen == screenPeople {
 		return m.peopleHints()

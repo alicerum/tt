@@ -17,7 +17,7 @@ import (
 	"tt/internal/store"
 )
 
-func TestQuickAddThenTriageInTwoKeystrokes(t *testing.T) {
+func TestQuickAddThenTriageInThreeKeys(t *testing.T) {
 	h := newLogHarness(t, config.Default())
 	h.mustSee("tt · Log", "Mon 12 Oct", "nothing triaged yet")
 
@@ -29,6 +29,9 @@ func TestQuickAddThenTriageInTwoKeystrokes(t *testing.T) {
 	h.keys("i")
 	h.mustSee("INBOX · 1 of 1", "Reply to Ana", "@ana · #photos", "[1] a person · me, one reviewer, one asker")
 	h.keys("1", "s") // D11a: impact + size → leaves the inbox
+	// The card waits for ⏎ (D73).
+	h.mustSee("INBOX · 1 of 1", "triaged · ⏎ next card")
+	h.keys("enter")
 	h.mustSee("Inbox zero ✓")
 	h.keys("esc")
 	h.mustSee("BACKLOG · by urgency", "[ 17 S] Reply to Ana @ana") // impact 1, no due: 17 (D71)
@@ -250,6 +253,8 @@ func TestInboxSkipAndChildImpact(t *testing.T) {
 	h.keys("n")
 	h.mustSee("Child") // everything skipped: start over
 	h.keys("m")        // size alone triages a child (D74)
+	h.mustSee("INBOX · 1 of 2", "Child", "triaged · ⏎ next card")
+	h.keys("enter")
 	h.mustSee("INBOX · 1 of 1", "Other")
 	h.keys("9")
 	h.mustSee("impact is 1 to 3")

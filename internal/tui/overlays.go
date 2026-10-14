@@ -278,8 +278,10 @@ func (helpOverlay) view(m *Model) string {
 		}
 	case screenInbox:
 		local = []string{
+			"^        set the due date (optional): fri, tom, 3d, 2w, 30oct, 2026-10-30; empty clears",
 			"1-3      set impact: who notices if it slips (a person, one team, more than one team)",
-			"s m l x  set size (x = XL); a card with impact and size leaves the inbox",
+			"s m l x  set size (x = XL)",
+			"⏎        next card, once impact and size are set (a child needs only its size)",
 			"n        skip (stays in the inbox)",
 			"d / D    drop with optional reason / delete",
 			"esc      back",

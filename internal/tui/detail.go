@@ -174,7 +174,7 @@ func (m *Model) detailHead() []string {
 	case t.Status == domain.StatusDropped:
 		head += " ✗ " + dayLabel(m.svc.DayOf(t.ClosedAt))
 	}
-	lines := []string{head}
+	lines := []string{head, styleDim.Render(m.urgencyLine(t))}
 
 	var facts []string
 	if p := snap.ParentOf(t); p != nil {
@@ -212,6 +212,34 @@ func (m *Model) detailHead() []string {
 		lines = append(lines, "", styleTitle.Render("CHILDREN")+m.progress(t))
 	}
 	return lines
+}
+
+// urgencyLine is Task detail's "impact: one team · due Fri 16 Oct ·
+// urgency 73" (D71): an inherited value says "(from #12)", an untriaged
+// task "impact: not set".
+func (m *Model) urgencyLine(t domain.Task) string {
+	parent := m.state.Snapshot.ParentOf(t)
+	from := ""
+	if parent != nil {
+		from = fmt.Sprintf(" (from #%d)", parent.ID)
+	}
+	impact := "impact: not set"
+	if n := domain.EffectiveImpact(t, parent); n > 0 {
+		impact = "impact: " + domain.ImpactNames[n-1] + from
+	}
+	parts := []string{impact}
+	switch due := domain.EffectiveDue(t, parent); {
+	case due == "":
+		parts = append(parts, "no due")
+	case t.Due == "":
+		parts = append(parts, "due "+dayLabel(due)+from)
+	default:
+		parts = append(parts, "due "+dayLabel(due))
+	}
+	if u, ok := m.urgency(t, parent); ok {
+		parts = append(parts, fmt.Sprintf("urgency %d", domain.UrgencyScore(u)))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // progress renders " ████░░░░ 2/4" for a parent; "" when nothing counts.
@@ -265,6 +293,9 @@ func (m *Model) childLine(c domain.Task, selected bool) string {
 	line := "  " + m.badge(c) + " " + c.Title
 	if c.Note != "" {
 		line += " ✎"
+	}
+	if due := m.due(c); due != "" {
+		line += " " + due // D71
 	}
 	if _, pinned := m.idx.cand[c.ID]; pinned {
 		line += " 📌"

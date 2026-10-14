@@ -643,6 +643,9 @@ func (m *Model) rowLine(r row, width int, selected bool) string {
 	if t.Note != "" {
 		b.WriteString(" ✎")
 	}
+	if due := m.due(t); due != "" {
+		b.WriteString(" " + due) // D71
+	}
 	if t.Requester != "" && !r.person {
 		b.WriteString(" @" + t.Requester)
 	}
