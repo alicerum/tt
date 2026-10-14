@@ -30,3 +30,7 @@ Edit `~/.config/tt/config.toml`. Every option is listed there with its default.
 - **Calendar:** the first run asks for calendar access. Allow it.
 - **GitHub reviews:** needs the `gh` CLI, logged in (`gh auth login`).
 - **Notifications:** off by default. Turn them on under `[notify]`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
