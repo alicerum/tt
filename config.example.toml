@@ -52,3 +52,13 @@ host = ""       # a GitHub Enterprise host; empty: gh's default (github.com)
 poll = "5m"     # how often GitHub is fetched; 30s or more
 priority = "P2" # a pinned review's priority: one of the [[priorities]] names
 size = "s"      # a pinned review's size: s, m, l, xl, or "" for unsized (D48)
+
+# macOS notifications from the running tt (D63), each kind off until you turn
+# it on. The first one makes macOS ask to allow notifications for Script
+# Editor (osascript sends them). Quiet while tt's pane has the focus (D66);
+# in tmux that needs `set -g focus-events on`.
+[notify]
+meetings = false # a meeting is about to start (today's busy ones)
+blocks = false   # a task block is about to start
+reviews = false  # a new review request (D65)
+alerts = [5, 0]  # minutes before a meeting or block starts; 0 = when it starts

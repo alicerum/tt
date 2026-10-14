@@ -46,7 +46,20 @@ type Config struct {
 	// pinned review request starts with (D48).
 	ReviewPriority int
 	ReviewSize     domain.Size
+	// Notify is what the running TUI notifies about (D63) and when (D64).
+	Notify Notify
 }
+
+// Notify is the [notify] section. Each kind is opt-in (D63); Alerts are the
+// minutes before a meeting or block starts at which it notifies, 0 being the
+// start itself (D64).
+type Notify struct {
+	Meetings, Blocks, Reviews bool
+	Alerts                    []int
+}
+
+// On reports whether any kind of notification is on.
+func (n Notify) On() bool { return n.Meetings || n.Blocks || n.Reviews }
 
 func Default() Config {
 	return Config{
@@ -71,6 +84,7 @@ func Default() Config {
 		GitHubPoll:     5 * time.Minute,
 		ReviewPriority: 2,
 		ReviewSize:     domain.SizeS,
+		Notify:         Notify{Alerts: []int{5, 0}},
 	}
 }
 
@@ -98,6 +112,12 @@ type file struct {
 		Priority *string `toml:"priority"`
 		Size     *string `toml:"size"`
 	} `toml:"github"`
+	Notify struct {
+		Meetings *bool  `toml:"meetings"`
+		Blocks   *bool  `toml:"blocks"`
+		Reviews  *bool  `toml:"reviews"`
+		Alerts   *[]int `toml:"alerts"`
+	} `toml:"notify"`
 }
 
 // Load reads path. A missing file yields Default().
@@ -198,6 +218,9 @@ func Parse(data []byte) (Config, error) {
 	if err := parseGitHub(f, &cfg); err != nil {
 		return Config{}, err
 	}
+	if err := parseNotify(f, &cfg); err != nil {
+		return Config{}, err
+	}
 	switch {
 	case cfg.WorkEnd <= cfg.WorkStart:
 		return Config{}, fmt.Errorf("work_hours.end must be after work_hours.start")
@@ -244,6 +267,37 @@ func parseGitHub(f file, cfg *Config) error {
 		}
 		cfg.ReviewSize = size
 	}
+	return nil
+}
+
+// parseNotify applies [notify] (D63, D64): alerts are whole minutes from 0
+// to 120, each listed once, at least one (a kind is turned off instead).
+func parseNotify(f file, cfg *Config) error {
+	n := f.Notify
+	for _, b := range []struct {
+		from *bool
+		to   *bool
+	}{{n.Meetings, &cfg.Notify.Meetings}, {n.Blocks, &cfg.Notify.Blocks}, {n.Reviews, &cfg.Notify.Reviews}} {
+		if b.from != nil {
+			*b.to = *b.from
+		}
+	}
+	if n.Alerts == nil {
+		return nil
+	}
+	alerts := *n.Alerts
+	if len(alerts) == 0 {
+		return fmt.Errorf("notify.alerts: list at least one, like [5, 0] (turn a kind off instead)")
+	}
+	for i, a := range alerts {
+		if a < 0 || a > 120 {
+			return fmt.Errorf("notify.alerts[%d]: want whole minutes from 0 to 120, got %d", i, a)
+		}
+		if slices.Contains(alerts[:i], a) {
+			return fmt.Errorf("notify.alerts: %d is listed twice", a)
+		}
+	}
+	cfg.Notify.Alerts = alerts
 	return nil
 }
 
