@@ -5,11 +5,12 @@ the scratchpad with literal paths; they never touch the real repo except to clon
 
 | Script | Does |
 |---|---|
-| `gen_plan_9.py` (latest; `gen_plan_8.py`, `gen_plan_7.py`, `gen_plan_6.py`, `gen_plan_5b.py`, `gen_plan_5a.py` are older) | Turns the verified scratch commits (`main..HEAD`, one per task) into the plan doc: new files in full, `git diff` per modified file, test files in Step 1, single-quoted commit messages. A task without test files (e.g. the Swift helper) gets "Create / Build and check / Commit" steps; an executable new file gets a `Make it executable:` line. Copy it per plan and replace `TASKS`/`HEADER`/`FOOTER`. |
+| `gen_plan_10.py` (latest; `gen_plan_9.py`, `gen_plan_8.py`, `gen_plan_7.py`, `gen_plan_6.py`, `gen_plan_5b.py`, `gen_plan_5a.py` are older) | Turns the verified scratch commits (`main..HEAD`, one per task) into the plan doc: new files in full, `git diff` per modified file, test files in Step 1, single-quoted commit messages. A task without test files (e.g. the Swift helper) gets "Create / Build and check / Commit" steps; an executable new file gets a `Make it executable:` line. Copy it per plan and replace `TASKS`/`HEADER`/`FOOTER`. |
 | `step2.sh` | For each scratch commit, runs the tests with only that commit's test files on the parent tree, to get the exact "Step 2: expected failure" messages. |
 | `replay.py` | Replays the plan doc on a fresh clone task by task (apply, `Make it executable:` lines, gofmt/vet/test, commit) and checks the final tree equals the scratch branch. |
 | `check_brief.py` | `git apply --check` of every patch in a task brief against the current tree (after a fix round changed files a later brief patches). |
 | `pty_check.py` | Drives a built `tt` through a pty on a throwaway database (Today → Log → add → pin → B → b → ⏎ → c → q) and prints the blocks/commit rows. Adjust the expected strings per plan. |
 | `pty_notify.py` | Plan 9: drives a built `tt` with a fake `osascript` on `PATH` (logs its arguments): places a block, then checks an alert while focused is dropped and one after blur is sent as arguments, and that no focus reports are asked for with notifications off. Takes about three minutes. |
+| `pty_impact.py` | Plan 10: makes a database with the previous tt (`tt add` with P-levels, a pinned review), opens it with the new tt under a pty (migration 006), triages a card with `^` first and ⏎, checks the Log's urgency sort and due marker, and prints the tasks' priority, impact and due. Usage: `pty_impact.py OLD_TT NEW_TT DB`. |
 
 Note: the sandbox can't read the real database under `~/Library/Application Support/tt/`, so real-data checks are the user's.

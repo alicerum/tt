@@ -504,6 +504,12 @@ One slice (D68–D76), brainstormed with the user from the Deferred item "splitt
 - `cmd/tt` and README: the usage example uses `!n` as impact and shows a `^` date.
 - Tests: the ramp at its edges (no due, −15, −14, 0, +7, +8 days) and the D70 worked examples (0.50, 0.27, 0.53); weights validation; a `^` parse table (each form, today counts, the year rolling over, `^31feb` an error, look-alikes in the title); the D74 rule (child of an untriaged parent, child without size); migration `006` on a fixture database with open, closed, child and source-linked tasks; the D76 config errors; harness flows for the Inbox keys, the edit prefill, `g` cycling and the remembered `priority` falling back; a pty run of the real binary against a migrated copy of a database.
 
+Rulings while drafting the plan (in the code; one-line reversals):
+- The steps' wording lives in `domain` (`ImpactNames`, `ImpactExamples`): the Inbox card reads `[1] a person · me, one reviewer, one asker`, `[2] one team · my team, or one other team`, `[3] more than one team · several teams, a stream` under `who notices if it slips?`.
+- The due marker goes on list rows and Task detail's children, not on timeline labels (kept short); closed tasks show none.
+- `SetImpact` refuses a child itself, not only the parsers. Weekdays are three-letter names only (`^friday` stays in the title); `^Nd`/`^Nw` go up to 9999. `[github] due` takes `Nd` (0d–365d) or `""`.
+- `g` says `sorted by urgency`/`sorted by impact` for the flat sorts, `grouped by …` for the rest. The Inbox's `^` prompt is prefilled with the task's own due; a held card (one a key acted on) is listed first until ⏎.
+
 ## Carry-forward from Plan 4a review
 
 - **Plan 4b: cursor after a filter round-trip.** `/`, a typo, `esc` restores the filter but not the task the cursor was on (live narrowing replaced `selected`). Remember the selected ids with `prev` and restore them on esc.
