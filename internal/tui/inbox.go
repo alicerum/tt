@@ -109,6 +109,10 @@ func (m *Model) inboxKey(key string) tea.Cmd {
 		return m.act("size "+label, "", func(ctx context.Context) (app.Undo, error) { return m.svc.SetSize(ctx, t.ID, size) })
 	case key == "n":
 		in.held = 0
+		if !m.idx.inInbox[t.ID] { // triaged and held: n moves on, like ⏎
+			in.sync(m)
+			return nil
+		}
 		in.skipped[t.ID] = true
 		order := in.order(m)
 		if in.skipped[order[0].ID] { // everything skipped: start over

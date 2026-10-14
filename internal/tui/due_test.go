@@ -144,3 +144,14 @@ func TestInboxHeldCardLeavesWhenDropped(t *testing.T) {
 	h.mustSee("INBOX · 1 of 1", "Next one", `dropped "Doomed"`)
 	h.mustNotSee("triaged · ⏎ next card")
 }
+
+// n on a triaged (held) card moves on like ⏎, even when it was the only
+// card: nothing is left to skip to.
+func TestInboxSkipOnAHeldCardMovesOn(t *testing.T) {
+	h := newLogHarness(t, config.Default())
+	h.add("Only one")
+	h.keys("R", "i", "1", "s")
+	h.mustSee("INBOX · 1 of 1", "triaged · ⏎ next card")
+	h.keys("n")
+	h.mustSee("Inbox zero ✓")
+}
