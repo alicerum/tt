@@ -14,13 +14,13 @@ import (
 // Tx is a write transaction. Get one from Store.InTx.
 type Tx struct{ tx *sql.Tx }
 
-const taskColumns = `id, title, note, link, requester, priority, size, parent_id, position, status,
-	drop_reason, source_kind, source_id, rollover_count, created_at, updated_at, closed_at, closed_by`
+const taskColumns = `id, title, note, link, requester, priority, impact, due, size, parent_id, position,
+	status, drop_reason, source_kind, source_id, rollover_count, created_at, updated_at, closed_at, closed_by`
 
 // InsertTask inserts t (ignoring t.ID) with its tags and returns the new id.
 func (x *Tx) InsertTask(ctx context.Context, t domain.Task) (int64, error) {
 	res, err := x.tx.ExecContext(ctx, `INSERT INTO tasks (`+strings.TrimPrefix(taskColumns, "id, ")+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, taskArgs(t)...)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, taskArgs(t)...)
 	if err != nil {
 		return 0, err
 	}
@@ -34,7 +34,7 @@ func (x *Tx) InsertTask(ctx context.Context, t domain.Task) (int64, error) {
 // UpdateTask overwrites every column and the tag set of task t.ID.
 func (x *Tx) UpdateTask(ctx context.Context, t domain.Task) error {
 	res, err := x.tx.ExecContext(ctx, `UPDATE tasks SET title = ?, note = ?, link = ?, requester = ?,
-		priority = ?, size = ?, parent_id = ?, position = ?, status = ?, drop_reason = ?, source_kind = ?,
+		priority = ?, impact = ?, due = ?, size = ?, parent_id = ?, position = ?, status = ?, drop_reason = ?, source_kind = ?,
 		source_id = ?, rollover_count = ?, created_at = ?, updated_at = ?, closed_at = ?, closed_by = ?
 		WHERE id = ?`, append(taskArgs(t), t.ID)...)
 	if err != nil {
@@ -222,7 +222,8 @@ func taskArgs(t domain.Task) []any {
 	if !t.ClosedAt.IsZero() {
 		closedAt = formatTime(t.ClosedAt)
 	}
-	return []any{t.Title, t.Note, t.Link, t.Requester, nullIfZero(t.Priority), nullIfZero(string(t.Size)),
+	return []any{t.Title, t.Note, t.Link, t.Requester, nullIfZero(t.Priority), nullIfZero(t.Impact),
+		nullIfZero(string(t.Due)), nullIfZero(string(t.Size)),
 		nullIfZero(t.ParentID), t.Position, string(t.Status), t.DropReason, sourceKind, sourceID,
 		t.RolloverCount, formatTime(t.CreatedAt), formatTime(t.UpdatedAt), closedAt, nullIfZero(t.ClosedBy)}
 }
@@ -231,19 +232,21 @@ type scanner interface{ Scan(dest ...any) error }
 
 func scanTask(row scanner) (domain.Task, error) {
 	var (
-		t                                    domain.Task
-		priority, parentID                   sql.NullInt64
-		size, sourceKind, sourceID, closedBy sql.NullString
-		status, createdAt, updatedAt         string
-		closedAt                             sql.NullString
+		t                                         domain.Task
+		priority, impact, parentID                sql.NullInt64
+		due, size, sourceKind, sourceID, closedBy sql.NullString
+		status, createdAt, updatedAt              string
+		closedAt                                  sql.NullString
 	)
-	err := row.Scan(&t.ID, &t.Title, &t.Note, &t.Link, &t.Requester, &priority, &size, &parentID,
+	err := row.Scan(&t.ID, &t.Title, &t.Note, &t.Link, &t.Requester, &priority, &impact, &due, &size, &parentID,
 		&t.Position, &status, &t.DropReason, &sourceKind, &sourceID, &t.RolloverCount,
 		&createdAt, &updatedAt, &closedAt, &closedBy)
 	if err != nil {
 		return domain.Task{}, err
 	}
 	t.Priority = int(priority.Int64)
+	t.Impact = int(impact.Int64)
+	t.Due = domain.Day(due.String)
 	t.Size = domain.Size(size.String)
 	t.ParentID = parentID.Int64
 	t.Status = domain.Status(status)
