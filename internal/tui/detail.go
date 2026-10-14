@@ -224,6 +224,9 @@ func (m *Model) urgencyLine(t domain.Task) string {
 		from = fmt.Sprintf(" (from #%d)", parent.ID)
 	}
 	impact := "impact: not set"
+	if parent != nil && parent.Status != domain.StatusOpen {
+		impact = fmt.Sprintf("impact: not set (from #%d, closed · / is:all finds it, e adds !1-!3)", parent.ID)
+	}
 	if n := domain.EffectiveImpact(t, parent); n > 0 {
 		impact = "impact: " + domain.ImpactNames[n-1] + from
 	}

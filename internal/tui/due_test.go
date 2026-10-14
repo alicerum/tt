@@ -161,3 +161,27 @@ func TestInboxSkipOnAHeldCardMovesOn(t *testing.T) {
 	h.keys("n")
 	h.mustSee("Inbox zero ✓")
 }
+
+// A child of a closed, untriaged parent can't be triaged itself: its detail
+// names the way out, and the way works.
+func TestDetailOfAClosedParentsChildSaysHowToSetImpact(t *testing.T) {
+	h := newLogHarness(t, config.Default())
+	parent, kids := h.family("Parent ~l", "Kid ~s")
+	if _, err := h.svc.Done(context.Background(), parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R")
+	h.m.openDetail(kids[0].ID)
+	h.mustSee(fmt.Sprintf("impact: not set (from #%d, closed · / is:all finds it, e adds !1-!3)", parent.ID))
+
+	h.keys("esc", "/")
+	h.typeText("is:all")
+	h.keys("enter")
+	h.mustSee("Parent")
+	h.keys("e")
+	h.mustSee(fmt.Sprintf("edit #%d › Parent", parent.ID))
+	h.typeText(" !2")
+	h.keys("enter")
+	h.keys("esc")
+	h.mustSee("[ 33 S] Kid")
+}
