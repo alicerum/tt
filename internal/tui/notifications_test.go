@@ -203,3 +203,43 @@ func TestAFailedSendSaysSoOnce(t *testing.T) {
 		t.Errorf("the second failure: %d sends, status %q; want it tried and not reported again", len(h.notes), h.m.status)
 	}
 }
+
+func TestAStaleLoadIsNotANewFetch(t *testing.T) {
+	h := newGHHarness(t, notifyCfg(config.Notify{Reviews: true}))
+	a := h.reviewItem("acme/api", 12, "Add retries", "ana", time.Hour)
+	b := h.reviewItem("acme/web", 3, "Fix login", "bo", 2*time.Hour)
+	c := h.reviewItem("acme/web", 4, "Bump deps", "bo", 3*time.Hour)
+	later := func() { h.clock.now = h.clock.now.Add(time.Minute) }
+
+	later()
+	h.setReviews(a)
+	one := note{"tt · review requested", "@ana acme/api#12 Add retries"}
+	h.wantNotes(one)
+	older := h.m.state // read before b was requested
+	later()
+	h.setReviews(a, b)
+	two := note{"tt · review requested", "@bo acme/web#3 Fix login"}
+	h.wantNotes(one, two)
+
+	h.send(loadedMsg{state: older}) // lands after the newer load
+	h.wantNotes(one, two)
+
+	later()
+	h.setReviews(a, b, c)
+	h.wantNotes(one, two, note{"tt · review requested", "@bo acme/web#4 Bump deps"})
+}
+
+func TestABatchTriesEveryNote(t *testing.T) {
+	h := newHarness(t, notifyCfg(config.Notify{Blocks: true}))
+	h.notifyErr = errors.New("no osascript")
+	x := h.pinned("X !1 ~s")
+	h.block(x.ID, 10*time.Hour, 5*time.Minute)
+	y := h.pinned("Y !1 ~s")
+	h.block(y.ID, 10*time.Hour+5*time.Minute, 30*time.Minute)
+	h.tickAt(9*time.Hour + 59*time.Minute)
+	h.tickAt(10 * time.Hour) // "now" X and "in 5 min" Y in one tick
+	if len(h.notes) != 2 {
+		t.Fatalf("sends tried: %d, want both notes of the tick", len(h.notes))
+	}
+	h.mustSee("can't notify: no osascript")
+}

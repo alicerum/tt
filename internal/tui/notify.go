@@ -34,7 +34,7 @@ type notifyState struct {
 func (m *Model) checkAlerts() tea.Cmd {
 	n := m.svc.Config().Notify
 	now := m.svc.Now()
-	if !m.loaded || !(n.Meetings || n.Blocks) || !now.After(m.notify.checked) {
+	if !m.loaded || !(n.Meetings || n.Blocks) || !now.Round(0).After(m.notify.checked.Round(0)) { // wall time: Round(0) drops the monotonic reading, so a clock step back can't re-fire a moment
 		return nil
 	}
 	ms := due(moments(m.state, n, now.Location()), m.notify.checked, now)
@@ -45,10 +45,11 @@ func (m *Model) checkAlerts() tea.Cmd {
 // checkReviews notifies the requests a good GitHub fetch found that the
 // previous good fetch didn't (D65). The first good fetch since launch only
 // remembers them: they were there before. A failed fetch keeps the last
-// good one's time, so it changes nothing.
+// good one's time, so it changes nothing. Only a fetch newer than the last
+// one seen counts, so a stale load landing late changes nothing either.
 func (m *Model) checkReviews() tea.Cmd {
 	gh := m.state.GitHub
-	if !m.svc.Config().Notify.Reviews || gh.LastSuccess.Before(m.notify.launched) || gh.LastSuccess.Equal(m.notify.reviewsAt) {
+	if !m.svc.Config().Notify.Reviews || gh.LastSuccess.Before(m.notify.launched) || !gh.LastSuccess.After(m.notify.reviewsAt) {
 		return nil
 	}
 	prev := m.notify.reviews
@@ -67,10 +68,14 @@ func (m *Model) send(notes ...note) tea.Cmd {
 	}
 	fn, ctx := m.notifier(), m.ctx
 	return func() tea.Msg {
+		var first error
 		for _, n := range notes {
-			if err := fn(ctx, n.title, n.body); err != nil {
-				return notifiedMsg{err: err}
+			if err := fn(ctx, n.title, n.body); err != nil && first == nil {
+				first = err
 			}
+		}
+		if first != nil {
+			return notifiedMsg{err: first}
 		}
 		return nil
 	}
