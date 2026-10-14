@@ -172,3 +172,25 @@ func TestAllDroppedChildrenHideProgress(t *testing.T) {
 	h.mustSee("[P1 L] Parent")
 	h.mustNotSee("0/0")
 }
+
+// The pin count shows the planning days a candidate was carried over (D61),
+// so pinned yesterday reads 📌1, like ↻1 for a block left unfinished yesterday.
+func TestPinCountShowsDaysCarriedOver(t *testing.T) {
+	h := newHarness(t, config.Default())
+	task := h.add("Carried !1 ~s")
+	if _, err := h.svc.Pin(context.Background(), task.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.keys("R")
+	h.mustSee("[P1 S] Carried")
+	h.mustNotSee("📌")
+
+	for _, want := range []string{"📌1", "📌2"} {
+		h.clock.now = h.clock.now.Add(24 * time.Hour)
+		h.send(clockTickMsg{})
+		h.keys("enter") // past the new-day banner
+		h.mustSee("[P1 S] Carried " + want)
+	}
+	h.keys("tab", "enter") // the backlog is empty: open the candidate
+	h.mustSee(fmt.Sprintf("#%d Carried  [P1 S] 📌2", task.ID))
+}

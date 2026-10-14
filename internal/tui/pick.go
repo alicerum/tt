@@ -676,7 +676,7 @@ func (m *Model) rowLine(r row, width int, selected bool) string {
 	}
 	switch c := r.cand; {
 	case c != nil && c.PinnedDays > 1:
-		fmt.Fprintf(&b, " 📌%d", c.PinnedDays)
+		fmt.Fprintf(&b, " 📌%d", c.PinnedDays-1) // days carried over, like ↻ (D61)
 	case c != nil && r.person:
 		b.WriteString(" 📌") // People lists unpinned tasks too
 	}

@@ -163,7 +163,7 @@ func (m *Model) detailHead() []string {
 	if c, ok := m.idx.cand[t.ID]; ok {
 		head += " 📌"
 		if c.PinnedDays > 1 {
-			head += fmt.Sprint(c.PinnedDays)
+			head += fmt.Sprint(c.PinnedDays - 1) // days carried over, like ↻ (D61)
 		}
 	}
 	switch {
