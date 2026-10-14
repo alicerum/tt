@@ -94,12 +94,16 @@ func (m *Model) notifier() func(ctx context.Context, title, body string) error {
 	if m.opts.Notify != nil {
 		return m.opts.Notify
 	}
-	return notifyWithSystem
+	sound := m.svc.Config().Notify.Sound
+	return func(ctx context.Context, title, body string) error {
+		return notifyWithSystem(ctx, title, body, sound)
+	}
 }
 
-// notifyWithSystem shows a notification through macOS osascript.
-func notifyWithSystem(ctx context.Context, title, body string) error {
-	out, err := exec.CommandContext(ctx, "osascript", osascriptArgs(title, body)...).CombinedOutput()
+// notifyWithSystem shows a notification through macOS osascript, playing
+// sound unless it is "" (D67).
+func notifyWithSystem(ctx context.Context, title, body, sound string) error {
+	out, err := exec.CommandContext(ctx, "osascript", osascriptArgs(title, body, sound)...).CombinedOutput()
 	if err != nil && len(out) > 0 {
 		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -215,10 +219,13 @@ func reviewNote(items []domain.SourceItem) note {
 	return note{title: fmt.Sprintf("tt · %d review requests", len(items)), body: strings.Join(titles, " · ")}
 }
 
-// osascriptArgs shows a notification with title and body passed as the
-// script's arguments, never as script text, so nothing in a title can run
-// (D63). The title always starts with "tt", so a body starting with "-"
-// isn't read as an option.
-func osascriptArgs(title, body string) []string {
-	return []string{"-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body}
+// osascriptArgs shows a notification with title, body and sound passed as
+// the script's arguments, never as script text, so nothing in a title can
+// run (D63). The title always starts with "tt", so a body starting with "-"
+// isn't read as an option. An empty sound plays none (D67).
+func osascriptArgs(title, body, sound string) []string {
+	if sound == "" {
+		return []string{"-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body}
+	}
+	return []string{"-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv) sound name (item 3 of argv)", "-e", "end run", title, body, sound}
 }

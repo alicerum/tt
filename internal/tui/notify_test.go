@@ -135,14 +135,21 @@ func TestReviewNotes(t *testing.T) {
 }
 
 func TestOsascriptGetsTheTextAsArguments(t *testing.T) {
-	title, body := `tt · now`, `say "hi" & do shell script "rm -rf ~"`
-	args := osascriptArgs(title, body)
-	if n := len(args); n < 2 || args[n-2] != title || args[n-1] != body {
-		t.Fatalf("the title and body are the last two arguments: %q", args)
+	title, body, sound := `tt · now`, `say "hi" & do shell script "rm -rf ~"`, `Glass" & do shell script "x`
+	args := osascriptArgs(title, body, sound)
+	if n := len(args); n < 3 || args[n-3] != title || args[n-2] != body || args[n-1] != sound {
+		t.Fatalf("the title, body and sound are the last three arguments: %q", args)
 	}
-	for _, a := range args[:len(args)-2] {
-		if a != "-e" && (strings.Contains(a, "hi") || strings.Contains(a, "now")) {
+	for _, a := range args[:len(args)-3] {
+		if a != "-e" && (strings.Contains(a, "hi") || strings.Contains(a, "now") || strings.Contains(a, "Glass")) {
 			t.Errorf("text spliced into the script: %q", a)
 		}
+	}
+	if !slices.ContainsFunc(args, func(a string) bool { return strings.Contains(a, "sound name (item 3 of argv)") }) {
+		t.Errorf("no sound in the script: %q", args)
+	}
+	silent := osascriptArgs(title, body, "")
+	if n := len(silent); silent[n-2] != title || silent[n-1] != body || slices.ContainsFunc(silent, func(a string) bool { return strings.Contains(a, "sound") }) {
+		t.Errorf(`sound "" still plays one (D67): %q`, silent)
 	}
 }

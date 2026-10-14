@@ -8,8 +8,8 @@ import (
 
 func TestParseNotify(t *testing.T) {
 	n := Default().Notify
-	if n.Meetings || n.Blocks || n.Reviews || n.On() || !slices.Equal(n.Alerts, []int{5, 0}) {
-		t.Errorf("defaults: %+v; want every kind off, alerts [5 0] (D63, D64)", n)
+	if n.Meetings || n.Blocks || n.Reviews || n.On() || !slices.Equal(n.Alerts, []int{5, 0}) || n.Sound != "Glass" {
+		t.Errorf("defaults: %+v; want every kind off, alerts [5 0], sound Glass (D63, D64, D67)", n)
 	}
 	cfg, err := Parse([]byte("[notify]\nmeetings = true\nreviews = true\nalerts = [10, 1, 0]\n"))
 	if err != nil {
@@ -20,6 +20,11 @@ func TestParseNotify(t *testing.T) {
 	}
 	if cfg, err := Parse([]byte("[notify]\nblocks = true\n")); err != nil || !cfg.Notify.On() || !slices.Equal(cfg.Notify.Alerts, []int{5, 0}) {
 		t.Errorf("blocks only: %+v, %v; want on, with the default alerts", cfg.Notify, err)
+	}
+	for in, want := range map[string]string{`"Ping"`: "Ping", `""`: "", `" Hero "`: "Hero"} {
+		if cfg, err := Parse([]byte("[notify]\nsound = " + in + "\n")); err != nil || cfg.Notify.Sound != want {
+			t.Errorf("sound = %s: %q, %v; want %q", in, cfg.Notify.Sound, err, want)
+		}
 	}
 	if cfg, err := Parse([]byte("[notify]\nalerts = [120]\n")); err != nil || !slices.Equal(cfg.Notify.Alerts, []int{120}) {
 		t.Errorf("alerts [120]: %v, %v", cfg.Notify.Alerts, err)
@@ -34,7 +39,8 @@ func TestParseNotify(t *testing.T) {
 		"[notify]\nalerts = [\"5m\"]":  "notify.alerts",
 		"[notify]\nalerts = 5":         "notify.alerts",
 		"[notify]\nmeetings = \"yes\"": "notify.meetings",
-		"[notify]\nsound = true":       "unknown config key",
+		"[notify]\nsound = true":       "notify.sound",
+		"[notify]\nsund = \"Ping\"":    "unknown config key",
 	}
 	for input, wantErr := range cases {
 		if _, err := Parse([]byte(input)); err == nil || !strings.Contains(err.Error(), wantErr) {

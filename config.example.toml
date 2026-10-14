@@ -56,10 +56,12 @@ size = "s"      # a pinned review's size: s, m, l, xl, or "" for unsized (D48)
 # macOS notifications from the running tt (D63), each kind off until you turn
 # it on. The first one makes macOS ask to allow notifications for Script
 # Editor (osascript sends them); if nothing shows, allow Script Editor in
-# System Settings › Notifications. Quiet while tt's pane has the focus (D66);
+# System Settings › Notifications; set its style to Persistent there to keep
+# them on screen until dismissed. Quiet while tt's pane has the focus (D66);
 # in tmux that needs `set -g focus-events on`.
 [notify]
 meetings = false # a meeting is about to start (today's busy ones)
 blocks = false   # a task block is about to start
 reviews = false  # a new review request (D65)
 alerts = [5, 0]  # minutes before a meeting or block starts; 0 = when it starts
+sound = "Glass"  # played with each one: a name in /System/Library/Sounds; "" = silent (D67)

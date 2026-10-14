@@ -52,10 +52,12 @@ type Config struct {
 
 // Notify is the [notify] section. Each kind is opt-in (D63); Alerts are the
 // minutes before a meeting or block starts at which it notifies, 0 being the
-// start itself (D64).
+// start itself (D64). Sound is the macOS sound each one plays, "" for none
+// (D67).
 type Notify struct {
 	Meetings, Blocks, Reviews bool
 	Alerts                    []int
+	Sound                     string
 }
 
 // On reports whether any kind of notification is on.
@@ -84,7 +86,7 @@ func Default() Config {
 		GitHubPoll:     5 * time.Minute,
 		ReviewPriority: 2,
 		ReviewSize:     domain.SizeS,
-		Notify:         Notify{Alerts: []int{5, 0}},
+		Notify:         Notify{Alerts: []int{5, 0}, Sound: "Glass"},
 	}
 }
 
@@ -113,10 +115,11 @@ type file struct {
 		Size     *string `toml:"size"`
 	} `toml:"github"`
 	Notify struct {
-		Meetings *bool  `toml:"meetings"`
-		Blocks   *bool  `toml:"blocks"`
-		Reviews  *bool  `toml:"reviews"`
-		Alerts   *[]int `toml:"alerts"`
+		Meetings *bool   `toml:"meetings"`
+		Blocks   *bool   `toml:"blocks"`
+		Reviews  *bool   `toml:"reviews"`
+		Alerts   *[]int  `toml:"alerts"`
+		Sound    *string `toml:"sound"`
 	} `toml:"notify"`
 }
 
@@ -270,10 +273,14 @@ func parseGitHub(f file, cfg *Config) error {
 	return nil
 }
 
-// parseNotify applies [notify] (D63, D64): alerts are whole minutes from 0
-// to 120, each listed once, at least one (a kind is turned off instead).
+// parseNotify applies [notify] (D63, D64, D67): alerts are whole minutes
+// from 0 to 120, each listed once, at least one (a kind is turned off
+// instead); sound is any name, "" for silent (macOS skips one it can't find).
 func parseNotify(f file, cfg *Config) error {
 	n := f.Notify
+	if n.Sound != nil {
+		cfg.Notify.Sound = strings.TrimSpace(*n.Sound)
+	}
 	for _, b := range []struct {
 		from *bool
 		to   *bool
