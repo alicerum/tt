@@ -3,3 +3,24 @@
 *.db-shm
 *.db-wal
 /bin/
+
+# local tooling / agent state
+.superpowers/
+.claude/worktrees/
+.claude/settings.local.json
+
+# a real config copied here (config.example.toml stays tracked)
+/config.toml
+
+# Go test and coverage output
+*.test
+*.out
+
+# python tooling in docs/superpowers/tooling
+__pycache__/
+
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
