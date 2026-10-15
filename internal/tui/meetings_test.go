@@ -170,3 +170,33 @@ func TestOverlappingMeetingsTakeAColumnEach(t *testing.T) {
 		" 12:00 ■ ■ ■ A | B | C | D", " 12:30 ■ ■ ■ ",
 	)
 }
+
+// D81: a moved block's ghost stops at the next block or meeting like a new
+// one's (D42), its own old span not in the way; over a meeting it keeps its
+// whole length with ⚠. The drop saves the shorter length, one undo.
+func TestAMovedBlockShrinksToTheGap(t *testing.T) {
+	h := newCalHarness(t, config.Default())
+	h.meetings(
+		ev("Review", 12*time.Hour, 12*time.Hour+30*time.Minute),
+		ev("Sync", 13*time.Hour, 14*time.Hour),
+	)
+	a := h.pinned("Alpha !3 ~m")
+	h.block(a.ID, 10*time.Hour, 2*time.Hour)
+	h.keys("j", "j", "m", "k")
+	h.mustSee(" 09:30 ░ Alpha 2h") // its own old span isn't in the way
+	h.keys("j", "j", "j")
+	h.mustSee(" 11:00 ░ Alpha 1h") // stops at Review
+	h.keys("j")
+	h.mustSee(" 11:30 ░ Alpha 30m")
+	h.keys("j")
+	h.mustSee(" 12:00 ░ Alpha 2h ⚠ · ■ Review") // over a meeting: the whole length
+	h.keys("k", "k", "enter")
+	h.mustSee(`moved "Alpha" to 11:00–12:00`)
+	if b := h.blocks()[0]; b.Start != 11*time.Hour || b.Duration != time.Hour {
+		t.Fatalf("moved block: %+v", b)
+	}
+	h.keys("ctrl+z")
+	if b := h.blocks()[0]; b.Start != 10*time.Hour || b.Duration != 2*time.Hour {
+		t.Errorf("the move and the shrink undo in one step: %+v", b)
+	}
+}

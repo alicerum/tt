@@ -159,15 +159,19 @@ func (m *Model) freeSlot(b domain.Block) (int, bool) {
 	return 0, false
 }
 
-// ghost is the carried block as it would land at the cursor: a moved block
-// keeps its length; a candidate gets its D24 length, min(size, the free time
-// from the cursor to the next block or meeting, or the hours' end; D42).
+// ghost is the carried block as it would land at the cursor: a candidate
+// gets its D24 length, min(size, the free time from the cursor to the next
+// block or meeting, or the hours' end; D42); a moved block likewise stops
+// there, min(its length, that free time; D81).
 func (m *Model) ghost() domain.Block {
 	td := &m.today
 	c := td.carry
 	if c.block.ID != 0 {
 		b := c.block // keeps its offset within the row, so 09:10 moves to 10:10
 		b.Start = td.at.Truncate(rowLen) + (c.block.Start - c.block.Start.Truncate(rowLen))
+		if gap := td.tl.gapBesides(b.Start, b.ID); gap > 0 { // 0: it keeps its length and shows the clash or ⚠
+			b.Duration = min(b.Duration, gap)
+		}
 		return b
 	}
 	// gapFrom is 0 inside a block, and a gap of 0 means "no cap": the ghost
@@ -232,7 +236,7 @@ func (m *Model) drop() tea.Cmd {
 		return nil
 	}
 	td.carry = nil
-	if c.block.ID != 0 && g.Start == c.block.Start {
+	if c.block.ID != 0 && g.Start == c.block.Start && g.Duration == c.block.Duration {
 		m.setStatus("unchanged")
 		return nil
 	}
@@ -240,6 +244,9 @@ func (m *Model) drop() tea.Cmd {
 	svc, label := m.svc, fmt.Sprintf("%q", c.task.Title)
 	if c.block.ID != 0 {
 		return m.actOr("move "+label, "moved "+label+" to "+span(g)+m.overMeeting(g), back, func(ctx context.Context) (app.Undo, error) {
+			if g.Duration != c.block.Duration { // shrunk to the gap (D81)
+				return svc.SetBlockSpan(ctx, c.block.ID, g.Start, g.Duration)
+			}
 			return svc.MoveBlock(ctx, c.block.ID, g.Start)
 		})
 	}
@@ -784,7 +791,7 @@ var todayHelp = []string{
 	"tab      switch timeline / candidates",
 	"j k      move",
 	"b        on a candidate: pick it up; j/k choose the row, ⏎ drops it, esc cancels",
-	"m        on a block: pick it up to move it (keeps its length)",
+	"m        on a block: pick it up to move it (shortens to fit before the next block or meeting)",
 	"r        on a ⚠ block: pick it up on the next free slot (no block, no meeting); ⏎ drops, esc leaves it",
 	"+ / -    on a block: 30m longer / shorter (= works for +)",
 	"f        on a block: fine-tune start and length (09:30 45m)",

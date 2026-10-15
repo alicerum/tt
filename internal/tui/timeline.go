@@ -169,7 +169,11 @@ func (tl *timeline) blockAt(i int) (domain.Block, bool) {
 // gapFrom is the free time from offset at until the next block or meeting
 // starts or the working hours end (D42); 0 when a block or a meeting covers
 // at, or at is outside the hours.
-func (tl *timeline) gapFrom(at time.Duration) time.Duration {
+func (tl *timeline) gapFrom(at time.Duration) time.Duration { return tl.gapBesides(at, 0) }
+
+// gapBesides is gapFrom without block id in the way (D81): a moved block
+// may land over its own old span. Blocks have ids from 1, so 0 skips none.
+func (tl *timeline) gapBesides(at time.Duration, id int64) time.Duration {
 	if at < tl.start || at >= tl.end {
 		return 0
 	}
@@ -184,7 +188,7 @@ func (tl *timeline) gapFrom(at time.Duration) time.Duration {
 		return false
 	}
 	for _, b := range tl.blocks {
-		if busy(b.Start, b.End()) {
+		if b.ID != id && busy(b.Start, b.End()) {
 			return 0
 		}
 	}
