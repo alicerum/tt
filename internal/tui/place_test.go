@@ -363,3 +363,22 @@ func TestParseSpan(t *testing.T) {
 		}
 	}
 }
+
+// D81: a moved block also stops at the next block; starting inside one it
+// keeps its length, and the drop is refused.
+func TestAMovedBlockShrinksBeforeTheNextBlock(t *testing.T) {
+	h := newHarness(t, config.Default())
+	a := h.pinned("Alpha !3 ~m")
+	h.block(a.ID, 10*time.Hour, 2*time.Hour)
+	other := h.pinned("Other !3 ~s")
+	h.block(other.ID, 14*time.Hour, time.Hour)
+	h.keys("j", "j", "m")
+	for range 6 {
+		h.keys("j")
+	}
+	h.mustSee(" 13:00 ░ Alpha 1h")
+	h.keys("j", "j", "enter")
+	h.mustSee(`✗ overlaps "Other" 14:00–15:00`)
+	h.keys("k", "k", "enter")
+	h.mustSee(`moved "Alpha" to 13:00–14:00`)
+}
