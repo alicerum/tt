@@ -28,7 +28,8 @@ type meeting struct {
 // them shares the last one.
 const maxCols = 3
 
-// slot is a meeting in its column (D80): the leftmost one free at its start.
+// slot is a meeting in its column (D80): the leftmost one free, with a
+// blank row, by the row it starts in.
 // group numbers meetings that overlap one another, directly or through
 // others; cols is how many columns the group takes, at most maxCols, so its
 // rows line up.
@@ -69,7 +70,9 @@ func buildTimeline(blocks []domain.Block, meetings []meeting, from, to, now time
 		if len(tl.slots) == 0 || mt.start >= groupEnd { // overlaps nothing so far: a new group
 			frees, groupCols = frees[:0], append(groupCols, 0)
 		}
-		col := slices.IndexFunc(frees, func(f time.Duration) bool { return f <= mt.start })
+		// A column is reused only after a blank row, so a meeting starting
+		// as another ends doesn't read as that one running on.
+		col := slices.IndexFunc(frees, func(f time.Duration) bool { return f+rowLen <= mt.start.Truncate(rowLen) })
 		if col < 0 {
 			col, frees = len(frees), append(frees, 0)
 		}

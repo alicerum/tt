@@ -202,9 +202,12 @@ func TestMeetingColumns(t *testing.T) {
 		{"each keeps its own", []meeting{
 			{"Sync", 15 * hr, 16 * hr}, {"Group", 15 * hr, 16*hr + 30*mn}, {"Daily", 15*hr + 30*mn, 17*hr + 30*mn},
 		}, "Sync 0/3, Group 1/3, Daily 2/3"},
-		{"a freed column is reused", []meeting{
+		{"starting as another ends: a new column", []meeting{ // the user's afternoon
 			{"Sync", 15 * hr, 15*hr + 30*mn}, {"Group", 15 * hr, 17 * hr}, {"Daily", 15*hr + 30*mn, 16 * hr},
-		}, "Sync 0/2, Group 1/2, Daily 0/2"},
+		}, "Sync 0/3, Group 1/3, Daily 2/3"},
+		{"a column is reused after a blank row", []meeting{
+			{"Long", 13 * hr, 17 * hr}, {"A", 13 * hr, 13*hr + 30*mn}, {"B", 14 * hr, 15 * hr}, {"C", 15*hr + 15*mn, 16 * hr},
+		}, "Long 0/3, A 1/3, B 1/3, C 2/3"},
 		{"past three columns, the last is shared", []meeting{
 			{"A", 10 * hr, 12 * hr}, {"B", 10 * hr, 12 * hr}, {"C", 10 * hr, 12 * hr}, {"D", 10 * hr, 12 * hr},
 		}, "A 0/3, B 1/3, C 2/3, D 2/3"},

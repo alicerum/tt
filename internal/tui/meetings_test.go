@@ -124,10 +124,9 @@ func TestEnterListsTheMeetingsOfARow(t *testing.T) {
 		ev("Design review", 16*time.Hour, 17*time.Hour),
 	)
 	h.mustSee(
-		" 10:00 ■ 10:00–10:15 Coffee | 10:15–10:30 Check-in",                                  // back to back: one column, both named
-		" 15:00 ■ Weekly sync", " 15:30 ■ ■ 1:1 Ana", " 16:00 ■ ■ Design review", " 16:30 ■ ", // Design review reuses Weekly sync's column
+		" 10:00 ■ 10:00–10:15 Coffee | 10:15–10:30 Check-in",                                        // back to back: one column, both named
+		" 15:00 ■ Weekly sync", " 15:30 ■ ■ 1:1 Ana", " 16:00   ■ ■ Design review", " 16:30     ■ ", // starting as Weekly sync ends: a column of its own
 	)
-	h.mustNotSee(" 16:30 ■ ■") // 1:1 Ana ended
 
 	h.m.today.cursor = h.m.today.tl.rowOf(16*time.Hour + 30*time.Minute) // a later row of the group
 	h.keys("enter")
