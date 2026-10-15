@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,7 +139,7 @@ func TestTimelineMeetings(t *testing.T) {
 		{"Breakfast", 7*hr + 30*mn, 8*hr + 30*mn},
 		{"Standup", 9*hr + 30*mn, 9*hr + 45*mn},
 		{"Review", 10 * hr, 11 * hr},
-		{"Sync", 10*hr + 30*mn, 11*hr + 15*mn}, // overlaps Review: one band (P4)
+		{"Sync", 10*hr + 30*mn, 11*hr + 15*mn}, // overlaps Review: a column of its own (D80)
 		{"Late", 18*hr + 45*mn, 19*hr + 30*mn},
 		{"After", 19*hr + 30*mn, 20 * hr},
 	}
@@ -145,21 +147,24 @@ func TestTimelineMeetings(t *testing.T) {
 	if len(tl.meetings) != 5 || tl.meetings[0].title != "Breakfast" || tl.meetings[4].title != "Late" {
 		t.Fatalf("meetings within the hours: %+v", tl.meetings)
 	}
-	bandsAt := func(at time.Duration) []band { return tl.rows[tl.rowOf(at)].bands }
-	if b := bandsAt(8 * hr); len(b) != 1 || b[0].title != "Breakfast" {
-		t.Errorf("08:00: %+v", b)
-	}
-	if b := bandsAt(8*hr + 30*mn); len(b) != 0 {
-		t.Errorf("08:30 is free: %+v", b)
-	}
-	want := band{title: "Review", more: 1, start: 10 * hr, end: 11*hr + 15*mn}
-	for _, at := range []time.Duration{10 * hr, 10*hr + 30*mn, 11 * hr} {
-		if b := bandsAt(at); len(b) != 1 || b[0] != want {
-			t.Errorf("%v: %+v; want the merged band %+v", at, b, want)
+	slotsAt := func(at time.Duration) string { // "title col/cols" per meeting in the row
+		var out []string
+		for _, sl := range tl.rows[tl.rowOf(at)].slots {
+			out = append(out, fmt.Sprintf("%s %d/%d", sl.title, sl.col, sl.cols))
 		}
+		return strings.Join(out, ", ")
 	}
-	if b := bandsAt(18*hr + 30*mn); len(b) != 1 || b[0].title != "Late" {
-		t.Errorf("18:30: %+v", b)
+	for at, want := range map[time.Duration]string{
+		8 * hr:        "Breakfast 0/1",
+		8*hr + 30*mn:  "", // free
+		10 * hr:       "Review 0/2",
+		10*hr + 30*mn: "Review 0/2, Sync 1/2", // overlaps Review: the next column (D80)
+		11 * hr:       "Sync 1/2",             // Review ended: its column stays blank
+		18*hr + 30*mn: "Late 0/1",
+	} {
+		if got := slotsAt(at); got != want {
+			t.Errorf("%v: %q; want %q", at, got, want)
+		}
 	}
 
 	// D42: meetings are busy for placement.
@@ -185,5 +190,36 @@ func TestTimelineMeetings(t *testing.T) {
 	}
 	if _, ok := tl.conflict(domain.Block{Start: 9*hr + 45*mn, Duration: 15 * mn}); ok {
 		t.Error("a block between meetings, touching both, doesn't conflict")
+	}
+}
+
+func TestMeetingColumns(t *testing.T) {
+	cases := []struct {
+		name string
+		ms   []meeting
+		want string // each meeting's col/cols, in start order
+	}{
+		{"each keeps its own", []meeting{
+			{"Sync", 15 * hr, 16 * hr}, {"Group", 15 * hr, 16*hr + 30*mn}, {"Daily", 15*hr + 30*mn, 17*hr + 30*mn},
+		}, "Sync 0/3, Group 1/3, Daily 2/3"},
+		{"a freed column is reused", []meeting{
+			{"Sync", 15 * hr, 15*hr + 30*mn}, {"Group", 15 * hr, 17 * hr}, {"Daily", 15*hr + 30*mn, 16 * hr},
+		}, "Sync 0/2, Group 1/2, Daily 0/2"},
+		{"past three columns, the last is shared", []meeting{
+			{"A", 10 * hr, 12 * hr}, {"B", 10 * hr, 12 * hr}, {"C", 10 * hr, 12 * hr}, {"D", 10 * hr, 12 * hr},
+		}, "A 0/3, B 1/3, C 2/3, D 2/3"},
+		{"back to back is a new group", []meeting{
+			{"A", 10 * hr, 11 * hr}, {"B", 10*hr + 30*mn, 11 * hr}, {"C", 11 * hr, 12 * hr},
+		}, "A 0/2, B 1/2, C 0/1"},
+	}
+	for _, c := range cases {
+		tl := buildTimeline(nil, c.ms, 8*hr, 19*hr, -1)
+		var got []string
+		for _, sl := range tl.slots {
+			got = append(got, fmt.Sprintf("%s %d/%d", sl.title, sl.col, sl.cols))
+		}
+		if g := strings.Join(got, ", "); g != c.want {
+			t.Errorf("%s: %q; want %q", c.name, g, c.want)
+		}
 	}
 }

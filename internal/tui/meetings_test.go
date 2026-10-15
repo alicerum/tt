@@ -37,9 +37,9 @@ func TestMeetingsOnToday(t *testing.T) {
 		ev("Lunch", 12*time.Hour, 13*time.Hour),
 	)
 	h.mustSee(
-		" 08:00 ■ Breakfast",           // named on its first row inside the hours
-		" 09:30 ■ 09:30–09:45 Standup", // off the grid: exact times (D41)
-		" 10:00 ■ 10:00–11:15 Review +1", " 10:30 ■", " 11:00 ■",
+		" 08:00 ■ Breakfast",                                            // named on its first row inside the hours
+		" 09:30 ■ 09:30–09:45 Standup",                                  // off the grid: exact times (D41)
+		" 10:00 ■ Review", " 10:30 ■ ■ 10:30–11:15 Sync", " 11:00   ■ ", // a column each (D80)
 		" 12:00 ▓ Fix CI [50 S] ⚠ · ■ Lunch", " 12:30 ▓ · ■", // the block first, then the meeting
 		"TIMELINE · 0/1 done · ⚠ 1",
 	)
@@ -116,19 +116,23 @@ func TestEnterListsTheMeetingsOfARow(t *testing.T) {
 	fix := h.pinned("Fix CI !3 ~s")
 	h.block(fix.ID, 12*time.Hour, time.Hour)
 	h.meetings(
-		ev("Coffee", 10*time.Hour, 10*time.Hour+15*time.Minute), // two bands in one row
+		ev("Coffee", 10*time.Hour, 10*time.Hour+15*time.Minute), // two groups in one row
 		ev("Check-in", 10*time.Hour+15*time.Minute, 10*time.Hour+30*time.Minute),
 		ev("Lunch", 12*time.Hour, 13*time.Hour),
 		ev("Weekly sync", 15*time.Hour, 16*time.Hour),
 		ev("1:1 Ana", 15*time.Hour+30*time.Minute, 16*time.Hour+30*time.Minute),
 		ev("Design review", 16*time.Hour, 17*time.Hour),
 	)
-	h.mustSee(" 15:00 ■ Weekly sync +2")
+	h.mustSee(
+		" 10:00 ■ 10:00–10:15 Coffee | 10:15–10:30 Check-in",                                  // back to back: one column, both named
+		" 15:00 ■ Weekly sync", " 15:30 ■ ■ 1:1 Ana", " 16:00 ■ ■ Design review", " 16:30 ■ ", // Design review reuses Weekly sync's column
+	)
+	h.mustNotSee(" 16:30 ■ ■") // 1:1 Ana ended
 
-	h.m.today.cursor = h.m.today.tl.rowOf(16*time.Hour + 30*time.Minute) // a later row of the band
+	h.m.today.cursor = h.m.today.tl.rowOf(16*time.Hour + 30*time.Minute) // a later row of the group
 	h.keys("enter")
 	h.before("MEETINGS · 15:00–17:00", "  15:00–16:00  Weekly sync", "  15:30–16:30  1:1 Ana", "  16:00–17:00  Design review", "any key closes")
-	h.mustNotSee("12:00–13:00  Lunch") // not in the band
+	h.mustNotSee("12:00–13:00  Lunch") // not in the group
 	if lines := strings.Count(h.m.render(), "\n") + 1; lines > 40 {
 		t.Errorf("the screen has %d lines on a 40-line terminal", lines)
 	}
@@ -143,4 +147,27 @@ func TestEnterListsTheMeetingsOfARow(t *testing.T) {
 	h.m.today.cursor = h.m.today.tl.rowOf(12 * time.Hour) // a block over a meeting: ⏎ opens its task (D31)
 	h.keys("enter")
 	h.mustSee(fmt.Sprintf("#%d Fix CI", fix.ID), "TASK")
+}
+
+func TestOverlappingMeetingsTakeAColumnEach(t *testing.T) {
+	h := newCalHarness(t, config.Default())
+	h.meetings( // the user's example (D80)
+		ev("Weekly sync", 15*time.Hour, 16*time.Hour),
+		ev("Group", 15*time.Hour, 16*time.Hour+30*time.Minute),
+		ev("Daily", 15*time.Hour+30*time.Minute, 17*time.Hour+30*time.Minute),
+		ev("E", 17*time.Hour, 17*time.Hour+30*time.Minute), // later ones take the freed columns
+		ev("F", 17*time.Hour, 17*time.Hour+30*time.Minute),
+		ev("A", 12*time.Hour, 13*time.Hour), // four at once: the fourth shares the last column
+		ev("B", 12*time.Hour, 13*time.Hour),
+		ev("C", 12*time.Hour, 13*time.Hour),
+		ev("D", 12*time.Hour, 13*time.Hour),
+	)
+	h.mustSee(
+		" 15:00 ■ ■ Weekly sync | Group",
+		" 15:30 ■ ■ ■ Daily",
+		" 16:00   ■ ■ ",
+		" 16:30     ■ ",
+		" 17:00 ■ ■ ■ E | F",
+		" 12:00 ■ ■ ■ A | B | C | D", " 12:30 ■ ■ ■ ",
+	)
 }

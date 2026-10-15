@@ -14,7 +14,7 @@ const rowLen = 30 * time.Minute
 type tlRow struct {
 	start   time.Duration  // wall-clock offset from midnight of the plan's day
 	blocks  []domain.Block // the blocks that overlap the row, by start
-	bands   []band         // the meeting bands that overlap the row, by start (D41)
+	slots   []slot         // the meetings that overlap the row, by start (D80)
 	outside bool           // a row of its own for a block outside the working hours (D39)
 }
 
@@ -24,12 +24,17 @@ type meeting struct {
 	start, end time.Duration
 }
 
-// band is overlapping meetings merged into one (P4): the first one's
-// title, how many more, and the span they cover together.
-type band struct {
-	title      string
-	more       int
-	start, end time.Duration
+// maxCols is how many meeting columns a row draws (D80); a meeting past
+// them shares the last one.
+const maxCols = 3
+
+// slot is a meeting in its column (D80): the leftmost one free at its start.
+// group numbers meetings that overlap one another, directly or through
+// others; cols is how many columns the group takes, at most maxCols, so its
+// rows line up.
+type slot struct {
+	meeting
+	col, group, cols int
 }
 
 // timeline is Today's grid (D38): the working hours in rows (D39), rebuilt
@@ -42,6 +47,7 @@ type timeline struct {
 	rows       []tlRow
 	blocks     []domain.Block // the day's blocks, by start
 	meetings   []meeting      // the meetings within the working hours, by start (D41)
+	slots      []slot         // the same meetings in their columns (D80)
 	now        time.Duration  // now's wall-clock offset; -1 when there is no now
 	nowRow     int            // the row holding now; -1 when now is outside the hours or there is none
 	start, end time.Duration  // the working hours
@@ -52,18 +58,28 @@ type timeline struct {
 // now < 0 means no now (the shown day isn't today).
 func buildTimeline(blocks []domain.Block, meetings []meeting, from, to, now time.Duration) timeline {
 	tl := timeline{blocks: blocks, now: max(now, -1), nowRow: -1, start: from, end: to}
-	var bands []band
+	var frees []time.Duration // when each column of the current group frees up
+	var groupEnd time.Duration
+	var groupCols []int
 	for _, mt := range meetings {
 		if mt.end <= from || mt.start >= to {
 			continue
 		}
 		tl.meetings = append(tl.meetings, mt)
-		if n := len(bands); n > 0 && mt.start < bands[n-1].end {
-			bands[n-1].more++
-			bands[n-1].end = max(bands[n-1].end, mt.end)
-			continue
+		if len(tl.slots) == 0 || mt.start >= groupEnd { // overlaps nothing so far: a new group
+			frees, groupCols = frees[:0], append(groupCols, 0)
 		}
-		bands = append(bands, band{title: mt.title, start: mt.start, end: mt.end})
+		col := slices.IndexFunc(frees, func(f time.Duration) bool { return f <= mt.start })
+		if col < 0 {
+			col, frees = len(frees), append(frees, 0)
+		}
+		frees[col], groupEnd = mt.end, max(groupEnd, mt.end)
+		g := len(groupCols) - 1
+		groupCols[g] = max(groupCols[g], min(col+1, maxCols))
+		tl.slots = append(tl.slots, slot{meeting: mt, col: min(col, maxCols-1), group: g})
+	}
+	for i := range tl.slots {
+		tl.slots[i].cols = groupCols[tl.slots[i].group]
 	}
 	var before, after []tlRow
 	for _, b := range blocks {
@@ -84,9 +100,9 @@ func buildTimeline(blocks []domain.Block, meetings []meeting, from, to, now time
 				r.blocks = append(r.blocks, b)
 			}
 		}
-		for _, bd := range bands {
-			if bd.start < min(s+rowLen, to) && max(s, from) < bd.end {
-				r.bands = append(r.bands, bd)
+		for _, sl := range tl.slots {
+			if sl.start < min(s+rowLen, to) && max(s, from) < sl.end {
+				r.slots = append(r.slots, sl)
 			}
 		}
 		if now >= max(s, from) && now < min(s+rowLen, to) {
@@ -197,14 +213,13 @@ func (tl *timeline) block(id int64) (domain.Block, bool) {
 	return tl.blocks[i], true
 }
 
-// bandMeetings are the meetings merged into bd, by start: each one starting
-// inside its span (meetings are by start, so one starting earlier would
-// have opened the band).
-func (tl *timeline) bandMeetings(bd band) []meeting {
+// groupMeetings are the meetings of the groups that row r's meetings belong
+// to, by start (D79).
+func (tl *timeline) groupMeetings(r tlRow) []meeting {
 	var out []meeting
-	for _, mt := range tl.meetings {
-		if mt.start >= bd.start && mt.start < bd.end {
-			out = append(out, mt)
+	for _, sl := range tl.slots {
+		if slices.ContainsFunc(r.slots, func(o slot) bool { return o.group == sl.group }) {
+			out = append(out, sl.meeting)
 		}
 	}
 	return out

@@ -458,9 +458,9 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	}
 	b, ok := td.tl.blockAt(td.cursor)
 	if !ok {
-		if bands := td.tl.rows[td.cursor].bands; len(bands) > 0 {
+		if r := td.tl.rows[td.cursor]; len(r.slots) > 0 {
 			if key == "enter" {
-				m.overlay = newMeetingList(&td.tl, bands) // D79
+				m.overlay = newMeetingList(td.tl.groupMeetings(r)) // D79
 				return nil
 			}
 			m.setStatus("meeting · read-only") // D41
@@ -664,39 +664,51 @@ func (m *Model) ghostRow(r tlRow, g domain.Block, width int) string {
 	return within(styleSelected, line)
 }
 
-// meetingParts renders row r's meetings (D41): ■ and the title of a band
-// that starts in the row (exact times when off the half-hour grid, +N for
-// the meetings merged into it), or ■ where one carries on from above.
+// meetingParts renders row r's meetings (D41, D80): a cell per column of
+// their group, ■ where a meeting runs and blank where none does, so the
+// columns line up row to row; then the titles of the meetings starting in
+// the row (exact times when off the half-hour grid), split by " | ". One
+// part, or none without meetings.
 func (m *Model) meetingParts(r tlRow) []string {
-	var out []string
-	for _, bd := range r.bands {
-		if max(bd.start, m.today.tl.start) < r.start {
-			out = append(out, "■")
-			continue
-		}
-		s := "■ "
-		if bd.start%rowLen != 0 || bd.end%rowLen != 0 {
-			s += clock(bd.start) + "–" + clock(bd.end) + " "
-		}
-		s += bd.title
-		if bd.more > 0 {
-			s += fmt.Sprintf(" +%d", bd.more)
-		}
-		out = append(out, styleDim.Render(s)) // one neutral style, never like a block (D58)
+	if len(r.slots) == 0 {
+		return nil
 	}
-	return out
+	cells := make([]string, maxCols)
+	cols := 0
+	var titles []string
+	for _, sl := range r.slots {
+		cells[sl.col], cols = "■", max(cols, sl.cols)
+		if max(sl.start, m.today.tl.start) < r.start {
+			continue // carries on from above
+		}
+		t := sl.title
+		if sl.start%rowLen != 0 || sl.end%rowLen != 0 {
+			t = clock(sl.start) + "–" + clock(sl.end) + " " + t
+		}
+		titles = append(titles, t)
+	}
+	for c := range cells[:cols] {
+		if cells[c] == "" {
+			cells[c] = " "
+		}
+	}
+	s := strings.TrimRight(strings.Join(cells[:cols], " "), " ")
+	if len(titles) > 0 {
+		s += " " + strings.Join(titles, " | ")
+	}
+	return []string{styleDim.Render(s)} // one neutral style, never like a block (D58)
 }
 
-// meetingList shows the meetings of a timeline row's bands, one a line with
-// its times (D79): a band names only its first meeting. Any key closes it.
+// meetingList shows the meetings of a timeline row's groups, one a line
+// with its times (D79), for the titles a row can't fit. Any key closes it.
 type meetingList struct{ lines []string }
 
-func newMeetingList(tl *timeline, bands []band) *meetingList {
-	var ms []meeting
-	for _, bd := range bands {
-		ms = append(ms, tl.bandMeetings(bd)...)
+func newMeetingList(ms []meeting) *meetingList {
+	from, to := ms[0].start, ms[0].end
+	for _, mt := range ms {
+		to = max(to, mt.end)
 	}
-	lines := []string{styleTitle.Render(fmt.Sprintf("MEETINGS · %s–%s", clock(bands[0].start), clock(bands[len(bands)-1].end)))}
+	lines := []string{styleTitle.Render(fmt.Sprintf("MEETINGS · %s–%s", clock(from), clock(to)))}
 	for _, mt := range ms {
 		lines = append(lines, "  "+clock(mt.start)+"–"+clock(mt.end)+"  "+mt.title)
 	}
@@ -778,7 +790,7 @@ var todayHelp = []string{
 	"f        on a block: fine-tune start and length (09:30 45m)",
 	"u        on a block: unblock (stays a candidate) · on a candidate: unpin",
 	"⏎        task detail (the block's task on the timeline)",
-	"■        a meeting (read-only); ⏎ on its row lists the meetings there with their times; a block over one shows ⚠, and placing over one is allowed",
+	"■        a meeting (read-only), a column each when they overlap; ⏎ on its row lists them with their times; a block over one shows ⚠, and placing over one is allowed",
 	"x d D    done (again: reopen) / drop / delete",
 	"e / E    edit the line / the note in $EDITOR · o open the link",
 	"L        the log (backlog; pick today's work there, B comes back) · i inbox · P people",
