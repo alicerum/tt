@@ -17,15 +17,15 @@ func TestGroupingCyclesAndIsRemembered(t *testing.T) {
 	h.add("Medium one !2 ~m")
 	h.add("Small one !3 ~s @ana")
 	// D72: urgency is a flat sort, the most urgent first, with no headings.
-	h.mustSee("BACKLOG · by urgency", "│   [ 50 S] Small one @ana", "│   [ 33 M] Medium one")
+	h.mustSee("BACKLOG · by urgency", "│   [50 S] Small one @ana", "│   [33 M] Medium one")
 	if s := h.screen(); strings.Index(s, "Small one") > strings.Index(s, "Medium one") {
 		t.Errorf("the more urgent task comes first:\n%s", s)
 	}
 
 	h.keys("g")
-	h.mustSee("sorted by impact", "BACKLOG · by impact", "│   [ 50 S] Small one @ana")
+	h.mustSee("sorted by impact", "BACKLOG · by impact", "│   [50 S] Small one @ana")
 	h.keys("g")
-	h.mustSee("grouped by size", "BACKLOG · by size", "\n│ S ", "[ 50 S] Small one", "\n│ M ")
+	h.mustSee("grouped by size", "BACKLOG · by size", "\n│ S ", "[50 S] Small one", "\n│ M ")
 	h.keys("g")
 	h.mustSee("BACKLOG · by created", "this week")
 	h.keys("g")
@@ -89,7 +89,7 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	if err := h.m.applyFilter("schema"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("BACKLOG · by urgency · 1 match", "filter › schema · esc clears", "[ 17 M] Schema backlog")
+	h.mustSee("BACKLOG · by urgency · 1 match", "filter › schema · esc clears", "[17 M] Schema backlog")
 	h.mustNotSee("Schema idea", "Schema shipped", "unset")
 
 	// is: widens it to closed backlog tasks (D26b).
@@ -103,17 +103,17 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	if err := h.m.applyFilter("rollback"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("1 match", fmt.Sprintf("[ 50 S] Rollback plan ↳ #%d", parent.ID))
+	h.mustSee("1 match", fmt.Sprintf("[50 S] Rollback plan ↳ #%d", parent.ID))
 
 	// A matching parent lists its matching children beneath it, expanded.
 	if err := h.m.applyFilter("#auth"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("3 matches", "▾ [ 50 XL] Auth migration 0/2", "    [ 50 S] Rollback plan", "    [ 50 M] Token spike")
+	h.mustSee("3 matches", "▾ [50 XL] Auth migration 0/2", "    [50 S] Rollback plan", "    [50 M] Token spike")
 	if err := h.m.applyFilter("#auth spike"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("1 match", fmt.Sprintf("[ 50 M] Token spike ↳ #%d", parent.ID))
+	h.mustSee("1 match", fmt.Sprintf("[50 M] Token spike ↳ #%d", parent.ID))
 
 	// A bad filter keeps the current one.
 	if err := h.m.applyFilter("!9"); err == nil {
@@ -126,7 +126,7 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	}
 	h.mustSee("0 matches", "filter › zzz · esc clears", "no matches")
 	h.keys("esc")
-	h.mustSee("filter cleared", "▸ [ 50 XL] Auth migration 0/2")
+	h.mustSee("filter cleared", "▸ [50 XL] Auth migration 0/2")
 	h.mustNotSee("matches", "Schema idea")
 
 	// Children of a pinned parent live under it in Today, filtered or not.
@@ -137,7 +137,7 @@ func TestFilteredBacklogPlacement(t *testing.T) {
 	if err := h.m.applyFilter("rollback"); err != nil {
 		t.Fatal(err)
 	}
-	h.mustSee("0 matches", "filter › rollback · esc clears", "    [ 50 S] Rollback plan")
+	h.mustSee("0 matches", "filter › rollback · esc clears", "    [50 S] Rollback plan")
 }
 
 func TestScrollWindowMovesOnlyWhenTheCursorLeavesIt(t *testing.T) {
@@ -180,7 +180,7 @@ func TestAllDroppedChildrenHideProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.keys("R")
-	h.mustSee("[ 50 L] Parent")
+	h.mustSee("[50 L] Parent")
 	h.mustNotSee("0/0")
 }
 
@@ -193,15 +193,15 @@ func TestPinCountShowsDaysCarriedOver(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.keys("R")
-	h.mustSee("[ 50 S] Carried")
+	h.mustSee("[50 S] Carried")
 	h.mustNotSee("📌")
 
 	for _, want := range []string{"📌1", "📌2"} {
 		h.clock.now = h.clock.now.Add(24 * time.Hour)
 		h.send(clockTickMsg{})
 		h.keys("enter") // past the new-day banner
-		h.mustSee("[ 50 S] Carried " + want)
+		h.mustSee("[50 S] Carried " + want)
 	}
 	h.keys("tab", "enter") // the backlog is empty: open the candidate
-	h.mustSee(fmt.Sprintf("#%d Carried  [ 50 S] 📌2", task.ID))
+	h.mustSee(fmt.Sprintf("#%d Carried  [50 S] 📌2", task.ID))
 }

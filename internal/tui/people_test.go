@@ -30,7 +30,7 @@ func TestPeopleOpensFromTodayAndTheLog(t *testing.T) {
 	h := newHarness(t, config.Default())
 	h.add("Fix login @ana !3 ~s")
 	h.keys("P")
-	h.mustSee("tt · People", "PEOPLE · 1", "ana · 1 open", "@ana", "[ 50 S] Fix login")
+	h.mustSee("tt · People", "PEOPLE · 1", "ana · 1 open", "@ana", "[50 S] Fix login")
 	h.keys("esc")
 	if h.m.screen != screenToday {
 		t.Fatalf("esc from People opened from Today: screen %d", h.m.screen)
@@ -114,7 +114,7 @@ func TestPeopleShowsAPersonsTasks(t *testing.T) {
 	}
 	h.keys("R", "P")
 	h.before("@ana", // the urgency order, flat (D72)
-		"[ 50 S] Fix login 📌", fmt.Sprintf("[ 50 S] Import flow ↳ #%d", parent.ID), "[ 33 M] Write RFC",
+		"[50 S] Fix login 📌", fmt.Sprintf("[50 S] Import flow ↳ #%d", parent.ID), "[33 M] Write RFC",
 		"closed", "Idea ✗ Mon 12 Oct", "Old bug ✓ Mon 12 Oct") // newest first
 	h.mustNotSee("Fix login @ana", "Bob's ask", "Profiles")
 }
@@ -131,7 +131,7 @@ func TestPeopleTaskKeys(t *testing.T) {
 	h.keys("ctrl+z")
 	h.mustSee(`undid done "Fix login"`, "ana · 2 open")
 	h.keys("p")
-	h.mustSee(`pinned "Fix login"`, "[ 50 S] Fix login 📌")
+	h.mustSee(`pinned "Fix login"`, "[50 S] Fix login 📌")
 
 	h.keys("e", "ctrl+u") // the edit line, cleared
 	h.typeText("Fix login @bob !3 ~s")
@@ -143,7 +143,7 @@ func TestPeopleTaskKeys(t *testing.T) {
 		t.Errorf("the cursor stays on the person: %q", h.m.people.selected)
 	}
 	h.mustSee("ana · 1 open", "bob · 2 open", "@ana", "Write RFC", `edited "Fix login"`)
-	h.mustNotSee("[ 50 S] Fix login")
+	h.mustNotSee("[50 S] Fix login")
 	h.keys("enter")
 	h.mustSee("tt · Detail", "Write RFC")
 }

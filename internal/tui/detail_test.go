@@ -40,18 +40,18 @@ func TestDetailShowsTheTaskAndEscGoesBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.add("Other !2 ~s")
-	h.mustSee("[ 50 XL] Auth migration ✎ @ana")
+	h.mustSee("[50 XL] Auth migration ✎ @ana")
 
 	h.keys("enter") // the cursor starts on Auth migration (P1 sorts first)
 	h.mustSee("tt · Detail",
-		fmt.Sprintf("#%d Auth migration  [ 50 XL]", parent.ID),
+		fmt.Sprintf("#%d Auth migration  [50 XL]", parent.ID),
 		"@ana · #auth · captured just now",
 		"🔗 https://x.io/pr/482",
 		"NOTE", "  line 1", "  line 6", "… +2 lines",
 		"CHILDREN ██░░░░░░ 1/3",
-		"  [ 50 M] Rollback plan", // open children first, in sibling order
-		"  [ 50 S] Dry run ✎",
-		"  [ 50 S] Token spike ✓ Mon 12 Oct") // then closed ones with their close date
+		"  [50 M] Rollback plan", // open children first, in sibling order
+		"  [50 S] Dry run ✎",
+		"  [50 S] Token spike ✓ Mon 12 Oct") // then closed ones with their close date
 	h.mustNotSee("line 7", "Other")
 	if s := h.screen(); strings.Index(s, "Rollback plan") > strings.Index(s, "Dry run") ||
 		strings.Index(s, "Dry run") > strings.Index(s, "Token spike") {
@@ -60,7 +60,7 @@ func TestDetailShowsTheTaskAndEscGoesBack(t *testing.T) {
 
 	// ⏎ on a child opens its detail; esc goes back one level, then to Pick.
 	h.keys("j", "j", "enter")
-	h.mustSee(fmt.Sprintf("#%d Dry run  [ 50 S]", kids[2].ID), fmt.Sprintf("child of #%d Auth migration", parent.ID), "  notes here")
+	h.mustSee(fmt.Sprintf("#%d Dry run  [50 S]", kids[2].ID), fmt.Sprintf("child of #%d Auth migration", parent.ID), "  notes here")
 	h.mustNotSee("CHILDREN") // one level only (D6)
 	h.keys("esc")
 	h.mustSee("CHILDREN")
@@ -79,7 +79,7 @@ func TestDetailKeysActOnTheRowUnderTheCursor(t *testing.T) {
 	parent, kids := h.family("Parent !3 ~l", "First ~s", "Second ~s")
 	h.keys("enter", "j")
 	h.keys("x")
-	h.mustSee(`✓ "First"`, "  [ 50 S] First ✓ Mon 12 Oct", "1/2")
+	h.mustSee(`✓ "First"`, "  [50 S] First ✓ Mon 12 Oct", "1/2")
 	if got := h.task(kids[0].ID); got.Status != domain.StatusDone {
 		t.Fatalf("x on a child: %s", got.Status)
 	}
@@ -91,7 +91,7 @@ func TestDetailKeysActOnTheRowUnderTheCursor(t *testing.T) {
 
 	h.keys("k") // back on the task itself
 	h.keys("p")
-	h.mustSee(`pinned "Parent"`, fmt.Sprintf("#%d Parent  [ 50 L] 📌", parent.ID))
+	h.mustSee(`pinned "Parent"`, fmt.Sprintf("#%d Parent  [50 L] 📌", parent.ID))
 	h.keys("d")
 	h.typeText("handed over")
 	h.keys("enter")
@@ -175,7 +175,7 @@ func TestDetailOfAClosedTaskAndHelp(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.keys("enter")
-	h.mustSee("#1 Shipped  [ 50 S] ✓ Mon 12 Oct", "no note", "no children")
+	h.mustSee("#1 Shipped  [50 S] ✓ Mon 12 Oct", "no note", "no children")
 	h.keys("?")
 	h.mustSee("open the child under the cursor")
 }

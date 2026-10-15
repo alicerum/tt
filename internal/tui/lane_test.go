@@ -53,7 +53,7 @@ func TestReviewsLaneOnToday(t *testing.T) {
 	// Impact 1, due 3 days after the request a day ago (D75).
 	h.mustSee(`pinned "Review #877: Bump go" · 50 S`, "REVIEWS · 3 waiting", "Review #877: Bump go")
 	h.keys("k") // up to #915, the newest
-	if l := h.lineWith("Review #877"); !strings.Contains(l, "[ 50 S]") {
+	if l := h.lineWith("Review #877"); !strings.Contains(l, "[50 S]") {
 		t.Errorf("the review is a candidate with D48's and D75's defaults: %q", l)
 	}
 	h.keys("ctrl+z")

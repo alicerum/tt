@@ -26,7 +26,10 @@ var (
 	styleClosed     = lipgloss.NewStyle().Strikethrough(true).Faint(true)
 	// styleLinked is a review request that already has a task (D51).
 	styleLinked = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	styleBanner = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
+	// styleScoreLow is the green of a middling urgency score; yellow
+	// (styleAlert) and red (styleError) take the higher bands.
+	styleScoreLow = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	styleBanner   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
 )
 
 // index holds lookups derived from one loaded state.
@@ -90,8 +93,20 @@ func byUse(counts map[string]int) []string {
 	return out
 }
 
-// badge renders "[ 73 M]": the task's urgency today and its size (D71).
+// badge renders "[73 M]": the task's urgency today and its size (D71), the
+// score in its band's colour while the task is open.
 func (m *Model) badge(t domain.Task) string {
+	u, ok := m.urgency(t, m.state.Snapshot.ParentOf(t))
+	score := scoreText(u, ok)
+	if ok && t.Status == domain.StatusOpen {
+		score = scoreStyle(domain.UrgencyScore(u)).Render(score)
+	}
+	return "[" + score + " " + sizeLabel(t.Size) + "]"
+}
+
+// plainBadge is badge without colour, for text that takes a colour of its
+// own (a timeline block, D58).
+func (m *Model) plainBadge(t domain.Task) string {
 	u, ok := m.urgency(t, m.state.Snapshot.ParentOf(t))
 	return badgeOf(u, ok, t.Size)
 }
@@ -101,14 +116,33 @@ func (m *Model) urgency(t domain.Task, parent *domain.Task) (float64, bool) {
 	return domain.Urgency(t, parent, m.svc.Today(), m.svc.Config().Urgency)
 }
 
-// badgeOf renders "[ 73 M]" for urgency u (0 to 1; ok false: "  —") and a
-// size: the score padded to three cells, so 100 lines up with the rest.
+// badgeOf renders "[73 M]" for urgency u (0 to 1; ok false: " —") and a
+// size, without colour.
 func badgeOf(u float64, ok bool, size domain.Size) string {
-	score := "  —"
-	if ok {
-		score = fmt.Sprintf("%3d", domain.UrgencyScore(u))
+	return "[" + scoreText(u, ok) + " " + sizeLabel(size) + "]"
+}
+
+// scoreText is urgency u as two cells, so every badge is as wide: 100 shows
+// as 99, an untriaged task (ok false) as " —".
+func scoreText(u float64, ok bool) string {
+	if !ok {
+		return " —"
 	}
-	return "[" + score + " " + sizeLabel(size) + "]"
+	return fmt.Sprintf("%2d", min(domain.UrgencyScore(u), 99))
+}
+
+// scoreStyle is the colour of an urgency score's band: plain under 30,
+// green to 49, yellow to 74, red from 75.
+func scoreStyle(score int) lipgloss.Style {
+	switch {
+	case score >= 75:
+		return styleError
+	case score >= 50:
+		return styleAlert
+	case score >= 30:
+		return styleScoreLow
+	}
+	return lipgloss.NewStyle()
 }
 
 // dueMarker is the marker after an open task's title when it has a due

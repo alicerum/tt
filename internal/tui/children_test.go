@@ -31,7 +31,7 @@ func TestAddChildrenOneAfterAnother(t *testing.T) {
 	h.mustSee("child of #1 › ")
 	h.typeText("Token spike ~s")
 	h.keys("enter")
-	h.mustSee("added #2 under #1", "CHILDREN ░░░░░░░░ 0/1", "  [ 50 S] Token spike")
+	h.mustSee("added #2 under #1", "CHILDREN ░░░░░░░░ 0/1", "  [50 S] Token spike")
 	if _, ok := h.m.overlay.(*addChild); !ok {
 		t.Fatal("the add-child input stays open for the next child")
 	}

@@ -700,7 +700,7 @@ func (m *Model) blockText(b domain.Block, times bool) string {
 	if t.Note != "" {
 		s += " ✎" // like the rows (D62)
 	}
-	s += " " + m.badge(t)
+	s += " " + m.plainBadge(t) // the block's colour, not the score's (D58)
 	if times {
 		s = span(b) + " " + s
 	}

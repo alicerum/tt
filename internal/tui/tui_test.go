@@ -34,7 +34,7 @@ func TestQuickAddThenTriageInThreeKeys(t *testing.T) {
 	h.keys("enter")
 	h.mustSee("Inbox zero ✓")
 	h.keys("esc")
-	h.mustSee("BACKLOG · by urgency", "[ 17 S] Reply to Ana @ana") // impact 1, no due: 17 (D71)
+	h.mustSee("BACKLOG · by urgency", "[17 S] Reply to Ana @ana") // impact 1, no due: 17 (D71)
 	if got := h.task(1); got.Impact != 1 || got.Size != domain.SizeS {
 		t.Errorf("task after triage: %+v", got)
 	}
@@ -45,7 +45,7 @@ func TestQuickAddDirectlyToBacklogAndEscCancels(t *testing.T) {
 	h.keys("a")
 	h.typeText("Ready !2 ~m")
 	h.keys("enter")
-	h.mustSee("added #1 to backlog", "[ 33 M] Ready")
+	h.mustSee("added #1 to backlog", "[33 M] Ready")
 
 	h.keys("a")
 	h.typeText("never mind")
@@ -103,7 +103,7 @@ func TestPickPinDoneUndo(t *testing.T) {
 	h := newLogHarness(t, config.Default())
 	a := h.add("Alpha !3 ~s")
 	h.add("Beta !2 ~m")
-	h.mustSee("[ 50 S] Alpha", "[ 33 M] Beta", "nothing pinned")
+	h.mustSee("[50 S] Alpha", "[33 M] Beta", "nothing pinned")
 
 	h.keys("p") // cursor starts on the first backlog task
 	h.mustSee(`pinned "Alpha"`)
@@ -179,10 +179,10 @@ func TestBacklogParentExpandsAndTodayShowsChildren(t *testing.T) {
 		}
 	}
 	h.keys("R")
-	h.mustSee("▸ [ 50 XL] Auth migration 0/2")
+	h.mustSee("▸ [50 XL] Auth migration 0/2")
 	h.mustNotSee("Rollback plan")
 	h.keys("right")
-	h.mustSee("▾ [ 50 XL] Auth migration", "    [ 50 S] Rollback plan", "    [ 50 M] Token spike")
+	h.mustSee("▾ [50 XL] Auth migration", "    [50 S] Rollback plan", "    [50 M] Token spike")
 	h.keys("down", "left") // collapsing from a child collapses its parent
 	h.mustNotSee("Rollback plan")
 
@@ -195,7 +195,7 @@ func TestBacklogParentExpandsAndTodayShowsChildren(t *testing.T) {
 	h.clock.now = h.clock.now.Add(24 * time.Hour) // parent rolls over once → alert at threshold 1
 	h.send(clockTickMsg{})
 	h.keys("esc") // dismiss the banner
-	h.mustSee("▾ [ 50 XL] Auth migration 1/2 ↻1", "⚠ rolled over 1×", "    [ 50 M] Token spike")
+	h.mustSee("▾ [50 XL] Auth migration 1/2 ↻1", "⚠ rolled over 1×", "    [50 M] Token spike")
 	h.mustNotSee("Rollback plan") // closed yesterday, not today
 }
 
@@ -371,7 +371,7 @@ func TestChildProgressExcludesDropped(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.keys("R")
-	h.mustSee("▸ [ 50 XL] Parent 1/2")
+	h.mustSee("▸ [50 XL] Parent 1/2")
 }
 
 func TestOrphanedChildrenStayInBacklog(t *testing.T) {
@@ -386,7 +386,7 @@ func TestOrphanedChildrenStayInBacklog(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.keys("R")
-	h.mustSee("[ 50 S] Kid", "↳ #1")
+	h.mustSee("[50 S] Kid", "↳ #1")
 
 	// A parent still in the Inbox (no size) doesn't hide its children either.
 	p2 := h.add("P2 !3")
@@ -462,7 +462,7 @@ func TestRolloverMarkerShownInBacklog(t *testing.T) {
 	h.clock.now = h.clock.now.Add(24 * time.Hour)
 	h.send(clockTickMsg{})
 	h.keys("esc", "tab", "u")
-	h.mustSee("[ 50 S] Slipper", "↻1")
+	h.mustSee("[50 S] Slipper", "↻1")
 	if _, ok := h.m.idx.cand[a.ID]; ok {
 		t.Fatal("Slipper should be unpinned")
 	}

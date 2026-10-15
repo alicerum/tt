@@ -45,7 +45,7 @@ func TestBlocksAreColouredPerTask(t *testing.T) {
 	if c1 == c2 {
 		t.Fatal("tasks #1 and #2 get different colours")
 	}
-	if l := h.rawLine("10:00 ▓ Fix CI"); !strings.Contains(l, c1+"▓") || !strings.Contains(l, c1+"Fix CI [ 50 S]") {
+	if l := h.rawLine("10:00 ▓ Fix CI"); !strings.Contains(l, c1+"▓") || !strings.Contains(l, c1+"Fix CI [50 S]") {
 		t.Errorf("a block's ▓ and label take its task's colour: %q", l)
 	}
 	if l := h.rawLine("10:30 ▓"); !strings.Contains(l, c1+"▓") {
@@ -130,4 +130,53 @@ func TestTheHighlightRunsToTheEndOfTheRow(t *testing.T) {
 		t.Fatalf("the Log's cursor is on the done task: %+v", r)
 	}
 	reversedToTheEnd(t, "a selected closed Log row", h.m.rowLine(r, 60, true))
+}
+
+func TestUrgencyScoresTakeTheirBandsColour(t *testing.T) {
+	for score, want := range map[int]lipgloss.Style{
+		0: lipgloss.NewStyle(), 29: lipgloss.NewStyle(), 30: styleScoreLow, 49: styleScoreLow,
+		50: styleAlert, 74: styleAlert, 75: styleError, 100: styleError,
+	} {
+		if got := on(scoreStyle(score)); got != on(want) {
+			t.Errorf("scoreStyle(%d) starts %q; want %q", score, got, on(want))
+		}
+	}
+
+	if on(styleScoreLow) == "" || on(styleAlert) == "" || on(styleError) == "" {
+		t.Fatal("the bands' colours render as escape sequences")
+	}
+
+	h := newLogHarness(t, config.Default())
+	h.add("Small ask !1 ~s")                // 17: plain
+	h.add("Team chore !2 ~s")               // 33: green
+	h.add("Stream work !3 ~s")              // 50: yellow
+	h.add("Due today !3 ~s ^today")         // 87: red
+	h.add("Long overdue !3 ~s ^2026-01-02") // 100, shown as 99: red
+	h.mustSee("[17 S] Small ask", "[33 S] Team chore", "[50 S] Stream work", "[87 S] Due today", "[99 S] Long overdue")
+	for title, want := range map[string]string{
+		"Team chore": on(styleScoreLow) + "33", "Stream work": on(styleAlert) + "50",
+		"Due today": on(styleError) + "87", "Long overdue": on(styleError) + "99",
+	} {
+		if l := h.rawLine(title); !strings.Contains(l, want) {
+			t.Errorf("%s's score is coloured %q: %q", title, want, l)
+		}
+	}
+	if l := h.rawLine("Small ask"); !strings.Contains(l, "[17 S]") {
+		t.Errorf("a low score stays plain: %q", l)
+	}
+
+	h.keys("k", "k", "k", "k", "k") // up to the most urgent row
+	r, ok := h.m.selectedRow()
+	if !ok || r.task.Title != "Long overdue" {
+		t.Fatalf("the cursor is on the most urgent row: %+v", r)
+	}
+	reversedToTheEnd(t, "a selected row past its coloured score", h.m.rowLine(r, 60, true))
+
+	closed := domain.Task{Status: domain.StatusDone, Impact: 3, Size: domain.SizeS}
+	if got := h.m.badge(closed); got != "[50 S]" {
+		t.Errorf("a closed task's badge = %q; want it plain", got)
+	}
+	if got := badgeOf(0, false, domain.SizeM); got != "[ — M]" {
+		t.Errorf("an untriaged badge = %q; want as wide as a score", got)
+	}
 }

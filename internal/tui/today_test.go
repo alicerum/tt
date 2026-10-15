@@ -67,14 +67,14 @@ func TestTimelineShowsBlocks(t *testing.T) {
 	b := h.add("Beta !2 ~m")
 	h.block(a.ID, 10*time.Hour, time.Hour)
 	h.block(b.ID, 11*time.Hour+10*time.Minute, 45*time.Minute)
-	h.mustSee("TIMELINE · 0/2 done", " 10:00 ▓ Alpha [ 50 S]", " 10:30 ▓ ", " 11:00 ▓ 11:10–11:55 Beta [ 33 M]", " 11:30 ▓ ")
-	h.mustSee("CANDIDATES", "[ 50 S] Alpha ▓") // blocking pins (D12a)
+	h.mustSee("TIMELINE · 0/2 done", " 10:00 ▓ Alpha [50 S]", " 10:30 ▓ ", " 11:00 ▓ 11:10–11:55 Beta [33 M]", " 11:30 ▓ ")
+	h.mustSee("CANDIDATES", "[50 S] Alpha ▓") // blocking pins (D12a)
 
 	if _, err := h.svc.Done(context.Background(), a.ID); err != nil {
 		t.Fatal(err)
 	}
 	h.keys("R")
-	h.mustSee("TIMELINE · 1/2 done", " 10:00 ▓ Alpha [ 50 S] ✓") // P3: done blocks stay
+	h.mustSee("TIMELINE · 1/2 done", " 10:00 ▓ Alpha [50 S] ✓") // P3: done blocks stay
 }
 
 // blockDirectly puts a block on today's timeline behind the service's back:
@@ -114,7 +114,7 @@ func TestTimelineShowsOnlyWorkingHours(t *testing.T) {
 	// A block outside the hours (placed before D39) keeps a row of its own.
 	late := h.add("Late one !3 ~s")
 	h.blockDirectly(late.ID, 21*time.Hour, time.Hour)
-	h.mustSee(" 21:00 ▓ 21:00–22:00 Late one [ 50 S] · outside of working hours", "TIMELINE · 0/1 done")
+	h.mustSee(" 21:00 ▓ 21:00–22:00 Late one [50 S] · outside of working hours", "TIMELINE · 0/1 done")
 	h.mustNotSee(" 21:30 ")
 	for range 30 {
 		h.keys("j")
@@ -140,7 +140,7 @@ func TestTimelineMarksBlocksWithANote(t *testing.T) {
 	}
 	h.block(a.ID, 10*time.Hour, time.Hour)
 	h.block(b.ID, 11*time.Hour+10*time.Minute, 45*time.Minute)
-	h.mustSee(" 10:00 ▓ Alpha ✎ [ 50 S]", " 11:00 ▓ 11:10–11:55 Beta [ 33 M]")
+	h.mustSee(" 10:00 ▓ Alpha ✎ [50 S]", " 11:00 ▓ 11:10–11:55 Beta [33 M]")
 }
 
 func TestTimelineCursorAndBlockKeys(t *testing.T) {

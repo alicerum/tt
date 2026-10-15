@@ -41,7 +41,7 @@ func TestPlaceACandidate(t *testing.T) {
 	h.keys("j")
 	h.mustSee(" 09:30 ░ Alpha 1h", " 10:00 ░")
 	h.keys("enter")
-	h.mustSee(`blocked "Alpha" 09:30–10:30`, " 09:30 ▓ Alpha [ 50 S]")
+	h.mustSee(`blocked "Alpha" 09:30–10:30`, " 09:30 ▓ Alpha [50 S]")
 	if b := h.blocks(); len(b) != 1 || b[0].TaskID != a.ID || b[0].Start != 9*time.Hour+30*time.Minute || b[0].Duration != time.Hour {
 		t.Fatalf("blocks = %+v", b)
 	}
@@ -174,7 +174,7 @@ func TestMoveResizeFineTuneUnblock(t *testing.T) {
 	}
 	h.typeText("10:10 45m")
 	h.keys("enter")
-	h.mustSee(`"Alpha" now 10:10–10:55`, " 10:00 ▓ 10:10–10:55 Alpha [ 50 S]")
+	h.mustSee(`"Alpha" now 10:10–10:55`, " 10:00 ▓ 10:10–10:55 Alpha [50 S]")
 	h.keys("ctrl+z")
 	if b := h.blocks()[0]; b.Start != 10*time.Hour || b.Duration != 30*time.Minute {
 		t.Errorf("fine-tune undoes in one step: %+v", b)

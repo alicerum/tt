@@ -48,10 +48,10 @@ func TestRowsShowTheDueAndUrgency(t *testing.T) {
 	// On the urgency sort (D72): impact 1 three days overdue 0.59, impact 1
 	// due today 0.53, impact 3 undated 0.50, impact 2 due in 18 days 0.43.
 	h.before("BACKLOG · by urgency",
-		"[ 59 S] Overdue ask 3d late",
-		"[ 53 S] Ask due today →today @ana",
-		"[ 50 XL] Undated stream task",
-		"[ 43 L] Migration →30 oct 0/1", "[ 43 S] Dry run →30 oct") // the child takes its parent's due (D69)
+		"[59 S] Overdue ask 3d late",
+		"[53 S] Ask due today →today @ana",
+		"[50 XL] Undated stream task",
+		"[43 L] Migration →30 oct 0/1", "[43 S] Dry run →30 oct") // the child takes its parent's due (D69)
 	h.mustNotSee("Undated stream task →")
 }
 
@@ -63,7 +63,7 @@ func TestDetailShowsImpactDueAndUrgency(t *testing.T) {
 	}
 	h.keys("R", "enter")
 	// Impact 2 due in 4 days: 0.62; due tomorrow: 0.68.
-	h.mustSee("impact: one team · due Fri 16 Oct · urgency 62", "[ 62 S] Dry run →fri", "[ 68 S] Cutover →tue")
+	h.mustSee("impact: one team · due Fri 16 Oct · urgency 62", "[62 S] Dry run →fri", "[68 S] Cutover →tue")
 	h.keys("j", "enter")
 	h.mustSee("#2 Dry run", fmt.Sprintf("impact: one team (from #%d) · due Fri 16 Oct (from #%[1]d) · urgency 62", parent.ID))
 	h.keys("esc", "j", "j", "enter")
@@ -103,7 +103,7 @@ func TestInboxShowsTheDueFirstAndWaitsForEnter(t *testing.T) {
 	h.keys("esc", "enter")
 	h.mustSee("INBOX · 1 of 1", "Second")
 	h.keys("esc")
-	h.mustSee("[ 79 S] Ship it →fri") // impact 3 due in 4 days
+	h.mustSee("[79 S] Ship it →fri") // impact 3 due in 4 days
 
 	// ctrl+z undoes the last triage step; the card is back in the Inbox.
 	h.keys("i", "1", "m")
@@ -183,5 +183,5 @@ func TestDetailOfAClosedParentsChildSaysHowToSetImpact(t *testing.T) {
 	h.typeText(" !2")
 	h.keys("enter")
 	h.keys("esc")
-	h.mustSee("[ 33 S] Kid")
+	h.mustSee("[33 S] Kid")
 }

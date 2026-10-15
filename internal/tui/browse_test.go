@@ -49,7 +49,7 @@ func TestFilteredExpandCollapseLeavesTheBacklogAlone(t *testing.T) {
 	h := newLogHarness(t, config.Default())
 	parent, _ := h.family("Auth migration !3 ~xl #auth", "Rollback plan ~s", "Token spike ~m")
 	h.keys("right") // expanded before filtering
-	h.mustSee("▾ [ 50 XL] Auth migration", "    [ 50 S] Rollback plan")
+	h.mustSee("▾ [50 XL] Auth migration", "    [50 S] Rollback plan")
 
 	if err := h.m.applyFilter("#auth"); err != nil {
 		t.Fatal(err)
@@ -59,17 +59,17 @@ func TestFilteredExpandCollapseLeavesTheBacklogAlone(t *testing.T) {
 		t.Errorf("cursor on %q; want the parent", r.task.Title)
 	}
 	h.keys("left") // on the parent: filtered parents stay expanded
-	h.mustSee("    [ 50 S] Rollback plan")
+	h.mustSee("    [50 S] Rollback plan")
 	// Clearing the filter shows the parent still expanded, as before the filter.
 	h.keys("esc")
-	h.mustSee("▾ [ 50 XL] Auth migration", "    [ 50 S] Rollback plan")
+	h.mustSee("▾ [50 XL] Auth migration", "    [50 S] Rollback plan")
 }
 
 func TestParentWithoutListedChildrenHasNoMarker(t *testing.T) {
 	h := newLogHarness(t, config.Default())
 	h.family("Lonely parent !2 ~m", "Untriaged idea") // the child is in the Inbox
-	h.mustSee("  [ 33 M] Lonely parent")
-	h.mustNotSee("▸ [ 33 M] Lonely parent")
+	h.mustSee("  [33 M] Lonely parent")
+	h.mustNotSee("▸ [33 M] Lonely parent")
 	h.keys("right")
 	h.mustNotSee("Untriaged idea")
 }

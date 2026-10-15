@@ -39,7 +39,7 @@ func TestReslotAConflictedBlock(t *testing.T) {
 	h.mustSee(`moved "Alpha" to 13:00–14:00`)
 	h.mustNotSee("⚠")
 	h.keys("ctrl+z")
-	h.mustSee(`undid move "Alpha"`, " 10:00 ▓ Alpha [ 50 S] ⚠")
+	h.mustSee(`undid move "Alpha"`, " 10:00 ▓ Alpha [50 S] ⚠")
 
 	h.keys("r", "esc") // esc leaves it where it is
 	if bs := h.blocks(); bs[0].Start != 10*time.Hour || h.m.today.carry != nil {
@@ -90,7 +90,7 @@ func TestARefusedDropKeepsThePickUp(t *testing.T) {
 	if c := h.m.today.carry; c == nil || c.task.Title != "Alpha" || h.m.today.at != 9*time.Hour {
 		t.Fatalf("a refused drop gives the pick-up back where it was: %+v at %v", c, h.m.today.at)
 	}
-	h.mustSee(" 09:00 ░ Alpha 1h · Other [ 50 S]") // the reload shows why
+	h.mustSee(" 09:00 ░ Alpha 1h · Other [50 S]") // the reload shows why
 	h.keys("j", "j", "enter")
 	h.mustSee(`blocked "Alpha" 10:00–11:00`)
 }
