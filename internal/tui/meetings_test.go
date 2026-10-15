@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -108,4 +109,38 @@ func TestPlacementAroundMeetings(t *testing.T) {
 	}
 	h.keys("R")
 	h.mustNotSee("⚠")
+}
+
+func TestEnterListsTheMeetingsOfARow(t *testing.T) {
+	h := newCalHarness(t, config.Default())
+	fix := h.pinned("Fix CI !3 ~s")
+	h.block(fix.ID, 12*time.Hour, time.Hour)
+	h.meetings(
+		ev("Coffee", 10*time.Hour, 10*time.Hour+15*time.Minute), // two bands in one row
+		ev("Check-in", 10*time.Hour+15*time.Minute, 10*time.Hour+30*time.Minute),
+		ev("Lunch", 12*time.Hour, 13*time.Hour),
+		ev("Weekly sync", 15*time.Hour, 16*time.Hour),
+		ev("1:1 Ana", 15*time.Hour+30*time.Minute, 16*time.Hour+30*time.Minute),
+		ev("Design review", 16*time.Hour, 17*time.Hour),
+	)
+	h.mustSee(" 15:00 ■ Weekly sync +2")
+
+	h.m.today.cursor = h.m.today.tl.rowOf(16*time.Hour + 30*time.Minute) // a later row of the band
+	h.keys("enter")
+	h.before("MEETINGS · 15:00–17:00", "  15:00–16:00  Weekly sync", "  15:30–16:30  1:1 Ana", "  16:00–17:00  Design review", "any key closes")
+	h.mustNotSee("12:00–13:00  Lunch") // not in the band
+	if lines := strings.Count(h.m.render(), "\n") + 1; lines > 40 {
+		t.Errorf("the screen has %d lines on a 40-line terminal", lines)
+	}
+	h.keys("enter") // closes the list, and nothing else: on the row it would open it again
+	h.mustNotSee("MEETINGS ·", "any key closes")
+
+	h.m.today.cursor = h.m.today.tl.rowOf(10 * time.Hour)
+	h.keys("enter")
+	h.before("MEETINGS · 10:00–10:30", "  10:00–10:15  Coffee", "  10:15–10:30  Check-in", "any key closes")
+	h.keys("esc")
+
+	h.m.today.cursor = h.m.today.tl.rowOf(12 * time.Hour) // a block over a meeting: ⏎ opens its task (D31)
+	h.keys("enter")
+	h.mustSee(fmt.Sprintf("#%d Fix CI", fix.ID), "TASK")
 }

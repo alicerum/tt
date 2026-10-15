@@ -458,7 +458,11 @@ func (m *Model) todayKey(key string) tea.Cmd {
 	}
 	b, ok := td.tl.blockAt(td.cursor)
 	if !ok {
-		if len(td.tl.rows[td.cursor].bands) > 0 {
+		if bands := td.tl.rows[td.cursor].bands; len(bands) > 0 {
+			if key == "enter" {
+				m.overlay = newMeetingList(&td.tl, bands) // D79
+				return nil
+			}
 			m.setStatus("meeting · read-only") // D41
 			return nil
 		}
@@ -683,6 +687,29 @@ func (m *Model) meetingParts(r tlRow) []string {
 	return out
 }
 
+// meetingList shows the meetings of a timeline row's bands, one a line with
+// its times (D79): a band names only its first meeting. Any key closes it.
+type meetingList struct{ lines []string }
+
+func newMeetingList(tl *timeline, bands []band) *meetingList {
+	var ms []meeting
+	for _, bd := range bands {
+		ms = append(ms, tl.bandMeetings(bd)...)
+	}
+	lines := []string{styleTitle.Render(fmt.Sprintf("MEETINGS · %s–%s", clock(bands[0].start), clock(bands[len(bands)-1].end)))}
+	for _, mt := range ms {
+		lines = append(lines, "  "+clock(mt.start)+"–"+clock(mt.end)+"  "+mt.title)
+	}
+	return &meetingList{lines: append(lines, styleDim.Render("any key closes"))}
+}
+
+func (*meetingList) update(m *Model, _ tea.KeyPressMsg) tea.Cmd {
+	m.overlay = nil
+	return nil
+}
+
+func (l *meetingList) view(*Model) string { return strings.Join(l.lines, "\n") }
+
 // blockLabel is a block's text on its first row: exact times when it is off
 // the half-hour grid, the task's title (✎ when it has a note) and badge, struck
 // through when closed.
@@ -751,7 +778,7 @@ var todayHelp = []string{
 	"f        on a block: fine-tune start and length (09:30 45m)",
 	"u        on a block: unblock (stays a candidate) · on a candidate: unpin",
 	"⏎        task detail (the block's task on the timeline)",
-	"■        a meeting (read-only); a block over one shows ⚠, and placing over one is allowed",
+	"■        a meeting (read-only); ⏎ on its row lists the meetings there with their times; a block over one shows ⚠, and placing over one is allowed",
 	"x d D    done (again: reopen) / drop / delete",
 	"e / E    edit the line / the note in $EDITOR · o open the link",
 	"L        the log (backlog; pick today's work there, B comes back) · i inbox · P people",

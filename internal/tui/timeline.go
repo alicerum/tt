@@ -197,6 +197,19 @@ func (tl *timeline) block(id int64) (domain.Block, bool) {
 	return tl.blocks[i], true
 }
 
+// bandMeetings are the meetings merged into bd, by start: each one starting
+// inside its span (meetings are by start, so one starting earlier would
+// have opened the band).
+func (tl *timeline) bandMeetings(bd band) []meeting {
+	var out []meeting
+	for _, mt := range tl.meetings {
+		if mt.start >= bd.start && mt.start < bd.end {
+			out = append(out, mt)
+		}
+	}
+	return out
+}
+
 // conflict is the first meeting b overlaps (D18, D42).
 func (tl *timeline) conflict(b domain.Block) (meeting, bool) {
 	for _, mt := range tl.meetings {
